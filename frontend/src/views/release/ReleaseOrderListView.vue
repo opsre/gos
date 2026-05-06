@@ -227,6 +227,7 @@ const initialColumns: TableColumnsType<ReleaseOrder> = [
   { title: "发布单号", dataIndex: "order_no", key: "order_no", width: 190 },
   { title: "状态", key: "status", width: 100 },
   { title: "发布名称", dataIndex: "release_name", key: "release_name", width: 100 },
+  { title: "发起人", dataIndex: "triggered_by", key: "triggered_by", width: 100 },
   { title: "创建时间", dataIndex: "created_at", key: "created_at", width: 145 },
   {
     title: "应用名称",
@@ -2855,7 +2856,7 @@ function handleOverviewChartResize() {
         :data-source="dataSource"
         :loading="loading"
         :pagination="false"
-        :scroll="{ x: 960 }"
+        :scroll="{ x: 1060 }"
       >
         <template #expandedRowRender="{ record }">
           <div class="approval-flow-card release-list-expand-card">

@@ -492,6 +492,7 @@ const heroFacts = computed(() => {
     { label: "应用", value: order.value.application_name || "-" },
     { label: "环境", value: order.value.env_code || "-" },
     { label: "Git 版本", value: order.value.git_ref || "-" },
+    { label: "发布人", value: order.value.triggered_by || "-" },
   ];
 });
 
