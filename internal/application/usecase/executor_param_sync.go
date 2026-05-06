@@ -28,6 +28,7 @@ type SyncExecutorParamDefsOutput struct {
 	Skipped     int `json:"skipped"`
 }
 
+// NewSyncExecutorParamDefs 创建并返回对应组件实例。
 func NewSyncExecutorParamDefs(repo domain.Repository, jenkins JenkinsExecutorParamClient) *SyncExecutorParamDefs {
 	return &SyncExecutorParamDefs{
 		repo:    repo,
@@ -38,6 +39,7 @@ func NewSyncExecutorParamDefs(repo domain.Repository, jenkins JenkinsExecutorPar
 	}
 }
 
+// Execute 封装当前模块的业务处理逻辑。
 func (uc *SyncExecutorParamDefs) Execute(ctx context.Context) (SyncExecutorParamDefsOutput, error) {
 	jobSets, err := uc.jenkins.ListJobParamSets(ctx)
 	if err != nil {
@@ -126,6 +128,7 @@ func (uc *SyncExecutorParamDefs) Execute(ctx context.Context) (SyncExecutorParam
 	}, nil
 }
 
+// executorParamDefID 封装当前模块的业务处理逻辑。
 func executorParamDefID(pipelineID, executorType, executorParamName string) string {
 	sum := sha1.Sum([]byte(pipelineID + ":" + executorType + ":" + executorParamName))
 	return "ppf-" + hex.EncodeToString(sum[:12])

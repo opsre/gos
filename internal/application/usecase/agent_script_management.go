@@ -54,10 +54,12 @@ type AgentScriptListOutput struct {
 	Total int64
 }
 
+// NewAgentScriptManager 创建并返回对应组件实例。
 func NewAgentScriptManager(repo agentdomain.Repository) *AgentScriptManager {
 	return &AgentScriptManager{repo: repo, now: func() time.Time { return time.Now().UTC() }}
 }
 
+// List 查询并返回列表数据。
 func (uc *AgentScriptManager) List(ctx context.Context, filter agentdomain.ScriptListFilter) (AgentScriptListOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentScriptListOutput{}, fmt.Errorf("%w: agent script manager is not configured", ErrInvalidInput)
@@ -76,6 +78,7 @@ func (uc *AgentScriptManager) List(ctx context.Context, filter agentdomain.Scrip
 	return AgentScriptListOutput{Items: outputs, Total: total}, nil
 }
 
+// Get 查询并返回指定资源数据。
 func (uc *AgentScriptManager) Get(ctx context.Context, id string) (AgentScriptOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentScriptOutput{}, fmt.Errorf("%w: agent script manager is not configured", ErrInvalidInput)
@@ -87,6 +90,7 @@ func (uc *AgentScriptManager) Get(ctx context.Context, id string) (AgentScriptOu
 	return toAgentScriptOutput(item), nil
 }
 
+// Create 创建业务资源并返回处理结果。
 func (uc *AgentScriptManager) Create(ctx context.Context, input CreateAgentScriptInput) (AgentScriptOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentScriptOutput{}, fmt.Errorf("%w: agent script manager is not configured", ErrInvalidInput)
@@ -108,6 +112,7 @@ func (uc *AgentScriptManager) Create(ctx context.Context, input CreateAgentScrip
 	return toAgentScriptOutput(created), nil
 }
 
+// Update 更新业务资源并返回处理结果。
 func (uc *AgentScriptManager) Update(ctx context.Context, id string, input UpdateAgentScriptInput) (AgentScriptOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentScriptOutput{}, fmt.Errorf("%w: agent script manager is not configured", ErrInvalidInput)
@@ -139,6 +144,7 @@ func (uc *AgentScriptManager) Update(ctx context.Context, id string, input Updat
 	return toAgentScriptOutput(updated), nil
 }
 
+// Delete 删除业务资源并返回处理结果。
 func (uc *AgentScriptManager) Delete(ctx context.Context, id string) error {
 	if uc == nil || uc.repo == nil {
 		return fmt.Errorf("%w: agent script manager is not configured", ErrInvalidInput)
@@ -150,6 +156,7 @@ func (uc *AgentScriptManager) Delete(ctx context.Context, id string) error {
 	return uc.repo.DeleteScript(ctx, id)
 }
 
+// normalizeScriptInput 标准化输入值，保证后续逻辑使用统一格式。
 func (uc *AgentScriptManager) normalizeScriptInput(name, description, taskType, shellType, scriptPath, scriptText string) (agentdomain.Script, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -191,6 +198,7 @@ func (uc *AgentScriptManager) normalizeScriptInput(name, description, taskType, 
 	}, nil
 }
 
+// toAgentScriptOutput 将领域对象转换为接口响应结构。
 func toAgentScriptOutput(item agentdomain.Script) AgentScriptOutput {
 	return AgentScriptOutput{
 		ID:          item.ID,
@@ -207,11 +215,13 @@ func toAgentScriptOutput(item agentdomain.Script) AgentScriptOutput {
 	}
 }
 
+// isSupportedAgentScriptPath 封装当前模块的业务处理逻辑。
 func isSupportedAgentScriptPath(path string) bool {
 	lowerExt := strings.ToLower(filepath.Ext(strings.TrimSpace(path)))
 	return lowerExt == ".sh" || lowerExt == ".bash"
 }
 
+// syncBoundTasks 同步外部或内部状态数据。
 func (uc *AgentScriptManager) syncBoundTasks(ctx context.Context, script agentdomain.Script) error {
 	if uc == nil || uc.repo == nil {
 		return fmt.Errorf("%w: agent script manager is not configured", ErrInvalidInput)

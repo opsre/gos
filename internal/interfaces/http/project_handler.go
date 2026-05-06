@@ -18,10 +18,12 @@ type ProjectHandler struct {
 	authz   RequestAuthorizer
 }
 
+// NewProjectHandler 创建并返回对应组件实例。
 func NewProjectHandler(manager *usecase.ProjectManager, authz RequestAuthorizer) *ProjectHandler {
 	return &ProjectHandler{manager: manager, authz: authz}
 }
 
+// ensureProjectReadable 校验前置条件，不满足时写入对应错误响应。
 func (h *ProjectHandler) ensureProjectReadable(c *gin.Context) bool {
 	user, ok := getCurrentUser(c)
 	if !ok {
@@ -66,6 +68,7 @@ func (h *ProjectHandler) ensureProjectReadable(c *gin.Context) bool {
 	return false
 }
 
+// RegisterRoutes 封装当前模块的业务处理逻辑。
 func (h *ProjectHandler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/projects", h.List)
 	router.GET("/projects/:id", h.GetByID)
@@ -91,6 +94,19 @@ type ProjectResponse struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+// Create 创建资源。
+// @Summary      创建资源
+// @Description  创建资源，并按统一响应结构返回处理结果。
+// @Tags         projects
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /projects [post]
 func (h *ProjectHandler) Create(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "application.manage", "", "") {
 		return
@@ -113,6 +129,19 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"data": toProjectResponse(item)})
 }
 
+// GetByID 获取By ID详情。
+// @Summary      获取By ID详情
+// @Description  获取By ID详情，并按统一响应结构返回处理结果。
+// @Tags         projects
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /projects/{id} [get]
 func (h *ProjectHandler) GetByID(c *gin.Context) {
 	if !h.ensureProjectReadable(c) {
 		return
@@ -125,6 +154,18 @@ func (h *ProjectHandler) GetByID(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toProjectResponse(item)})
 }
 
+// List 查询资源列表。
+// @Summary      查询资源列表
+// @Description  查询资源列表，并按统一响应结构返回处理结果。
+// @Tags         projects
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /projects [get]
 func (h *ProjectHandler) List(c *gin.Context) {
 	if !h.ensureProjectReadable(c) {
 		return
@@ -162,6 +203,20 @@ func (h *ProjectHandler) List(c *gin.Context) {
 	})
 }
 
+// Update 更新资源。
+// @Summary      更新资源
+// @Description  更新资源，并按统一响应结构返回处理结果。
+// @Tags         projects
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /projects/{id} [put]
 func (h *ProjectHandler) Update(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "application.manage", "", "") {
 		return
@@ -184,6 +239,19 @@ func (h *ProjectHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toProjectResponse(item)})
 }
 
+// Delete 删除资源。
+// @Summary      删除资源
+// @Description  删除资源，并按统一响应结构返回处理结果。
+// @Tags         projects
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /projects/{id} [delete]
 func (h *ProjectHandler) Delete(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "application.manage", "", "") {
 		return
@@ -195,6 +263,7 @@ func (h *ProjectHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": true})
 }
 
+// toProjectResponse 将领域对象转换为接口响应结构。
 func toProjectResponse(item projectdomain.Project) ProjectResponse {
 	return ProjectResponse{
 		ID:          item.ID,
@@ -207,6 +276,7 @@ func toProjectResponse(item projectdomain.Project) ProjectResponse {
 	}
 }
 
+// writeProjectHTTPError 写入处理结果或错误信息。
 func writeProjectHTTPError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrInvalidInput), errors.Is(err, usecase.ErrInvalidID), errors.Is(err, usecase.ErrInvalidStatus):

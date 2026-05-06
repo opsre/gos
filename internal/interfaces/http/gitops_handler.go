@@ -13,14 +13,15 @@ import (
 )
 
 type GitOpsHandler struct {
-	templateFields    *usecase.QueryGitOpsTemplateFields
-	fieldCandidates   *usecase.QueryGitOpsFieldCandidates
-	valuesCandidates  *usecase.QueryGitOpsValuesCandidates
-	scanPathStatus    *usecase.QueryGitOpsScanPathStatus
-	instances         *usecase.GitOpsInstanceManager
-	authz             RequestAuthorizer
+	templateFields   *usecase.QueryGitOpsTemplateFields
+	fieldCandidates  *usecase.QueryGitOpsFieldCandidates
+	valuesCandidates *usecase.QueryGitOpsValuesCandidates
+	scanPathStatus   *usecase.QueryGitOpsScanPathStatus
+	instances        *usecase.GitOpsInstanceManager
+	authz            RequestAuthorizer
 }
 
+// NewGitOpsHandler 创建并返回对应组件实例。
 func NewGitOpsHandler(
 	templateFields *usecase.QueryGitOpsTemplateFields,
 	fieldCandidates *usecase.QueryGitOpsFieldCandidates,
@@ -39,6 +40,7 @@ func NewGitOpsHandler(
 	}
 }
 
+// RegisterRoutes 封装当前模块的业务处理逻辑。
 func (h *GitOpsHandler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/gitops/instances", h.ListInstances)
 	router.POST("/gitops/instances", h.CreateInstance)
@@ -115,6 +117,18 @@ type upsertGitOpsInstanceRequest struct {
 	Remark                string `json:"remark"`
 }
 
+// ListInstances 查询Instances列表。
+// @Summary      查询Instances列表
+// @Description  查询Instances列表，并按统一响应结构返回处理结果。
+// @Tags         gitops
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /gitops/instances [get]
 func (h *GitOpsHandler) ListInstances(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.gitops.view", "component.gitops.manage") {
 		return
@@ -155,6 +169,19 @@ func (h *GitOpsHandler) ListInstances(c *gin.Context) {
 	})
 }
 
+// CreateInstance 创建Instance。
+// @Summary      创建Instance
+// @Description  创建Instance，并按统一响应结构返回处理结果。
+// @Tags         gitops
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /gitops/instances [post]
 func (h *GitOpsHandler) CreateInstance(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.gitops.manage", "", "") {
 		return
@@ -190,6 +217,20 @@ func (h *GitOpsHandler) CreateInstance(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toGitOpsInstanceResponse(item)})
 }
 
+// UpdateInstance 更新Instance。
+// @Summary      更新Instance
+// @Description  更新Instance，并按统一响应结构返回处理结果。
+// @Tags         gitops
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /gitops/instances/{id} [put]
 func (h *GitOpsHandler) UpdateInstance(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.gitops.manage", "", "") {
 		return
@@ -225,6 +266,19 @@ func (h *GitOpsHandler) UpdateInstance(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toGitOpsInstanceResponse(item)})
 }
 
+// GetInstanceStatus 获取Instance Status详情。
+// @Summary      获取Instance Status详情
+// @Description  获取Instance Status详情，并按统一响应结构返回处理结果。
+// @Tags         gitops
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /gitops/instances/{id}/status [get]
 func (h *GitOpsHandler) GetInstanceStatus(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.gitops.view", "component.gitops.manage") {
 		return
@@ -355,6 +409,7 @@ func (h *GitOpsHandler) ListValuesCandidates(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// toGitOpsInstanceResponse 将领域对象转换为接口响应结构。
 func toGitOpsInstanceResponse(item domain.Instance) GitOpsInstanceResponse {
 	return GitOpsInstanceResponse{
 		ID:                    item.ID,
@@ -374,6 +429,7 @@ func toGitOpsInstanceResponse(item domain.Instance) GitOpsInstanceResponse {
 	}
 }
 
+// writeGitOpsHTTPError 写入处理结果或错误信息。
 func writeGitOpsHTTPError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrInvalidInput), errors.Is(err, usecase.ErrInvalidID), errors.Is(err, usecase.ErrInvalidStatus):
@@ -385,6 +441,7 @@ func writeGitOpsHTTPError(c *gin.Context, err error) {
 	}
 }
 
+// shortGitOpsCommit 封装当前模块的业务处理逻辑。
 func shortGitOpsCommit(value string) string {
 	if len(value) <= 8 {
 		return value
@@ -392,6 +449,18 @@ func shortGitOpsCommit(value string) string {
 	return value[:8]
 }
 
+// CheckScanPath 检查Scan Path。
+// @Summary      检查Scan Path
+// @Description  检查Scan Path，并按统一响应结构返回处理结果。
+// @Tags         gitops
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /gitops/scan-path-status [get]
 func (h *GitOpsHandler) CheckScanPath(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.gitops.view", "release.template.manage") {
 		return

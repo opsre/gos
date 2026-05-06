@@ -19,6 +19,7 @@ type ArgoCDHandler struct {
 	authz     RequestAuthorizer
 }
 
+// NewArgoCDHandler 创建并返回对应组件实例。
 func NewArgoCDHandler(
 	syncer *usecase.SyncArgoCDApplications,
 	query *usecase.QueryArgoCDApplications,
@@ -28,6 +29,7 @@ func NewArgoCDHandler(
 	return &ArgoCDHandler{syncer: syncer, query: query, instances: instances, authz: authz}
 }
 
+// RegisterRoutes 封装当前模块的业务处理逻辑。
 func (h *ArgoCDHandler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/argocd/applications", h.ListApplications)
 	router.GET("/argocd/applications/:id", h.GetApplicationByID)
@@ -162,6 +164,18 @@ type updateArgoCDEnvBindingsRequest struct {
 	} `json:"bindings"`
 }
 
+// ListApplications 查询Applications列表。
+// @Summary      查询Applications列表
+// @Description  查询Applications列表，并按统一响应结构返回处理结果。
+// @Tags         argocd
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /argocd/applications [get]
 func (h *ArgoCDHandler) ListApplications(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.argocd.view", "component.argocd.manage", "component.argocd.instance.view", "component.argocd.instance.manage") {
 		return
@@ -206,6 +220,19 @@ func (h *ArgoCDHandler) ListApplications(c *gin.Context) {
 	})
 }
 
+// GetApplicationByID 获取Application By ID详情。
+// @Summary      获取Application By ID详情
+// @Description  获取Application By ID详情，并按统一响应结构返回处理结果。
+// @Tags         argocd
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /argocd/applications/{id} [get]
 func (h *ArgoCDHandler) GetApplicationByID(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.argocd.view", "component.argocd.manage", "component.argocd.instance.view", "component.argocd.instance.manage") {
 		return
@@ -222,6 +249,19 @@ func (h *ArgoCDHandler) GetApplicationByID(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toArgoCDApplicationResponse(item)})
 }
 
+// SyncApplications 同步Applications。
+// @Summary      同步Applications
+// @Description  同步Applications，并按统一响应结构返回处理结果。
+// @Tags         argocd
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /argocd/applications/sync [post]
 func (h *ArgoCDHandler) SyncApplications(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.argocd.manage", "component.argocd.instance.manage") {
 		return
@@ -238,6 +278,19 @@ func (h *ArgoCDHandler) SyncApplications(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
+// GetOriginalLink 获取Original Link详情。
+// @Summary      获取Original Link详情
+// @Description  获取Original Link详情，并按统一响应结构返回处理结果。
+// @Tags         argocd
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /argocd/applications/{id}/original-link [get]
 func (h *ArgoCDHandler) GetOriginalLink(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.argocd.view", "component.argocd.manage", "component.argocd.instance.view", "component.argocd.instance.manage") {
 		return
@@ -257,6 +310,18 @@ func (h *ArgoCDHandler) GetOriginalLink(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// ListInstances 查询Instances列表。
+// @Summary      查询Instances列表
+// @Description  查询Instances列表，并按统一响应结构返回处理结果。
+// @Tags         argocd
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /argocd/instances [get]
 func (h *ArgoCDHandler) ListInstances(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.argocd.instance.view", "component.argocd.instance.manage", "component.argocd.binding.view", "component.argocd.binding.manage", "component.argocd.view", "component.argocd.manage") {
 		return
@@ -297,6 +362,19 @@ func (h *ArgoCDHandler) ListInstances(c *gin.Context) {
 	})
 }
 
+// CreateInstance 创建Instance。
+// @Summary      创建Instance
+// @Description  创建Instance，并按统一响应结构返回处理结果。
+// @Tags         argocd
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /argocd/instances [post]
 func (h *ArgoCDHandler) CreateInstance(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.argocd.instance.manage", "component.argocd.manage") {
 		return
@@ -332,6 +410,20 @@ func (h *ArgoCDHandler) CreateInstance(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toArgoCDInstanceResponse(item)})
 }
 
+// UpdateInstance 更新Instance。
+// @Summary      更新Instance
+// @Description  更新Instance，并按统一响应结构返回处理结果。
+// @Tags         argocd
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /argocd/instances/{id} [put]
 func (h *ArgoCDHandler) UpdateInstance(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.argocd.instance.manage", "component.argocd.manage") {
 		return
@@ -367,6 +459,20 @@ func (h *ArgoCDHandler) UpdateInstance(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toArgoCDInstanceResponse(item)})
 }
 
+// CheckInstance 检查Instance。
+// @Summary      检查Instance
+// @Description  检查Instance，并按统一响应结构返回处理结果。
+// @Tags         argocd
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /argocd/instances/{id}/check [post]
 func (h *ArgoCDHandler) CheckInstance(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.argocd.instance.manage", "component.argocd.manage") {
 		return
@@ -383,6 +489,18 @@ func (h *ArgoCDHandler) CheckInstance(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toArgoCDInstanceResponse(item)})
 }
 
+// ListEnvBindings 查询Env Bindings列表。
+// @Summary      查询Env Bindings列表
+// @Description  查询Env Bindings列表，并按统一响应结构返回处理结果。
+// @Tags         argocd
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /argocd/env-bindings [get]
 func (h *ArgoCDHandler) ListEnvBindings(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.argocd.binding.view", "component.argocd.binding.manage", "component.argocd.instance.view", "component.argocd.instance.manage", "component.argocd.view", "component.argocd.manage") {
 		return
@@ -403,6 +521,19 @@ func (h *ArgoCDHandler) ListEnvBindings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": resp})
 }
 
+// UpdateEnvBindings 更新Env Bindings。
+// @Summary      更新Env Bindings
+// @Description  更新Env Bindings，并按统一响应结构返回处理结果。
+// @Tags         argocd
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /argocd/env-bindings [put]
 func (h *ArgoCDHandler) UpdateEnvBindings(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.argocd.binding.manage", "component.argocd.instance.manage", "component.argocd.manage") {
 		return
@@ -436,6 +567,7 @@ func (h *ArgoCDHandler) UpdateEnvBindings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": resp})
 }
 
+// toArgoCDApplicationResponse 将领域对象转换为接口响应结构。
 func toArgoCDApplicationResponse(item domain.Application) ArgoCDApplicationResponse {
 	return ArgoCDApplicationResponse{
 		ID:               item.ID,
@@ -463,6 +595,7 @@ func toArgoCDApplicationResponse(item domain.Application) ArgoCDApplicationRespo
 	}
 }
 
+// toArgoCDInstanceResponse 将领域对象转换为接口响应结构。
 func toArgoCDInstanceResponse(item domain.Instance) ArgoCDInstanceResponse {
 	return ArgoCDInstanceResponse{
 		ID:                 item.ID,
@@ -486,6 +619,7 @@ func toArgoCDInstanceResponse(item domain.Instance) ArgoCDInstanceResponse {
 	}
 }
 
+// toArgoCDEnvBindingResponse 将领域对象转换为接口响应结构。
 func toArgoCDEnvBindingResponse(item domain.EnvBinding) ArgoCDEnvBindingResponse {
 	return ArgoCDEnvBindingResponse{
 		ID:                 item.ID,
@@ -501,6 +635,7 @@ func toArgoCDEnvBindingResponse(item domain.EnvBinding) ArgoCDEnvBindingResponse
 	}
 }
 
+// writeArgoCDHTTPError 写入处理结果或错误信息。
 func writeArgoCDHTTPError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrInvalidInput), errors.Is(err, usecase.ErrInvalidID), errors.Is(err, usecase.ErrInvalidStatus):

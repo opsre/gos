@@ -9,6 +9,7 @@ const (
 	RoleNormal Role = "normal"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (r Role) Valid() bool {
 	switch r {
 	case RoleAdmin, RoleNormal:
@@ -25,6 +26,7 @@ const (
 	StatusInactive Status = "inactive"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s Status) Valid() bool {
 	switch s {
 	case StatusActive, StatusInactive:

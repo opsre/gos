@@ -2,6 +2,7 @@ package jenkins
 
 import "testing"
 
+// TestParsePipelineScriptParamSnapshotsBasic 解析输入内容并返回结构化结果。
 func TestParsePipelineScriptParamSnapshotsBasic(t *testing.T) {
 	script := `
 pipeline {
@@ -41,6 +42,7 @@ pipeline {
 	}
 }
 
+// TestParsePipelineScriptParamSnapshotsExtendedChoice 解析输入内容并返回结构化结果。
 func TestParsePipelineScriptParamSnapshotsExtendedChoice(t *testing.T) {
 	script := `
 pipeline {

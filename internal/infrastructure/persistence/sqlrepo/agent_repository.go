@@ -22,10 +22,12 @@ type AgentRepository struct {
 const staleClaimTimeout = time.Minute
 const defaultAgentBootstrapTokenID = "default"
 
+// NewAgentRepository 创建并返回对应组件实例。
 func NewAgentRepository(db *sql.DB, dbDriver string) *AgentRepository {
 	return &AgentRepository{db: db, dbDriver: strings.ToLower(strings.TrimSpace(dbDriver))}
 }
 
+// InitSchema 封装当前模块的业务处理逻辑。
 func (r *AgentRepository) InitSchema(ctx context.Context) error {
 	var statements []string
 	switch r.dbDriver {
@@ -230,6 +232,7 @@ func (r *AgentRepository) InitSchema(ctx context.Context) error {
 	return r.migrateSchema(ctx)
 }
 
+// migrateSchema 封装当前模块的业务处理逻辑。
 func (r *AgentRepository) migrateSchema(ctx context.Context) error {
 	switch r.dbDriver {
 	case "mysql":
@@ -347,6 +350,7 @@ func (r *AgentRepository) migrateSchema(ctx context.Context) error {
 	}
 }
 
+// CreateInstance 创建业务资源并返回处理结果。
 func (r *AgentRepository) CreateInstance(ctx context.Context, item domain.Instance) (domain.Instance, error) {
 	encryptedToken, err := encryptStoredSecret(strings.TrimSpace(item.Token))
 	if err != nil {
@@ -395,6 +399,7 @@ INSERT INTO agent_instance (
 	return r.GetInstanceByID(ctx, item.ID)
 }
 
+// UpdateInstance 更新业务资源并返回处理结果。
 func (r *AgentRepository) UpdateInstance(ctx context.Context, item domain.Instance) (domain.Instance, error) {
 	encryptedToken, err := encryptStoredSecret(strings.TrimSpace(item.Token))
 	if err != nil {
@@ -449,6 +454,7 @@ WHERE id = ?;`
 	return r.GetInstanceByID(ctx, item.ID)
 }
 
+// GetInstanceByID 查询并返回指定资源数据。
 func (r *AgentRepository) GetInstanceByID(ctx context.Context, id string) (domain.Instance, error) {
 	const q = `
 SELECT id, machine_id, agent_code, name, environment_code, work_dir, token_ciphertext, tags_json,
@@ -466,6 +472,7 @@ FROM agent_instance WHERE id = ?;`
 	return item, nil
 }
 
+// GetInstanceByCode 查询并返回指定资源数据。
 func (r *AgentRepository) GetInstanceByCode(ctx context.Context, code string) (domain.Instance, error) {
 	const q = `
 SELECT id, machine_id, agent_code, name, environment_code, work_dir, token_ciphertext, tags_json,
@@ -483,6 +490,7 @@ FROM agent_instance WHERE agent_code = ?;`
 	return item, nil
 }
 
+// GetInstanceByMachineID 查询并返回指定资源数据。
 func (r *AgentRepository) GetInstanceByMachineID(ctx context.Context, machineID string) (domain.Instance, error) {
 	machineID = strings.TrimSpace(machineID)
 	if machineID == "" {
@@ -507,6 +515,7 @@ LIMIT 1;`
 	return item, nil
 }
 
+// ListInstances 查询并返回列表数据。
 func (r *AgentRepository) ListInstances(ctx context.Context, filter domain.ListFilter) ([]domain.Instance, int64, error) {
 	args := make([]any, 0, 8)
 	where := make([]string, 0, 2)
@@ -563,6 +572,7 @@ FROM agent_instance`
 	return result, total, nil
 }
 
+// DeleteInstance 删除业务资源并返回处理结果。
 func (r *AgentRepository) DeleteInstance(ctx context.Context, id string) error {
 	res, err := r.db.ExecContext(ctx, `DELETE FROM agent_instance WHERE id = ?;`, strings.TrimSpace(id))
 	if err != nil {
@@ -578,6 +588,7 @@ func (r *AgentRepository) DeleteInstance(ctx context.Context, id string) error {
 	return nil
 }
 
+// UpdateHeartbeat 更新业务资源并返回处理结果。
 func (r *AgentRepository) UpdateHeartbeat(ctx context.Context, instanceID string, payload domain.HeartbeatPayload) (domain.Instance, error) {
 	const q = `
 UPDATE agent_instance
@@ -618,6 +629,7 @@ WHERE id = ?;`
 	return r.GetInstanceByID(ctx, instanceID)
 }
 
+// UpdateRuntimeTask 更新业务资源并返回处理结果。
 func (r *AgentRepository) UpdateRuntimeTask(ctx context.Context, instanceID string, payload domain.RuntimeTaskPayload) (domain.Instance, error) {
 	const q = `
 UPDATE agent_instance
@@ -649,6 +661,7 @@ WHERE id = ?;`
 	return r.GetInstanceByID(ctx, instanceID)
 }
 
+// GetBootstrapToken 查询并返回指定资源数据。
 func (r *AgentRepository) GetBootstrapToken(ctx context.Context) (string, error) {
 	const q = `SELECT token_ciphertext FROM agent_bootstrap_token WHERE id = ?;`
 	var encryptedToken string
@@ -662,6 +675,7 @@ func (r *AgentRepository) GetBootstrapToken(ctx context.Context) (string, error)
 	return r.ResetBootstrapToken(ctx)
 }
 
+// ResetBootstrapToken 封装当前模块的业务处理逻辑。
 func (r *AgentRepository) ResetBootstrapToken(ctx context.Context) (string, error) {
 	token := generateBootstrapToken()
 	encryptedToken, err := encryptStoredSecret(token)
@@ -692,6 +706,7 @@ ON CONFLICT(id) DO UPDATE SET token_ciphertext = excluded.token_ciphertext, upda
 	return token, nil
 }
 
+// CreateScript 创建业务资源并返回处理结果。
 func (r *AgentRepository) CreateScript(ctx context.Context, item domain.Script) (domain.Script, error) {
 	const q = `
 INSERT INTO agent_script (
@@ -716,6 +731,7 @@ INSERT INTO agent_script (
 	return r.GetScriptByID(ctx, item.ID)
 }
 
+// UpdateScript 更新业务资源并返回处理结果。
 func (r *AgentRepository) UpdateScript(ctx context.Context, item domain.Script) (domain.Script, error) {
 	const q = `
 UPDATE agent_script
@@ -745,6 +761,7 @@ WHERE id = ?;`
 	return r.GetScriptByID(ctx, item.ID)
 }
 
+// GetScriptByID 查询并返回指定资源数据。
 func (r *AgentRepository) GetScriptByID(ctx context.Context, id string) (domain.Script, error) {
 	const q = `
 SELECT id, name, description, task_type, shell_type, script_path, script_text, created_by, updated_by, created_at, updated_at
@@ -759,6 +776,7 @@ FROM agent_script WHERE id = ?;`
 	return item, nil
 }
 
+// ListScripts 查询并返回列表数据。
 func (r *AgentRepository) ListScripts(ctx context.Context, filter domain.ScriptListFilter) ([]domain.Script, int64, error) {
 	args := make([]any, 0, 6)
 	where := make([]string, 0, 2)
@@ -810,6 +828,7 @@ func (r *AgentRepository) ListScripts(ctx context.Context, filter domain.ScriptL
 	return result, total, nil
 }
 
+// DeleteScript 删除业务资源并返回处理结果。
 func (r *AgentRepository) DeleteScript(ctx context.Context, id string) error {
 	res, err := r.db.ExecContext(ctx, `DELETE FROM agent_script WHERE id = ?;`, strings.TrimSpace(id))
 	if err != nil {
@@ -831,6 +850,7 @@ timeout_sec, status, claimed_at, started_at, finished_at, exit_code, stdout_text
 run_count, success_count, failure_count, last_run_status, last_run_summary,
 created_by, created_at, updated_at`
 
+// CreateTask 创建业务资源并返回处理结果。
 func (r *AgentRepository) CreateTask(ctx context.Context, item domain.Task) (domain.Task, error) {
 	const q = `
 INSERT INTO agent_task (
@@ -880,6 +900,7 @@ INSERT INTO agent_task (
 	return r.GetTaskByID(ctx, item.ID)
 }
 
+// UpdateTask 更新业务资源并返回处理结果。
 func (r *AgentRepository) UpdateTask(ctx context.Context, item domain.Task) (domain.Task, error) {
 	const q = `
 UPDATE agent_task
@@ -935,6 +956,7 @@ WHERE id = ?;`
 	return r.GetTaskByID(ctx, item.ID)
 }
 
+// GetTaskByID 查询并返回指定资源数据。
 func (r *AgentRepository) GetTaskByID(ctx context.Context, id string) (domain.Task, error) {
 	q := `SELECT ` + agentTaskSelectColumns + ` FROM agent_task WHERE id = ?;`
 	item, err := scanAgentTask(r.db.QueryRowContext(ctx, q, strings.TrimSpace(id)))
@@ -947,6 +969,7 @@ func (r *AgentRepository) GetTaskByID(ctx context.Context, id string) (domain.Ta
 	return item, nil
 }
 
+// ListTasks 查询并返回列表数据。
 func (r *AgentRepository) ListTasks(ctx context.Context, filter domain.TaskListFilter) ([]domain.Task, int64, error) {
 	args := make([]any, 0, 8)
 	where := make([]string, 0, 5)
@@ -1019,6 +1042,7 @@ func (r *AgentRepository) ListTasks(ctx context.Context, filter domain.TaskListF
 	return result, total, nil
 }
 
+// DeleteTask 删除业务资源并返回处理结果。
 func (r *AgentRepository) DeleteTask(ctx context.Context, taskID string) error {
 	res, err := r.db.ExecContext(ctx, `DELETE FROM agent_task WHERE id = ?;`, strings.TrimSpace(taskID))
 	if err != nil {
@@ -1034,6 +1058,7 @@ func (r *AgentRepository) DeleteTask(ctx context.Context, taskID string) error {
 	return nil
 }
 
+// ClaimNextPendingTask 封装当前模块的业务处理逻辑。
 func (r *AgentRepository) ClaimNextPendingTask(ctx context.Context, agentID string, now time.Time) (domain.Task, bool, error) {
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
@@ -1110,6 +1135,7 @@ WHERE id = ? AND status IN (?, ?);`
 	return task, true, nil
 }
 
+// MarkTaskRunning 封装当前模块的业务处理逻辑。
 func (r *AgentRepository) MarkTaskRunning(ctx context.Context, taskID string, startedAt time.Time) (domain.Task, error) {
 	const q = `
 	UPDATE agent_task
@@ -1135,6 +1161,7 @@ func (r *AgentRepository) MarkTaskRunning(ctx context.Context, taskID string, st
 	return r.GetTaskByID(ctx, taskID)
 }
 
+// ActivateTemporaryTask 封装当前模块的业务处理逻辑。
 func (r *AgentRepository) ActivateTemporaryTask(ctx context.Context, taskID string, nextStatus domain.TaskStatus, activatedAt time.Time) (domain.Task, error) {
 	if nextStatus != domain.TaskStatusPending && nextStatus != domain.TaskStatusQueued {
 		nextStatus = domain.TaskStatusPending
@@ -1178,6 +1205,7 @@ WHERE id = ? AND task_mode = ? AND status IN (?, ?, ?, ?);`
 	return r.GetTaskByID(ctx, taskID)
 }
 
+// CancelTask 封装当前模块的业务处理逻辑。
 func (r *AgentRepository) CancelTask(ctx context.Context, taskID string, cancelledAt time.Time, reason string) (domain.Task, error) {
 	const q = `
 UPDATE agent_task
@@ -1212,6 +1240,7 @@ WHERE id = ? AND status IN (?, ?, ?, ?, ?);`
 	return r.GetTaskByID(ctx, taskID)
 }
 
+// ResumeTask 封装当前模块的业务处理逻辑。
 func (r *AgentRepository) ResumeTask(ctx context.Context, taskID string, nextStatus domain.TaskStatus, resumedAt time.Time, summary string) (domain.Task, error) {
 	summary = strings.TrimSpace(summary)
 	if summary == "" {
@@ -1245,6 +1274,7 @@ WHERE id = ? AND status = ?;`
 	return r.GetTaskByID(ctx, taskID)
 }
 
+// FinishTask 封装当前模块的业务处理逻辑。
 func (r *AgentRepository) FinishTask(ctx context.Context, taskID string, status domain.TaskStatus, exitCode int, stdoutText, stderrText, failureReason string, finishedAt time.Time) (domain.Task, error) {
 	if !status.Valid() {
 		return domain.Task{}, fmt.Errorf("invalid task status: %s", status)
@@ -1329,6 +1359,7 @@ WHERE id = ?;`
 	return r.GetTaskByID(ctx, taskID)
 }
 
+// scanAgentInstance 封装当前模块的业务处理逻辑。
 func scanAgentInstance(scanner interface{ Scan(dest ...any) error }) (domain.Instance, error) {
 	var item domain.Instance
 	var encryptedToken string
@@ -1393,6 +1424,7 @@ func scanAgentInstance(scanner interface{ Scan(dest ...any) error }) (domain.Ins
 	return item, nil
 }
 
+// scanAgentTask 封装当前模块的业务处理逻辑。
 func scanAgentTask(scanner interface{ Scan(dest ...any) error }) (domain.Task, error) {
 	var item domain.Task
 	var targetAgentIDsJSON string
@@ -1464,6 +1496,7 @@ func scanAgentTask(scanner interface{ Scan(dest ...any) error }) (domain.Task, e
 	return item, nil
 }
 
+// scanAgentScript 封装当前模块的业务处理逻辑。
 func scanAgentScript(scanner interface{ Scan(dest ...any) error }) (domain.Script, error) {
 	var item domain.Script
 	var createdAt int64
@@ -1488,6 +1521,7 @@ func scanAgentScript(scanner interface{ Scan(dest ...any) error }) (domain.Scrip
 	return item, nil
 }
 
+// marshalStringSlice 封装当前模块的业务处理逻辑。
 func marshalStringSlice(items []string) string {
 	normalized := make([]string, 0, len(items))
 	for _, item := range items {
@@ -1499,6 +1533,7 @@ func marshalStringSlice(items []string) string {
 	return string(data)
 }
 
+// marshalStringMap 封装当前模块的业务处理逻辑。
 func marshalStringMap(items map[string]string) string {
 	if items == nil {
 		items = map[string]string{}
@@ -1507,6 +1542,7 @@ func marshalStringMap(items map[string]string) string {
 	return string(data)
 }
 
+// unmarshalStringSlice 封装当前模块的业务处理逻辑。
 func unmarshalStringSlice(raw string) []string {
 	text := strings.TrimSpace(raw)
 	if text == "" {
@@ -1519,6 +1555,7 @@ func unmarshalStringSlice(raw string) []string {
 	return result
 }
 
+// unmarshalStringMap 封装当前模块的业务处理逻辑。
 func unmarshalStringMap(raw string) map[string]string {
 	text := strings.TrimSpace(raw)
 	if text == "" {
@@ -1534,6 +1571,7 @@ func unmarshalStringMap(raw string) map[string]string {
 	return result
 }
 
+// ptrTimeToUnixNano 封装当前模块的业务处理逻辑。
 func ptrTimeToUnixNano(value *time.Time) int64 {
 	if value == nil || value.IsZero() {
 		return 0
@@ -1541,6 +1579,7 @@ func ptrTimeToUnixNano(value *time.Time) int64 {
 	return value.UTC().UnixNano()
 }
 
+// timeToUnixNano 封装当前模块的业务处理逻辑。
 func timeToUnixNano(value time.Time) int64 {
 	if value.IsZero() {
 		return 0
@@ -1548,6 +1587,7 @@ func timeToUnixNano(value time.Time) int64 {
 	return value.UTC().UnixNano()
 }
 
+// isDuplicateAgentCodeError 封装当前模块的业务处理逻辑。
 func isDuplicateAgentCodeError(driver string, err error) bool {
 	if err == nil {
 		return false
@@ -1560,6 +1600,7 @@ func isDuplicateAgentCodeError(driver string, err error) bool {
 		(strings.Contains(msg, "duplicate") && strings.Contains(msg, "agent_code"))
 }
 
+// isAlreadyExistsIndexError 封装当前模块的业务处理逻辑。
 func isAlreadyExistsIndexError(err error) bool {
 	if err == nil {
 		return false
@@ -1568,6 +1609,7 @@ func isAlreadyExistsIndexError(err error) bool {
 	return strings.Contains(msg, "duplicate key name") || strings.Contains(msg, "already exists")
 }
 
+// firstNonEmpty 封装当前模块的业务处理逻辑。
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		value = strings.TrimSpace(value)
@@ -1578,6 +1620,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+// firstLineFromText 封装当前模块的业务处理逻辑。
 func firstLineFromText(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -1591,6 +1634,7 @@ func firstLineFromText(value string) string {
 	return value
 }
 
+// generateBootstrapToken 封装当前模块的业务处理逻辑。
 func generateBootstrapToken() string {
 	buf := make([]byte, 18)
 	if _, err := rand.Read(buf); err != nil {
@@ -1599,6 +1643,7 @@ func generateBootstrapToken() string {
 	return "agboot-" + hex.EncodeToString(buf)
 }
 
+// mysqlColumnExists 封装当前模块的业务处理逻辑。
 func (r *AgentRepository) mysqlColumnExists(ctx context.Context, table, column string) (bool, error) {
 	var count int
 	if err := r.db.QueryRowContext(
@@ -1614,6 +1659,7 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?;`,
 	return count > 0, nil
 }
 
+// sqliteTableColumns 封装当前模块的业务处理逻辑。
 func (r *AgentRepository) sqliteTableColumns(ctx context.Context, table string) (map[string]struct{}, error) {
 	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(`PRAGMA table_info(%s);`, strings.TrimSpace(table)))
 	if err != nil {

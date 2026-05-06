@@ -15,6 +15,7 @@ type SystemSettingsHandler struct {
 	authz  RequestAuthorizer
 }
 
+// NewSystemSettingsHandler 创建并返回对应组件实例。
 func NewSystemSettingsHandler(
 	query *usecase.QueryReleaseSettings,
 	update *usecase.UpdateReleaseSettings,
@@ -27,6 +28,7 @@ func NewSystemSettingsHandler(
 	}
 }
 
+// RegisterRoutes 封装当前模块的业务处理逻辑。
 func (h *SystemSettingsHandler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/system/settings/release", h.GetReleaseSettings)
 	router.PUT("/system/settings/release", h.UpdateReleaseSettings)
@@ -42,6 +44,18 @@ type UpdateReleaseSettingsRequest struct {
 	GitOpsConfig usecase.ReleaseGitOpsConfigInput        `json:"gitops_config"`
 }
 
+// GetReleaseSettings 获取Release Settings详情。
+// @Summary      获取Release Settings详情
+// @Description  获取Release Settings详情，并按统一响应结构返回处理结果。
+// @Tags         system-settings
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /system/settings/release [get]
 func (h *SystemSettingsHandler) GetReleaseSettings(c *gin.Context) {
 	if !h.ensureReleaseSettingsVisible(c) {
 		return
@@ -63,6 +77,7 @@ func (h *SystemSettingsHandler) GetReleaseSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// ensureReleaseSettingsVisible 校验前置条件，不满足时写入对应错误响应。
 func (h *SystemSettingsHandler) ensureReleaseSettingsVisible(c *gin.Context) bool {
 	user, ok := getCurrentUser(c)
 	if !ok {
@@ -101,6 +116,19 @@ func (h *SystemSettingsHandler) ensureReleaseSettingsVisible(c *gin.Context) boo
 	return false
 }
 
+// UpdateReleaseSettings 更新Release Settings。
+// @Summary      更新Release Settings
+// @Description  更新Release Settings，并按统一响应结构返回处理结果。
+// @Tags         system-settings
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /system/settings/release [put]
 func (h *SystemSettingsHandler) UpdateReleaseSettings(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "system.permission.manage", "", "") {
 		return

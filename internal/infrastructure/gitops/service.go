@@ -95,6 +95,7 @@ const configCandidateScanBranch = "master"
 var commitTemplateTokenPattern = regexp.MustCompile(`\{([a-zA-Z0-9_]+)\}`)
 var repoBranchLocks sync.Map
 
+// NewService 创建并返回对应组件实例。
 func NewService(cfg Config) *Service {
 	helmPath := strings.TrimSpace(cfg.HelmScanPath)
 	if helmPath == "" {
@@ -120,14 +121,17 @@ func NewService(cfg Config) *Service {
 	}
 }
 
+// Enabled 封装当前模块的业务处理逻辑。
 func (s *Service) Enabled() bool {
 	return s != nil && s.enabled && s.localRoot != ""
 }
 
+// DefaultCommitMessageTemplate 查询并返回指定资源数据。
 func DefaultCommitMessageTemplate() string {
 	return defaultCommitMessageTemplate
 }
 
+// NormalizeCommitMessageTemplate 标准化输入值，保证后续逻辑使用统一格式。
 func NormalizeCommitMessageTemplate(candidate string) string {
 	candidate = strings.TrimSpace(candidate)
 	if candidate == "" {
@@ -136,12 +140,14 @@ func NormalizeCommitMessageTemplate(candidate string) string {
 	return candidate
 }
 
+// currentCommitMessageTemplate 查询并返回指定资源数据。
 func (s *Service) currentCommitMessageTemplate() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return strings.TrimSpace(s.commitMessageTemplate)
 }
 
+// UpdateCommitMessageTemplate 查询并返回指定资源数据。
 func (s *Service) UpdateCommitMessageTemplate(template string) string {
 	normalized := NormalizeCommitMessageTemplate(template)
 	s.mu.Lock()
@@ -150,6 +156,7 @@ func (s *Service) UpdateCommitMessageTemplate(template string) string {
 	return normalized
 }
 
+// UpdateScanPaths 更新业务资源并返回处理结果。
 func (s *Service) UpdateScanPaths(helmPath string, kustomizePath string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -165,12 +172,14 @@ func (s *Service) UpdateScanPaths(helmPath string, kustomizePath string) {
 	s.kustomizeScanPath = strings.TrimRight(kustomizePath, "/")
 }
 
+// helmScanPathValue 封装当前模块的业务处理逻辑。
 func (s *Service) helmScanPathValue() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.helmScanPath
 }
 
+// kustomizeScanPathValue 封装当前模块的业务处理逻辑。
 func (s *Service) kustomizeScanPathValue() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -919,6 +928,7 @@ func (s *Service) resolveWorkspacePath(ctx context.Context, repoURL string) (str
 	return filepath.Join(root, repoWorkspaceName(repoURL)), nil
 }
 
+// prepareWorkspace 封装当前模块的业务处理逻辑。
 func (s *Service) prepareWorkspace(ctx context.Context, repoURL string, branch string, workspacePath string) error {
 	authURL, err := s.authRemoteURL(repoURL)
 	if err != nil {
@@ -956,6 +966,7 @@ func (s *Service) prepareWorkspace(ctx context.Context, repoURL string, branch s
 	return err
 }
 
+// remoteOriginURL 封装当前模块的业务处理逻辑。
 func (s *Service) remoteOriginURL(ctx context.Context, workspacePath string) (string, error) {
 	output, err := s.runGit(ctx, workspacePath, "remote", "get-url", "origin")
 	if err != nil {
@@ -964,6 +975,7 @@ func (s *Service) remoteOriginURL(ctx context.Context, workspacePath string) (st
 	return strings.TrimSpace(output), nil
 }
 
+// configureAuthor 封装当前模块的业务处理逻辑。
 func (s *Service) configureAuthor(ctx context.Context, workspacePath string) error {
 	if s.authorName == "" || s.authorEmail == "" {
 		return nil
@@ -977,6 +989,7 @@ func (s *Service) configureAuthor(ctx context.Context, workspacePath string) err
 	return nil
 }
 
+// currentCommitSHA 封装当前模块的业务处理逻辑。
 func (s *Service) currentCommitSHA(ctx context.Context, workspacePath string) (string, error) {
 	output, err := s.runGit(ctx, workspacePath, "rev-parse", "HEAD")
 	if err != nil {
@@ -985,6 +998,7 @@ func (s *Service) currentCommitSHA(ctx context.Context, workspacePath string) (s
 	return strings.TrimSpace(output), nil
 }
 
+// authRemoteURL 封装当前模块的业务处理逻辑。
 func (s *Service) authRemoteURL(rawURL string) (string, error) {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
@@ -1010,10 +1024,12 @@ func (s *Service) authRemoteURL(rawURL string) (string, error) {
 	return parsed.String(), nil
 }
 
+// runGit 封装当前模块的业务处理逻辑。
 func (s *Service) runGit(ctx context.Context, workspacePath string, args ...string) (string, error) {
 	return s.runCommand(ctx, workspacePath, "git", args...)
 }
 
+// pushWithRetry 封装当前模块的业务处理逻辑。
 func (s *Service) pushWithRetry(ctx context.Context, workspacePath string, branch string) error {
 	if _, err := s.runGit(ctx, workspacePath, "push", "origin", branch); err != nil {
 		if !isNonFastForwardPushError(err) {
@@ -1042,6 +1058,7 @@ func (s *Service) pushWithRetry(ctx context.Context, workspacePath string, branc
 	return nil
 }
 
+// gitSingleLine 封装当前模块的业务处理逻辑。
 func (s *Service) gitSingleLine(ctx context.Context, workspacePath string, args ...string) (string, error) {
 	output, err := s.runGit(ctx, workspacePath, args...)
 	if err != nil {
@@ -1050,6 +1067,7 @@ func (s *Service) gitSingleLine(ctx context.Context, workspacePath string, args 
 	return strings.TrimSpace(output), nil
 }
 
+// runCommand 封装当前模块的业务处理逻辑。
 func (s *Service) runCommand(ctx context.Context, workspacePath string, name string, args ...string) (string, error) {
 	timeout := time.Duration(s.commandTimeoutSec) * time.Second
 	if timeout <= 0 {
@@ -1104,6 +1122,7 @@ func (s *Service) runCommand(ctx context.Context, workspacePath string, name str
 	return stdout.String(), nil
 }
 
+// runCommandWithoutRetry 封装当前模块的业务处理逻辑。
 func (s *Service) runCommandWithoutRetry(ctx context.Context, workspacePath string, timeout time.Duration, name string, args ...string) (string, error) {
 	cmdCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -1127,6 +1146,7 @@ func (s *Service) runCommandWithoutRetry(ctx context.Context, workspacePath stri
 	return stdout.String(), nil
 }
 
+// recoverStaleGitIndexLock 封装当前模块的业务处理逻辑。
 func recoverStaleGitIndexLock(workspacePath string, maxAge time.Duration) (bool, error) {
 	lockPath := filepath.Join(strings.TrimSpace(workspacePath), ".git", "index.lock")
 	info, err := os.Stat(lockPath)
@@ -1145,16 +1165,19 @@ func recoverStaleGitIndexLock(workspacePath string, maxAge time.Duration) (bool,
 	return true, nil
 }
 
+// isGitIndexLockError 封装当前模块的业务处理逻辑。
 func isGitIndexLockError(message string) bool {
 	text := strings.ToLower(strings.TrimSpace(message))
 	return strings.Contains(text, "index.lock") && strings.Contains(text, "file exists")
 }
 
+// repoWorkspaceName 封装当前模块的业务处理逻辑。
 func repoWorkspaceName(repoURL string) string {
 	sum := sha1.Sum([]byte(strings.TrimSpace(repoURL)))
 	return "gitops-" + hex.EncodeToString(sum[:8])
 }
 
+// checkRemoteReachable 检查业务状态并返回校验结果。
 func (s *Service) checkRemoteReachable(ctx context.Context, remoteURL string) bool {
 	authURL, err := s.authRemoteURL(remoteURL)
 	if err != nil {
@@ -1164,10 +1187,12 @@ func (s *Service) checkRemoteReachable(ctx context.Context, remoteURL string) bo
 	return err == nil
 }
 
+// sameRepo 封装当前模块的业务处理逻辑。
 func sameRepo(left string, right string) bool {
 	return normalizeRepoURL(left) == normalizeRepoURL(right)
 }
 
+// normalizeRepoURL 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeRepoURL(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -1182,6 +1207,7 @@ func normalizeRepoURL(raw string) string {
 	return parsed.String()
 }
 
+// splitNonEmptyLines 封装当前模块的业务处理逻辑。
 func splitNonEmptyLines(raw string) []string {
 	lines := strings.Split(raw, "\n")
 	items := make([]string, 0, len(lines))
@@ -1194,6 +1220,7 @@ func splitNonEmptyLines(raw string) []string {
 	return items
 }
 
+// resolveBranch 解析上下文数据，得到后续流程需要的结果。
 func resolveBranch(candidate string, fallback string) string {
 	candidate = strings.TrimSpace(candidate)
 	if candidate == "" || strings.EqualFold(candidate, "HEAD") {
@@ -1205,6 +1232,7 @@ func resolveBranch(candidate string, fallback string) string {
 	return candidate
 }
 
+// acquireRepoBranchLock 封装当前模块的业务处理逻辑。
 func acquireRepoBranchLock(repoURL string, branch string) func() {
 	key := normalizeRepoURL(repoURL) + "::" + resolveBranch(branch, "")
 	actual, _ := repoBranchLocks.LoadOrStore(key, &sync.Mutex{})
@@ -1213,6 +1241,7 @@ func acquireRepoBranchLock(repoURL string, branch string) func() {
 	return mu.Unlock
 }
 
+// isNonFastForwardPushError 封装当前模块的业务处理逻辑。
 func isNonFastForwardPushError(err error) bool {
 	if err == nil {
 		return false
@@ -1224,6 +1253,7 @@ func isNonFastForwardPushError(err error) bool {
 		strings.Contains(message, "failed to push some refs")
 }
 
+// resolveAppDirectory 解析上下文数据，得到后续流程需要的结果。
 func (s *Service) resolveAppDirectory(localRoot string, appKey string) (string, error) {
 	appKey = strings.TrimSpace(appKey)
 	if appKey == "" {
@@ -1268,6 +1298,7 @@ func (s *Service) resolveAppDirectory(localRoot string, appKey string) (string, 
 	return "", nil
 }
 
+// normalizeAppDirectoryKey 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeAppDirectoryKey(value string) string {
 	value = strings.TrimSpace(strings.ToLower(value))
 	value = strings.ReplaceAll(value, "_", "-")
@@ -1277,6 +1308,7 @@ func normalizeAppDirectoryKey(value string) string {
 	return strings.TrimSpace(value)
 }
 
+// prepareConfigCandidateScanRoot 封装当前模块的业务处理逻辑。
 func (s *Service) prepareConfigCandidateScanRoot(ctx context.Context, localRoot string) (string, func(), error) {
 	localRoot = strings.TrimSpace(localRoot)
 	if localRoot == "" {
@@ -1302,6 +1334,7 @@ func (s *Service) prepareConfigCandidateScanRoot(ctx context.Context, localRoot 
 	return tempDir, cleanup, nil
 }
 
+// branchExists 封装当前模块的业务处理逻辑。
 func (s *Service) branchExists(ctx context.Context, workspacePath string, branch string) bool {
 	branch = strings.TrimSpace(branch)
 	if branch == "" {
@@ -1311,6 +1344,7 @@ func (s *Service) branchExists(ctx context.Context, workspacePath string, branch
 	return err == nil
 }
 
+// secureJoin 封装当前模块的业务处理逻辑。
 func secureJoin(root string, parts ...string) (string, error) {
 	joined := filepath.Join(append([]string{root}, parts...)...)
 	cleanRoot := filepath.Clean(root)
@@ -1325,6 +1359,7 @@ func secureJoin(root string, parts ...string) (string, error) {
 	return cleanJoined, nil
 }
 
+// updateSingleKustomizeImageTag 查询并返回指定资源数据。
 func updateSingleKustomizeImageTag(content []byte, newTag string) ([]byte, string, bool, error) {
 	var doc yaml.MapSlice
 	if err := yaml.Unmarshal(content, &doc); err != nil {
@@ -1366,6 +1401,7 @@ func updateSingleKustomizeImageTag(content []byte, newTag string) ([]byte, strin
 	return updated, currentTag, true, nil
 }
 
+// mapSliceGet 查询并返回指定资源数据。
 func mapSliceGet(items yaml.MapSlice, key string) (interface{}, bool) {
 	for _, item := range items {
 		if strings.EqualFold(fmt.Sprint(item.Key), key) {
@@ -1375,6 +1411,7 @@ func mapSliceGet(items yaml.MapSlice, key string) (interface{}, bool) {
 	return nil, false
 }
 
+// mapSliceString 封装当前模块的业务处理逻辑。
 func mapSliceString(items yaml.MapSlice, key string) (string, bool) {
 	value, ok := mapSliceGet(items, key)
 	if !ok {
@@ -1383,6 +1420,7 @@ func mapSliceString(items yaml.MapSlice, key string) (string, bool) {
 	return strings.TrimSpace(fmt.Sprint(value)), true
 }
 
+// scanYAMLFieldCandidates 封装当前模块的业务处理逻辑。
 func scanYAMLFieldCandidates(path string, appKey string, environment string) ([]gitopsdomain.FieldCandidate, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -1423,6 +1461,7 @@ func scanYAMLFieldCandidates(path string, appKey string, environment string) ([]
 	return result, nil
 }
 
+// scanValuesCandidates 封装当前模块的业务处理逻辑。
 func scanValuesCandidates(path string, appKey string) ([]gitopsdomain.ValuesCandidate, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -1447,6 +1486,7 @@ func scanValuesCandidates(path string, appKey string) ([]gitopsdomain.ValuesCand
 	return result, nil
 }
 
+// normalizeValuesFilePathTemplate 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeValuesFilePathTemplate(value string) string {
 	value = filepath.ToSlash(strings.TrimSpace(value))
 	for _, item := range []struct {
@@ -1471,6 +1511,7 @@ func normalizeValuesFilePathTemplate(value string) string {
 	return value
 }
 
+// normalizeHoistedHelmValuesFilePathTemplate 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeHoistedHelmValuesFilePathTemplate(value string) string {
 	value = filepath.ToSlash(strings.TrimSpace(value))
 	if value == "" {
@@ -1494,6 +1535,7 @@ func normalizeHoistedHelmValuesFilePathTemplate(value string) string {
 	return value
 }
 
+// collectValuesScalarCandidates 封装当前模块的业务处理逻辑。
 func collectValuesScalarCandidates(
 	node interface{},
 	segments []string,
@@ -1551,6 +1593,7 @@ func collectValuesScalarCandidates(
 	}
 }
 
+// applyValuesRulesToFile 封装当前模块的业务处理逻辑。
 func applyValuesRulesToFile(content []byte, rules []gitopsdomain.ValuesRule) ([]byte, bool, error) {
 	var node interface{}
 	if err := yaml.Unmarshal(content, &node); err != nil {
@@ -1596,6 +1639,7 @@ func normalizeEnvironmentPlaceholder(value string, environment string) string {
 	return pattern.ReplaceAllString(value, "${1}{env}${2}")
 }
 
+// collectScalarCandidates 封装当前模块的业务处理逻辑。
 func collectScalarCandidates(
 	node interface{},
 	pointer string,
@@ -1646,6 +1690,7 @@ func collectScalarCandidates(
 	}
 }
 
+// firstNonEmpty 封装当前模块的业务处理逻辑。
 func firstNonEmpty(values ...string) string {
 	for _, item := range values {
 		value := strings.TrimSpace(item)
@@ -1656,6 +1701,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+// applyManifestRulesToFile 封装当前模块的业务处理逻辑。
 func applyManifestRulesToFile(content []byte, rules []gitopsdomain.ManifestRule) ([]byte, bool, error) {
 	documents := splitYAMLDocuments(string(content))
 	if len(documents) == 0 {
@@ -1702,6 +1748,7 @@ func applyManifestRulesToFile(content []byte, rules []gitopsdomain.ManifestRule)
 	return []byte(strings.Join(encodedDocs, "\n---\n") + "\n"), changed, nil
 }
 
+// splitYAMLDocuments 封装当前模块的业务处理逻辑。
 func splitYAMLDocuments(raw string) []string {
 	normalized := strings.ReplaceAll(raw, "\r\n", "\n")
 	lines := strings.Split(normalized, "\n")
@@ -1725,6 +1772,7 @@ func splitYAMLDocuments(raw string) []string {
 	return result
 }
 
+// setNodeValueByDotPath 封装当前模块的业务处理逻辑。
 func setNodeValueByDotPath(node interface{}, path string, newValue string) (interface{}, bool, error) {
 	segments := splitValuesPath(path)
 	if len(segments) == 0 {
@@ -1733,6 +1781,7 @@ func setNodeValueByDotPath(node interface{}, path string, newValue string) (inte
 	return setNodeValueBySegments(node, segments, newValue)
 }
 
+// splitValuesPath 封装当前模块的业务处理逻辑。
 func splitValuesPath(path string) []string {
 	parts := strings.Split(strings.TrimSpace(path), ".")
 	result := make([]string, 0, len(parts))
@@ -1745,6 +1794,7 @@ func splitValuesPath(path string) []string {
 	return result
 }
 
+// setNodeValueBySegments 封装当前模块的业务处理逻辑。
 func setNodeValueBySegments(node interface{}, segments []string, newValue string) (interface{}, bool, error) {
 	if len(segments) == 0 {
 		current := strings.TrimSpace(fmt.Sprint(node))
@@ -1807,14 +1857,17 @@ func setNodeValueBySegments(node interface{}, segments []string, newValue string
 	}
 }
 
+// encodeJSONPointerToken 封装当前模块的业务处理逻辑。
 func encodeJSONPointerToken(value string) string {
 	return strings.NewReplacer("~", "~0", "/", "~1").Replace(value)
 }
 
+// decodeJSONPointerToken 封装当前模块的业务处理逻辑。
 func decodeJSONPointerToken(value string) string {
 	return strings.NewReplacer("~1", "/", "~0", "~").Replace(value)
 }
 
+// extractDocumentIdentity 封装当前模块的业务处理逻辑。
 func extractDocumentIdentity(node interface{}) (kind string, name string) {
 	switch typed := node.(type) {
 	case map[interface{}]interface{}:
@@ -1838,6 +1891,7 @@ func extractDocumentIdentity(node interface{}) (kind string, name string) {
 	return strings.TrimSpace(kind), strings.TrimSpace(name)
 }
 
+// scalarTypeName 封装当前模块的业务处理逻辑。
 func scalarTypeName(value interface{}) string {
 	switch value.(type) {
 	case bool:
@@ -1849,6 +1903,7 @@ func scalarTypeName(value interface{}) string {
 	}
 }
 
+// extractKindFromMapSlice 封装当前模块的业务处理逻辑。
 func extractKindFromMapSlice(doc yaml.MapSlice) string {
 	value, ok := mapSliceString(doc, "kind")
 	if !ok {
@@ -1857,6 +1912,7 @@ func extractKindFromMapSlice(doc yaml.MapSlice) string {
 	return value
 }
 
+// extractMetadataNameFromMapSlice 封装当前模块的业务处理逻辑。
 func extractMetadataNameFromMapSlice(doc yaml.MapSlice) string {
 	value, ok := mapSliceGet(doc, "metadata")
 	if !ok {
@@ -1870,6 +1926,7 @@ func extractMetadataNameFromMapSlice(doc yaml.MapSlice) string {
 	return name
 }
 
+// setMapSliceValueByPointer 封装当前模块的业务处理逻辑。
 func setMapSliceValueByPointer(doc yaml.MapSlice, pointer string, newValue string) (yaml.MapSlice, bool, error) {
 	if strings.TrimSpace(pointer) == "" || strings.TrimSpace(pointer) == "/" {
 		return doc, false, fmt.Errorf("yaml target path is required")
@@ -1897,6 +1954,7 @@ func setMapSliceValueByPointer(doc yaml.MapSlice, pointer string, newValue strin
 	return result, changed, nil
 }
 
+// setNodeValueByPointer 封装当前模块的业务处理逻辑。
 func setNodeValueByPointer(node interface{}, segments []string, newValue string) (interface{}, bool, error) {
 	if len(segments) == 0 {
 		current := strings.TrimSpace(fmt.Sprint(node))
@@ -1951,6 +2009,7 @@ func setNodeValueByPointer(node interface{}, segments []string, newValue string)
 	}
 }
 
+// parseSliceIndex 解析输入内容并返回结构化结果。
 func parseSliceIndex(value string) (int, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -1964,6 +2023,7 @@ func parseSliceIndex(value string) (int, error) {
 	return index, nil
 }
 
+// mapSliceSet 封装当前模块的业务处理逻辑。
 func mapSliceSet(items yaml.MapSlice, key string, value interface{}) yaml.MapSlice {
 	for idx, item := range items {
 		if strings.EqualFold(fmt.Sprint(item.Key), key) {
@@ -1974,6 +2034,7 @@ func mapSliceSet(items yaml.MapSlice, key string, value interface{}) yaml.MapSli
 	return append(items, yaml.MapItem{Key: key, Value: value})
 }
 
+// normalizeCommitMessageFields 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeCommitMessageFields(fields map[string]string) map[string]string {
 	result := make(map[string]string, len(fields))
 	for key, value := range fields {
@@ -1986,6 +2047,7 @@ func normalizeCommitMessageFields(fields map[string]string) map[string]string {
 	return result
 }
 
+// renderCommitMessageTemplate 查询并返回指定资源数据。
 func renderCommitMessageTemplate(template string, fields map[string]string) string {
 	return commitTemplateTokenPattern.ReplaceAllStringFunc(template, func(token string) string {
 		matches := commitTemplateTokenPattern.FindStringSubmatch(token)

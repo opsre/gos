@@ -22,6 +22,7 @@ type PipelineHandler struct {
 	authz   RequestAuthorizer
 }
 
+// NewPipelineHandler 创建并返回对应组件实例。
 func NewPipelineHandler(
 	syncer *usecase.SyncPipelines,
 	query *usecase.QueryPipeline,
@@ -38,6 +39,7 @@ func NewPipelineHandler(
 	}
 }
 
+// RegisterRoutes 封装当前模块的业务处理逻辑。
 func (h *PipelineHandler) RegisterRoutes(router gin.IRouter) {
 	router.POST("/jenkins/pipelines/sync", h.Sync)
 	router.POST("/jenkins/pipelines/raw", h.CreateRawPipeline)
@@ -313,6 +315,19 @@ func (h *PipelineHandler) GetPipelineRawScript(c *gin.Context) {
 	})
 }
 
+// GetPipelineConfigXML 获取Pipeline Config XML详情。
+// @Summary      获取Pipeline Config XML详情
+// @Description  获取Pipeline Config XML详情，并按统一响应结构返回处理结果。
+// @Tags         pipelines
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /pipelines/{id}/config-xml [get]
 func (h *PipelineHandler) GetPipelineConfigXML(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.view", "", "") {
 		return
@@ -330,6 +345,19 @@ func (h *PipelineHandler) GetPipelineConfigXML(c *gin.Context) {
 	})
 }
 
+// GetPipelineOriginalLink 获取Pipeline Original Link详情。
+// @Summary      获取Pipeline Original Link详情
+// @Description  获取Pipeline Original Link详情，并按统一响应结构返回处理结果。
+// @Tags         pipelines
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /pipelines/{id}/original-link [get]
 func (h *PipelineHandler) GetPipelineOriginalLink(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.view", "", "") {
 		return
@@ -347,6 +375,19 @@ func (h *PipelineHandler) GetPipelineOriginalLink(c *gin.Context) {
 	})
 }
 
+// CreateRawPipeline 创建Raw Pipeline。
+// @Summary      创建Raw Pipeline
+// @Description  创建Raw Pipeline，并按统一响应结构返回处理结果。
+// @Tags         pipelines
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /jenkins/pipelines/raw [post]
 func (h *PipelineHandler) CreateRawPipeline(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "pipeline.manage", "", "") {
 		return
@@ -379,6 +420,20 @@ func (h *PipelineHandler) CreateRawPipeline(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"data": toPipelineResponse(item)})
 }
 
+// UpdateRawPipeline 更新Raw Pipeline。
+// @Summary      更新Raw Pipeline
+// @Description  更新Raw Pipeline，并按统一响应结构返回处理结果。
+// @Tags         pipelines
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /pipelines/{id}/raw [put]
 func (h *PipelineHandler) UpdateRawPipeline(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "pipeline.manage", "", "") {
 		return
@@ -410,6 +465,19 @@ func (h *PipelineHandler) UpdateRawPipeline(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toPipelineResponse(item)})
 }
 
+// DeleteRawPipeline 删除Raw Pipeline。
+// @Summary      删除Raw Pipeline
+// @Description  删除Raw Pipeline，并按统一响应结构返回处理结果。
+// @Tags         pipelines
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /pipelines/{id}/raw [delete]
 func (h *PipelineHandler) DeleteRawPipeline(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "pipeline.manage", "", "") {
 		return
@@ -427,6 +495,19 @@ func (h *PipelineHandler) DeleteRawPipeline(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toPipelineResponse(item)})
 }
 
+// PreviewRawPipelineConfigXML 处理Preview Raw Pipeline Config XML接口。
+// @Summary      处理Preview Raw Pipeline Config XML接口
+// @Description  处理Preview Raw Pipeline Config XML接口，并按统一响应结构返回处理结果。
+// @Tags         pipelines
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /jenkins/pipelines/raw/preview-config-xml [post]
 func (h *PipelineHandler) PreviewRawPipelineConfigXML(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "pipeline.manage", "", "") {
 		return
@@ -582,6 +663,7 @@ func (h *PipelineHandler) ListBindings(c *gin.Context) {
 	})
 }
 
+// ensurePipelineBindingListPermission 校验前置条件，不满足时写入对应错误响应。
 func ensurePipelineBindingListPermission(c *gin.Context, authz RequestAuthorizer, applicationID string) bool {
 	user, ok := getCurrentUser(c)
 	if !ok {
@@ -691,6 +773,7 @@ func (h *PipelineHandler) DeleteBinding(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// toPipelineResponse 将领域对象转换为接口响应结构。
 func toPipelineResponse(item domain.Pipeline) PipelineResponse {
 	return PipelineResponse{
 		ID:             item.ID,
@@ -709,6 +792,7 @@ func toPipelineResponse(item domain.Pipeline) PipelineResponse {
 	}
 }
 
+// toBindingResponse 将领域对象转换为接口响应结构。
 func toBindingResponse(item domain.PipelineBinding) PipelineBindingResponse {
 	return PipelineBindingResponse{
 		ID:              item.ID,
@@ -726,6 +810,7 @@ func toBindingResponse(item domain.PipelineBinding) PipelineBindingResponse {
 	}
 }
 
+// writePipelineHTTPError 写入处理结果或错误信息。
 func writePipelineHTTPError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrInvalidInput),
@@ -746,6 +831,7 @@ func writePipelineHTTPError(c *gin.Context, err error) {
 	}
 }
 
+// parsePositiveInt 解析输入内容并返回结构化结果。
 func parsePositiveInt(c *gin.Context, name string) (int, error) {
 	raw := strings.TrimSpace(c.Query(name))
 	if raw == "" {
@@ -761,6 +847,7 @@ func parsePositiveInt(c *gin.Context, name string) (int, error) {
 	return value, nil
 }
 
+// resolvedPage 解析上下文数据，得到后续流程需要的结果。
 func resolvedPage(page int) int {
 	if page > 0 {
 		return page
@@ -768,6 +855,7 @@ func resolvedPage(page int) int {
 	return 1
 }
 
+// resolvedPageSize 解析上下文数据，得到后续流程需要的结果。
 func resolvedPageSize(pageSize int) int {
 	const (
 		defaultPageSize = 20

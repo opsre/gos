@@ -29,6 +29,7 @@ type releaseOrderDeleteRepository interface {
 	DeleteOrders(ctx context.Context, orderIDs []string) error
 }
 
+// Delete 删除业务资源并返回处理结果。
 func (uc *ReleaseOrderManager) Delete(ctx context.Context, id string) error {
 	orderID := strings.TrimSpace(id)
 	if orderID == "" {
@@ -44,6 +45,7 @@ func (uc *ReleaseOrderManager) Delete(ctx context.Context, id string) error {
 	return uc.deleteReleaseOrders(ctx, []string{order.ID})
 }
 
+// BatchDelete 删除业务资源并返回处理结果。
 func (uc *ReleaseOrderManager) BatchDelete(
 	ctx context.Context,
 	input BatchDeleteReleaseOrdersInput,
@@ -90,6 +92,7 @@ func (uc *ReleaseOrderManager) BatchDelete(
 	return output, nil
 }
 
+// deleteReleaseOrders 删除业务资源并返回处理结果。
 func (uc *ReleaseOrderManager) deleteReleaseOrders(ctx context.Context, orderIDs []string) error {
 	repo, ok := uc.repo.(releaseOrderDeleteRepository)
 	if !ok {
@@ -103,6 +106,7 @@ func (uc *ReleaseOrderManager) deleteReleaseOrders(ctx context.Context, orderIDs
 	return nil
 }
 
+// ensureReleaseOrderDeletable 校验前置条件，不满足时写入对应错误响应。
 func (uc *ReleaseOrderManager) ensureReleaseOrderDeletable(ctx context.Context, order domain.ReleaseOrder) error {
 	if isReleaseOrderDeleteBlockedStatus(order.Status) {
 		return fmt.Errorf("%w: 发布单当前状态不可删除", ErrInvalidStatus)
@@ -119,6 +123,7 @@ func (uc *ReleaseOrderManager) ensureReleaseOrderDeletable(ctx context.Context, 
 	return nil
 }
 
+// isReleaseOrderDeleteBlockedStatus 删除业务资源并返回处理结果。
 func isReleaseOrderDeleteBlockedStatus(status domain.OrderStatus) bool {
 	switch status {
 	case domain.OrderStatusRunning,
@@ -132,6 +137,7 @@ func isReleaseOrderDeleteBlockedStatus(status domain.OrderStatus) bool {
 	}
 }
 
+// normalizeBatchDeleteOrderIDs 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeBatchDeleteOrderIDs(values []string) []string {
 	result := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
@@ -149,6 +155,7 @@ func normalizeBatchDeleteOrderIDs(values []string) []string {
 	return result
 }
 
+// normalizeDeleteReleaseOrderError 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeDeleteReleaseOrderError(err error) string {
 	if err == nil {
 		return "删除失败"

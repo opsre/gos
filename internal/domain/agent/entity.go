@@ -10,6 +10,7 @@ const (
 	StatusMaintenance Status = "maintenance"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s Status) Valid() bool {
 	switch s {
 	case StatusActive, StatusDisabled, StatusMaintenance:
@@ -29,6 +30,7 @@ const (
 	RuntimeStateMaintenance RuntimeState = "maintenance"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s RuntimeState) Valid() bool {
 	switch s {
 	case RuntimeStateOnline, RuntimeStateOffline, RuntimeStateBusy, RuntimeStateDisabled, RuntimeStateMaintenance:
@@ -48,6 +50,7 @@ const (
 	LastTaskStatusCancelled LastTaskStatus = "cancelled"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s LastTaskStatus) Valid() bool {
 	switch s {
 	case "", LastTaskStatusUnknown, LastTaskStatusRunning, LastTaskStatusSuccess, LastTaskStatusFailed, LastTaskStatusCancelled:
@@ -70,6 +73,7 @@ const (
 	TaskStatusCancelled TaskStatus = "cancelled"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s TaskStatus) Valid() bool {
 	switch s {
 	case TaskStatusDraft, TaskStatusPending, TaskStatusQueued, TaskStatusClaimed, TaskStatusRunning, TaskStatusSuccess, TaskStatusFailed, TaskStatusCancelled:
@@ -86,6 +90,7 @@ const (
 	TaskModeResident  TaskMode = "resident"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (m TaskMode) Valid() bool {
 	switch m {
 	case TaskModeTemporary, TaskModeResident:
@@ -103,6 +108,7 @@ const (
 	TaskTypeFileDistribution TaskType = "file_distribution_task"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (t TaskType) Valid() bool {
 	switch t {
 	case TaskTypeShellScript, TaskTypeScriptFile, TaskTypeFileDistribution:
@@ -112,6 +118,7 @@ func (t TaskType) Valid() bool {
 	}
 }
 
+// ScriptLibrarySupported 封装当前模块的业务处理逻辑。
 func (t TaskType) ScriptLibrarySupported() bool {
 	switch t {
 	case TaskTypeShellScript, TaskTypeScriptFile:

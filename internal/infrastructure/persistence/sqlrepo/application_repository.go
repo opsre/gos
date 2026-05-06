@@ -19,10 +19,12 @@ type ApplicationRepository struct {
 	dbDriver string
 }
 
+// NewApplicationRepository 创建并返回对应组件实例。
 func NewApplicationRepository(db *sql.DB, dbDriver string) *ApplicationRepository {
 	return &ApplicationRepository{db: db, dbDriver: strings.ToLower(strings.TrimSpace(dbDriver))}
 }
 
+// InitSchema 封装当前模块的业务处理逻辑。
 func (r *ApplicationRepository) InitSchema(ctx context.Context) error {
 	var schema string
 	switch r.dbDriver {
@@ -75,6 +77,7 @@ CREATE TABLE IF NOT EXISTS applications (
 	return r.migrateSchema(ctx)
 }
 
+// migrateSchema 封装当前模块的业务处理逻辑。
 func (r *ApplicationRepository) migrateSchema(ctx context.Context) error {
 	switch r.dbDriver {
 	case "mysql":
@@ -168,6 +171,7 @@ func (r *ApplicationRepository) migrateSchema(ctx context.Context) error {
 	}
 }
 
+// Create 创建业务资源并返回处理结果。
 func (r *ApplicationRepository) Create(ctx context.Context, app domain.Application) error {
 	const q = `
 INSERT INTO applications (
@@ -211,6 +215,7 @@ INSERT INTO applications (
 	return nil
 }
 
+// GetByID 查询并返回指定资源数据。
 func (r *ApplicationRepository) GetByID(ctx context.Context, id string) (domain.Application, error) {
 	const q = `
 SELECT a.id, a.name, a.app_key, a.project_id, COALESCE(p.name, ''), COALESCE(p.project_key, ''), a.repo_url, a.description, a.owner_user_id, a.owner, a.status, a.artifact_type, a.language, a.gitops_branch_mappings, a.release_branches, a.created_at, a.updated_at
@@ -229,6 +234,7 @@ WHERE a.id = ?;`
 	return app, nil
 }
 
+// List 查询并返回列表数据。
 func (r *ApplicationRepository) List(ctx context.Context, filter domain.ListFilter) ([]domain.Application, int64, error) {
 	args := make([]any, 0, 4)
 	builder := strings.Builder{}
@@ -308,6 +314,7 @@ LEFT JOIN projects p ON p.id = a.project_id`)
 	return apps, total, nil
 }
 
+// Update 更新业务资源并返回处理结果。
 func (r *ApplicationRepository) Update(ctx context.Context, id string, input domain.UpdateInput, updatedAt time.Time) (domain.Application, error) {
 	const q = `
 UPDATE applications
@@ -358,6 +365,7 @@ WHERE id = ?;`
 	return r.GetByID(ctx, id)
 }
 
+// Delete 删除业务资源并返回处理结果。
 func (r *ApplicationRepository) Delete(ctx context.Context, id string) error {
 	const q = `DELETE FROM applications WHERE id = ?;`
 
@@ -380,6 +388,7 @@ type scanner interface {
 	Scan(dest ...any) error
 }
 
+// scanApplication 封装当前模块的业务处理逻辑。
 func scanApplication(s scanner) (domain.Application, error) {
 	var (
 		app                domain.Application
@@ -422,6 +431,7 @@ func scanApplication(s scanner) (domain.Application, error) {
 	return app, nil
 }
 
+// marshalReleaseBranchOptions 封装当前模块的业务处理逻辑。
 func marshalReleaseBranchOptions(values []domain.ReleaseBranchOption) (string, error) {
 	if len(values) == 0 {
 		return "[]", nil
@@ -433,6 +443,7 @@ func marshalReleaseBranchOptions(values []domain.ReleaseBranchOption) (string, e
 	return string(payload), nil
 }
 
+// unmarshalReleaseBranchOptions 封装当前模块的业务处理逻辑。
 func unmarshalReleaseBranchOptions(raw string) []domain.ReleaseBranchOption {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -469,6 +480,7 @@ func unmarshalReleaseBranchOptions(raw string) []domain.ReleaseBranchOption {
 	return result
 }
 
+// marshalGitOpsBranchMappings 封装当前模块的业务处理逻辑。
 func marshalGitOpsBranchMappings(values []domain.GitOpsBranchMapping) (string, error) {
 	if len(values) == 0 {
 		return "[]", nil
@@ -480,6 +492,7 @@ func marshalGitOpsBranchMappings(values []domain.GitOpsBranchMapping) (string, e
 	return string(payload), nil
 }
 
+// unmarshalGitOpsBranchMappings 封装当前模块的业务处理逻辑。
 func unmarshalGitOpsBranchMappings(raw string) []domain.GitOpsBranchMapping {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -513,6 +526,7 @@ func unmarshalGitOpsBranchMappings(raw string) []domain.GitOpsBranchMapping {
 	return result
 }
 
+// mysqlColumnExists 封装当前模块的业务处理逻辑。
 func (r *ApplicationRepository) mysqlColumnExists(ctx context.Context, table, column string) (bool, error) {
 	const q = `
 SELECT COUNT(1)
@@ -526,6 +540,7 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?;`
 	return count > 0, nil
 }
 
+// sqliteTableColumns 封装当前模块的业务处理逻辑。
 func (r *ApplicationRepository) sqliteTableColumns(ctx context.Context, table string) (map[string]struct{}, error) {
 	q := fmt.Sprintf("PRAGMA table_info(%q);", table)
 	rows, err := r.db.QueryContext(ctx, q)
@@ -555,6 +570,7 @@ func (r *ApplicationRepository) sqliteTableColumns(ctx context.Context, table st
 	return columns, nil
 }
 
+// isDuplicateKeyError 封装当前模块的业务处理逻辑。
 func isDuplicateKeyError(dbDriver string, err error) bool {
 	switch dbDriver {
 	case "mysql":

@@ -145,6 +145,7 @@ type normalizedTemplateApprovalConfig struct {
 	ApproverNames []string
 }
 
+// NewReleaseTemplateManager 创建并返回对应组件实例。
 func NewReleaseTemplateManager(
 	repo releasedomain.Repository,
 	appRepo appdomain.Repository,
@@ -172,6 +173,7 @@ func NewReleaseTemplateManager(
 	}
 }
 
+// Create 创建业务资源并返回处理结果。
 func (uc *ReleaseTemplateManager) Create(
 	ctx context.Context,
 	input CreateReleaseTemplateInput,
@@ -306,6 +308,7 @@ func (uc *ReleaseTemplateManager) Create(
 	return uc.repo.GetTemplateByID(ctx, template.ID)
 }
 
+// GetByID 查询并返回指定资源数据。
 func (uc *ReleaseTemplateManager) GetByID(
 	ctx context.Context,
 	id string,
@@ -317,6 +320,7 @@ func (uc *ReleaseTemplateManager) GetByID(
 	return uc.repo.GetTemplateByID(ctx, id)
 }
 
+// List 查询并返回列表数据。
 func (uc *ReleaseTemplateManager) List(
 	ctx context.Context,
 	input ListReleaseTemplateInput,
@@ -350,6 +354,7 @@ func (uc *ReleaseTemplateManager) List(
 	return uc.repo.ListTemplates(ctx, filter)
 }
 
+// Update 更新业务资源并返回处理结果。
 func (uc *ReleaseTemplateManager) Update(
 	ctx context.Context,
 	id string,
@@ -485,6 +490,7 @@ func (uc *ReleaseTemplateManager) Update(
 	return uc.repo.GetTemplateByID(ctx, template.ID)
 }
 
+// Delete 删除业务资源并返回处理结果。
 func (uc *ReleaseTemplateManager) Delete(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -499,6 +505,7 @@ func (uc *ReleaseTemplateManager) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// normalizeTemplateApprovalConfig 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeTemplateApprovalConfig(
 	enabled bool,
 	mode releasedomain.TemplateApprovalMode,
@@ -551,6 +558,7 @@ func normalizeTemplateApprovalConfig(
 	}, nil
 }
 
+// buildTemplatePayload 组装业务执行所需的输入数据。
 func (uc *ReleaseTemplateManager) buildTemplatePayload(
 	ctx context.Context,
 	applicationID string,
@@ -643,6 +651,7 @@ func (uc *ReleaseTemplateManager) buildTemplatePayload(
 	return bindings, params, gitopsRules, hooks, appName, nil
 }
 
+// buildTemplateScopePayload 组装业务执行所需的输入数据。
 func (uc *ReleaseTemplateManager) buildTemplateScopePayload(
 	ctx context.Context,
 	applicationID string,
@@ -844,6 +853,7 @@ func (uc *ReleaseTemplateManager) buildTemplateScopePayload(
 	return templateBinding, params, binding.ApplicationName, nil
 }
 
+// normalizeTemplateParamConfigInputs 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeTemplateParamConfigInputs(
 	paramDefIDs []string,
 	configs []ReleaseTemplateParamConfigInput,
@@ -881,6 +891,7 @@ func normalizeTemplateParamConfigInputs(
 	return result
 }
 
+// normalizeStringIDs 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeStringIDs(values []string) []string {
 	result := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
@@ -898,6 +909,7 @@ func normalizeStringIDs(values []string) []string {
 	return result
 }
 
+// normalizeHookEnvCodes 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeHookEnvCodes(values []string) []string {
 	result := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
@@ -916,6 +928,7 @@ func normalizeHookEnvCodes(values []string) []string {
 	return result
 }
 
+// normalizeTemplateHookExecuteStages 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeTemplateHookExecuteStages(
 	values []releasedomain.TemplateHookExecuteStage,
 	legacy releasedomain.TemplateHookExecuteStage,
@@ -932,6 +945,7 @@ func normalizeTemplateHookExecuteStages(
 	return releasedomain.NormalizeTemplateHookExecuteStages(normalized, legacyStage)
 }
 
+// buildTemplateHooks 组装业务执行所需的输入数据。
 func (uc *ReleaseTemplateManager) buildTemplateHooks(
 	ctx context.Context,
 	inputs []ReleaseTemplateHookInput,
@@ -1079,6 +1093,7 @@ func (uc *ReleaseTemplateManager) buildTemplateHooks(
 	return result, nil
 }
 
+// normalizeTemplateGitOpsType 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeTemplateGitOpsType(candidate releasedomain.GitOpsType, usesArgoCD bool) releasedomain.GitOpsType {
 	if !usesArgoCD {
 		return ""
@@ -1093,6 +1108,7 @@ func normalizeTemplateGitOpsType(candidate releasedomain.GitOpsType, usesArgoCD 
 	return candidate
 }
 
+// templateUsesScope 封装当前模块的业务处理逻辑。
 func templateUsesScope(bindings []releasedomain.ReleaseTemplateBinding, scope releasedomain.PipelineScope) bool {
 	for _, item := range bindings {
 		if item.Enabled && item.PipelineScope == scope {
@@ -1102,6 +1118,7 @@ func templateUsesScope(bindings []releasedomain.ReleaseTemplateBinding, scope re
 	return false
 }
 
+// buildGitOpsRules 组装业务执行所需的输入数据。
 func (uc *ReleaseTemplateManager) buildGitOpsRules(
 	ctx context.Context,
 	applicationID string,
@@ -1328,6 +1345,7 @@ func (uc *ReleaseTemplateManager) buildGitOpsRules(
 	return result, nil
 }
 
+// listBuiltinPlatformParamsForTemplate 查询并返回列表数据。
 func (uc *ReleaseTemplateManager) listBuiltinPlatformParamsForTemplate(
 	ctx context.Context,
 ) (map[string]platformparamdomain.PlatformParamDict, error) {
@@ -1356,6 +1374,7 @@ func (uc *ReleaseTemplateManager) listBuiltinPlatformParamsForTemplate(
 	return result, nil
 }
 
+// listCDInputPlatformParamsForTemplate 查询并返回列表数据。
 func (uc *ReleaseTemplateManager) listCDInputPlatformParamsForTemplate(
 	ctx context.Context,
 ) (map[string]platformparamdomain.PlatformParamDict, error) {
@@ -1381,6 +1400,7 @@ func (uc *ReleaseTemplateManager) listCDInputPlatformParamsForTemplate(
 	return result, nil
 }
 
+// buildGitOpsCandidateKey 组装业务执行所需的输入数据。
 func buildGitOpsCandidateKey(filePathTemplate string, documentKind string, documentName string, targetPath string) string {
 	return strings.Join([]string{
 		filepathSlash(strings.TrimSpace(filePathTemplate)),
@@ -1390,6 +1410,7 @@ func buildGitOpsCandidateKey(filePathTemplate string, documentKind string, docum
 	}, "::")
 }
 
+// buildGitOpsValuesCandidateKey 组装业务执行所需的输入数据。
 func buildGitOpsValuesCandidateKey(filePathTemplate string, targetPath string) string {
 	return strings.Join([]string{
 		filepathSlash(strings.TrimSpace(filePathTemplate)),
@@ -1397,6 +1418,7 @@ func buildGitOpsValuesCandidateKey(filePathTemplate string, targetPath string) s
 	}, "::")
 }
 
+// buildExistingGitOpsRuleIdentityKey 组装业务执行所需的输入数据。
 func buildExistingGitOpsRuleIdentityKey(
 	gitopsType releasedomain.GitOpsType,
 	sourceParamKey string,
@@ -1419,6 +1441,7 @@ func buildExistingGitOpsRuleIdentityKey(
 	}, "::")
 }
 
+// buildExistingGitOpsRuleSet 组装业务执行所需的输入数据。
 func buildExistingGitOpsRuleSet(
 	gitopsType releasedomain.GitOpsType,
 	items []releasedomain.ReleaseTemplateGitOpsRule,
@@ -1449,6 +1472,7 @@ func buildExistingGitOpsRuleSet(
 	return result
 }
 
+// isPlatformValuesFileTemplate 封装当前模块的业务处理逻辑。
 func isPlatformValuesFileTemplate(filePathTemplate string) bool {
 	base := strings.TrimSpace(filepath.Base(filepathSlash(filePathTemplate)))
 	if base == "" {
@@ -1458,6 +1482,7 @@ func isPlatformValuesFileTemplate(filePathTemplate string) bool {
 	return matched
 }
 
+// matchGitOpsCandidateTemplate 封装当前模块的业务处理逻辑。
 func matchGitOpsCandidateTemplate(
 	candidateSet map[string]gitopsdomain.FieldCandidate,
 	filePathTemplate string,
@@ -1488,6 +1513,7 @@ func matchGitOpsCandidateTemplate(
 	return false
 }
 
+// buildLocatorTemplateFromCandidate 组装业务执行所需的输入数据。
 func buildLocatorTemplateFromCandidate(filePathTemplate string, documentName string, placeholder string) string {
 	filePathTemplate = filepathSlash(filePathTemplate)
 	placeholder = strings.TrimSpace(placeholder)
@@ -1507,6 +1533,7 @@ func buildLocatorTemplateFromCandidate(filePathTemplate string, documentName str
 	return strings.TrimSuffix(filePathTemplate, baseName) + replacedBase
 }
 
+// buildLocatorDocumentTemplate 组装业务执行所需的输入数据。
 func buildLocatorDocumentTemplate(documentName string, placeholder string) string {
 	documentName = strings.TrimSpace(documentName)
 	placeholder = strings.TrimSpace(placeholder)
@@ -1520,6 +1547,7 @@ func buildLocatorDocumentTemplate(documentName string, placeholder string) strin
 	return replaceLocatorToken(documentName, base, placeholder)
 }
 
+// replaceLocatorToken 封装当前模块的业务处理逻辑。
 func replaceLocatorToken(value string, token string, placeholder string) string {
 	value = strings.TrimSpace(value)
 	token = strings.TrimSpace(token)
@@ -1531,10 +1559,12 @@ func replaceLocatorToken(value string, token string, placeholder string) string 
 	return replacer.ReplaceAllString(value, "${1}"+placeholder+"${2}")
 }
 
+// filepathSlash 封装当前模块的业务处理逻辑。
 func filepathSlash(value string) string {
 	return strings.ReplaceAll(strings.TrimSpace(value), "\\", "/")
 }
 
+// normalizeHelmValuesFilePathTemplate 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeHelmValuesFilePathTemplate(value string) string {
 	value = filepathSlash(value)
 	if value == "" || !strings.HasPrefix(value, "apps/") {
@@ -1553,6 +1583,7 @@ func normalizeHelmValuesFilePathTemplate(value string) string {
 	return value
 }
 
+// summarizeTemplateBindings 封装当前模块的业务处理逻辑。
 func summarizeTemplateBindings(bindings []releasedomain.ReleaseTemplateBinding) (string, string) {
 	if len(bindings) == 0 {
 		return "-", ""
@@ -1577,6 +1608,7 @@ func summarizeTemplateBindings(bindings []releasedomain.ReleaseTemplateBinding) 
 	return strings.Join(scopeLabels, " + "), strings.Join(scopeTypes, "+")
 }
 
+// validateArgoCDTemplateConfig 封装当前模块的业务处理逻辑。
 func (uc *ReleaseTemplateManager) validateArgoCDTemplateConfig(
 	ctx context.Context,
 	bindings []releasedomain.ReleaseTemplateBinding,

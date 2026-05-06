@@ -42,6 +42,19 @@ type ReleaseOrderPipelineStageLogResponse struct {
 	} `json:"data"`
 }
 
+// ListPipelineStages 查询发布单流水线阶段列表。
+// @Summary      查询发布单流水线阶段列表
+// @Description  查询发布单 CI/CD 流水线阶段状态，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  ReleaseOrderPipelineStageListResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/{id}/pipeline-stages [get]
 func (h *ReleaseOrderHandler) ListPipelineStages(c *gin.Context) {
 	order, err := h.manager.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -70,6 +83,20 @@ func (h *ReleaseOrderHandler) ListPipelineStages(c *gin.Context) {
 	})
 }
 
+// GetPipelineStageLog 获取发布单流水线阶段日志。
+// @Summary      获取发布单流水线阶段日志
+// @Description  获取指定发布单阶段的构建日志内容，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Produce      json
+// @Param        id        path  string  true  "资源 ID"
+// @Param        stage_id  path  string  true  "阶段 ID"
+// @Success      200  {object}  ReleaseOrderPipelineStageLogResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/{id}/pipeline-stages/{stage_id}/log [get]
 func (h *ReleaseOrderHandler) GetPipelineStageLog(c *gin.Context) {
 	order, err := h.manager.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -95,6 +122,7 @@ func (h *ReleaseOrderHandler) GetPipelineStageLog(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// toReleaseOrderPipelineStageResponse 将领域对象转换为接口响应结构。
 func toReleaseOrderPipelineStageResponse(item domain.ReleaseOrderPipelineStage) ReleaseOrderPipelineStageResponse {
 	return ReleaseOrderPipelineStageResponse{
 		ID:             item.ID,

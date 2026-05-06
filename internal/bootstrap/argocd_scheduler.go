@@ -11,6 +11,7 @@ type ArgoCDSyncTask struct {
 	done <-chan struct{}
 }
 
+// Stop 封装当前模块的业务处理逻辑。
 func (t ArgoCDSyncTask) Stop() {
 	if t.stop == nil {
 		return
@@ -22,6 +23,7 @@ func (t ArgoCDSyncTask) Stop() {
 	<-t.done
 }
 
+// StartArgoCDAutoSyncTask 同步外部或内部状态数据。
 func StartArgoCDAutoSyncTask(intervalSec int, run func(context.Context) error) ArgoCDSyncTask {
 	done := make(chan struct{})
 	if run == nil {

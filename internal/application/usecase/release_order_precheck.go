@@ -61,18 +61,22 @@ const (
 	ReleaseOrderDispatchActionDeploy  ReleaseOrderDispatchAction = "deploy"
 )
 
+// PrecheckExecute 检查业务状态并返回校验结果。
 func (uc *ReleaseOrderManager) PrecheckExecute(ctx context.Context, id string) (ReleaseOrderPrecheckOutput, error) {
 	return uc.precheckOrderDispatch(ctx, id, ReleaseOrderDispatchActionExecute)
 }
 
+// PrecheckBuild 组装业务执行所需的输入数据。
 func (uc *ReleaseOrderManager) PrecheckBuild(ctx context.Context, id string) (ReleaseOrderPrecheckOutput, error) {
 	return uc.precheckOrderDispatch(ctx, id, ReleaseOrderDispatchActionBuild)
 }
 
+// PrecheckDeploy 检查业务状态并返回校验结果。
 func (uc *ReleaseOrderManager) PrecheckDeploy(ctx context.Context, id string) (ReleaseOrderPrecheckOutput, error) {
 	return uc.precheckOrderDispatch(ctx, id, ReleaseOrderDispatchActionDeploy)
 }
 
+// precheckOrderDispatch 检查业务状态并返回校验结果。
 func (uc *ReleaseOrderManager) precheckOrderDispatch(
 	ctx context.Context,
 	id string,
@@ -97,6 +101,7 @@ func (uc *ReleaseOrderManager) precheckOrderDispatch(
 	return uc.buildOrderPrecheck(ctx, order, executions, params, action)
 }
 
+// buildOrderPrecheck 组装业务执行所需的输入数据。
 func (uc *ReleaseOrderManager) buildOrderPrecheck(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -187,6 +192,7 @@ func (uc *ReleaseOrderManager) buildOrderPrecheck(
 	return output, nil
 }
 
+// resolveDispatchPrecheckItems 解析上下文数据，得到后续流程需要的结果。
 func (uc *ReleaseOrderManager) resolveDispatchPrecheckItems(
 	order domain.ReleaseOrder,
 	executions []domain.ReleaseOrderExecution,
@@ -329,6 +335,7 @@ func (uc *ReleaseOrderManager) resolveDispatchPrecheckItems(
 	}
 }
 
+// buildExecutionReferencePrecheckItem 组装业务执行所需的输入数据。
 func (uc *ReleaseOrderManager) buildExecutionReferencePrecheckItem(
 	ctx context.Context,
 	execution domain.ReleaseOrderExecution,
@@ -380,6 +387,7 @@ func (uc *ReleaseOrderManager) buildExecutionReferencePrecheckItem(
 	return item, true, nil
 }
 
+// evaluateDispatchGuard 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) evaluateDispatchGuard(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -442,6 +450,7 @@ func (uc *ReleaseOrderManager) evaluateDispatchGuard(
 	return guard, nil
 }
 
+// ensureExecutionLock 校验前置条件，不满足时写入对应错误响应。
 func (uc *ReleaseOrderManager) ensureExecutionLock(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -501,6 +510,7 @@ func (uc *ReleaseOrderManager) ensureExecutionLock(
 	return guard, true, nil
 }
 
+// touchExecutionLocks 将领域对象转换为接口响应结构。
 func (uc *ReleaseOrderManager) touchExecutionLocks(ctx context.Context, order domain.ReleaseOrder) error {
 	settings, err := uc.loadReleaseConcurrencySettings(ctx)
 	if err != nil || !settings.Enabled {
@@ -510,6 +520,7 @@ func (uc *ReleaseOrderManager) touchExecutionLocks(ctx context.Context, order do
 	return uc.repo.TouchExecutionLocksByOrderID(ctx, order.ID, expires)
 }
 
+// releaseExecutionLocks 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) releaseExecutionLocks(ctx context.Context, orderID string, status domain.ExecutionLockStatus) error {
 	if uc == nil || uc.repo == nil || strings.TrimSpace(orderID) == "" {
 		return nil
@@ -517,6 +528,7 @@ func (uc *ReleaseOrderManager) releaseExecutionLocks(ctx context.Context, orderI
 	return uc.repo.ReleaseExecutionLocksByOrderID(ctx, orderID, status, uc.now())
 }
 
+// loadReleaseConcurrencySettings 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) loadReleaseConcurrencySettings(ctx context.Context) (ReleaseConcurrencySettingsOutput, error) {
 	if uc == nil || uc.releaseSettings == nil {
 		return normalizeConcurrencySettings(ReleaseConcurrencySettingsOutput{}), nil
@@ -528,6 +540,7 @@ func (uc *ReleaseOrderManager) loadReleaseConcurrencySettings(ctx context.Contex
 	return normalizeConcurrencySettings(settings), nil
 }
 
+// buildExecutionLockIdentity 组装业务执行所需的输入数据。
 func (uc *ReleaseOrderManager) buildExecutionLockIdentity(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -553,6 +566,7 @@ func (uc *ReleaseOrderManager) buildExecutionLockIdentity(
 	}
 }
 
+// buildGitOpsRepoBranchLockKey 组装业务执行所需的输入数据。
 func (uc *ReleaseOrderManager) buildGitOpsRepoBranchLockKey(
 	ctx context.Context,
 	order domain.ReleaseOrder,

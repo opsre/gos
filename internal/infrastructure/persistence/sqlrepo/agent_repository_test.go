@@ -12,6 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// TestClaimNextPendingTask_RequeuesStaleClaimedTask 封装当前模块的业务处理逻辑。
 func TestClaimNextPendingTask_RequeuesStaleClaimedTask(t *testing.T) {
 	t.Parallel()
 
@@ -101,6 +102,7 @@ func TestClaimNextPendingTask_RequeuesStaleClaimedTask(t *testing.T) {
 	}
 }
 
+// TestMarkTaskRunning_RequiresClaimedStatus 封装当前模块的业务处理逻辑。
 func TestMarkTaskRunning_RequiresClaimedStatus(t *testing.T) {
 	t.Parallel()
 
@@ -151,6 +153,7 @@ func TestMarkTaskRunning_RequiresClaimedStatus(t *testing.T) {
 	}
 }
 
+// TestBootstrapToken_IsPersistedUntilReset 封装当前模块的业务处理逻辑。
 func TestBootstrapToken_IsPersistedUntilReset(t *testing.T) {
 	t.Parallel()
 
@@ -182,6 +185,7 @@ func TestBootstrapToken_IsPersistedUntilReset(t *testing.T) {
 	}
 }
 
+// TestActivateTemporaryTask_TransitionsDraftTaskIntoQueue 封装当前模块的业务处理逻辑。
 func TestActivateTemporaryTask_TransitionsDraftTaskIntoQueue(t *testing.T) {
 	t.Parallel()
 
@@ -249,6 +253,7 @@ func TestActivateTemporaryTask_TransitionsDraftTaskIntoQueue(t *testing.T) {
 	}
 }
 
+// newTestAgentRepository 封装当前模块的业务处理逻辑。
 func newTestAgentRepository(t *testing.T) *AgentRepository {
 	t.Helper()
 
@@ -265,6 +270,7 @@ func newTestAgentRepository(t *testing.T) *AgentRepository {
 	return repo
 }
 
+// timePtr 封装当前模块的业务处理逻辑。
 func timePtr(value time.Time) *time.Time {
 	return &value
 }

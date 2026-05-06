@@ -14,6 +14,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// TestAgentManagerDeleteBlocksActiveTasks 删除业务资源并返回处理结果。
 func TestAgentManagerDeleteBlocksActiveTasks(t *testing.T) {
 	t.Parallel()
 
@@ -61,6 +62,7 @@ func TestAgentManagerDeleteBlocksActiveTasks(t *testing.T) {
 	}
 }
 
+// TestAgentManagerDeleteCleansAgentBindings 删除业务资源并返回处理结果。
 func TestAgentManagerDeleteCleansAgentBindings(t *testing.T) {
 	t.Parallel()
 
@@ -227,6 +229,7 @@ func TestAgentManagerDeleteCleansAgentBindings(t *testing.T) {
 	}
 }
 
+// newTestAgentManager 封装当前模块的业务处理逻辑。
 func newTestAgentManager(t *testing.T) (*AgentManager, *sqlrepo.AgentRepository) {
 	t.Helper()
 

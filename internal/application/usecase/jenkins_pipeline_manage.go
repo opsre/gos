@@ -43,6 +43,7 @@ type PreviewJenkinsRawPipelineConfigInput struct {
 	Sandbox     bool
 }
 
+// NewJenkinsPipelineManager 创建并返回对应组件实例。
 func NewJenkinsPipelineManager(
 	repo domain.Repository,
 	editor JenkinsPipelineEditor,
@@ -57,6 +58,7 @@ func NewJenkinsPipelineManager(
 	}
 }
 
+// CreateRaw 创建业务资源并返回处理结果。
 func (uc *JenkinsPipelineManager) CreateRaw(
 	ctx context.Context,
 	input CreateJenkinsRawPipelineInput,
@@ -75,6 +77,7 @@ func (uc *JenkinsPipelineManager) CreateRaw(
 	return uc.repo.GetPipelineByID(ctx, pipelineID(string(domain.ProviderJenkins), fullName))
 }
 
+// UpdateRaw 更新业务资源并返回处理结果。
 func (uc *JenkinsPipelineManager) UpdateRaw(
 	ctx context.Context,
 	id string,
@@ -121,6 +124,7 @@ func (uc *JenkinsPipelineManager) UpdateRaw(
 	return uc.repo.GetPipelineByID(ctx, id)
 }
 
+// DeleteRaw 删除业务资源并返回处理结果。
 func (uc *JenkinsPipelineManager) DeleteRaw(ctx context.Context, id string) (domain.Pipeline, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -158,6 +162,7 @@ func (uc *JenkinsPipelineManager) DeleteRaw(ctx context.Context, id string) (dom
 	return uc.repo.GetPipelineByID(ctx, id)
 }
 
+// PreviewRawConfigXML 封装当前模块的业务处理逻辑。
 func (uc *JenkinsPipelineManager) PreviewRawConfigXML(
 	_ context.Context,
 	input PreviewJenkinsRawPipelineConfigInput,
@@ -173,6 +178,7 @@ func (uc *JenkinsPipelineManager) PreviewRawConfigXML(
 	return configXML, nil
 }
 
+// syncAfterJenkinsPipelineMutation 同步外部或内部状态数据。
 func (uc *JenkinsPipelineManager) syncAfterJenkinsPipelineMutation(ctx context.Context) error {
 	if uc.pipelineUC != nil {
 		if _, err := uc.pipelineUC.Execute(ctx); err != nil {
@@ -187,6 +193,7 @@ func (uc *JenkinsPipelineManager) syncAfterJenkinsPipelineMutation(ctx context.C
 	return nil
 }
 
+// normalizeRawPipelineInput 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeRawPipelineInput(fullName string, description string, script string, sandbox bool) (string, domain.JenkinsRawPipelineConfig, error) {
 	normalizedFullName := strings.Trim(strings.TrimSpace(fullName), "/")
 	if normalizedFullName == "" {

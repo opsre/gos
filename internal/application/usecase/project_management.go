@@ -14,6 +14,7 @@ type ProjectManager struct {
 	now  func() time.Time
 }
 
+// NewProjectManager 创建并返回对应组件实例。
 func NewProjectManager(repo projectdomain.Repository) *ProjectManager {
 	return &ProjectManager{
 		repo: repo,
@@ -28,6 +29,7 @@ type CreateProjectInput struct {
 	Status      projectdomain.Status
 }
 
+// Create 创建业务资源并返回处理结果。
 func (uc *ProjectManager) Create(ctx context.Context, input CreateProjectInput) (projectdomain.Project, error) {
 	if uc == nil || uc.repo == nil {
 		return projectdomain.Project{}, fmt.Errorf("%w: project repository is not configured", ErrInvalidInput)
@@ -58,6 +60,7 @@ func (uc *ProjectManager) Create(ctx context.Context, input CreateProjectInput) 
 	return item, nil
 }
 
+// GetByID 查询并返回指定资源数据。
 func (uc *ProjectManager) GetByID(ctx context.Context, id string) (projectdomain.Project, error) {
 	if uc == nil || uc.repo == nil {
 		return projectdomain.Project{}, fmt.Errorf("%w: project repository is not configured", ErrInvalidInput)
@@ -68,6 +71,7 @@ func (uc *ProjectManager) GetByID(ctx context.Context, id string) (projectdomain
 	return uc.repo.GetByID(ctx, id)
 }
 
+// List 查询并返回列表数据。
 func (uc *ProjectManager) List(ctx context.Context, filter projectdomain.ListFilter) ([]projectdomain.Project, int64, error) {
 	if uc == nil || uc.repo == nil {
 		return nil, 0, fmt.Errorf("%w: project repository is not configured", ErrInvalidInput)
@@ -89,6 +93,7 @@ func (uc *ProjectManager) List(ctx context.Context, filter projectdomain.ListFil
 	return uc.repo.List(ctx, filter)
 }
 
+// Update 更新业务资源并返回处理结果。
 func (uc *ProjectManager) Update(ctx context.Context, id string, input projectdomain.UpdateInput) (projectdomain.Project, error) {
 	if uc == nil || uc.repo == nil {
 		return projectdomain.Project{}, fmt.Errorf("%w: project repository is not configured", ErrInvalidInput)
@@ -111,6 +116,7 @@ func (uc *ProjectManager) Update(ctx context.Context, id string, input projectdo
 	return uc.repo.Update(ctx, id, clean, uc.now())
 }
 
+// Delete 删除业务资源并返回处理结果。
 func (uc *ProjectManager) Delete(ctx context.Context, id string) error {
 	if uc == nil || uc.repo == nil {
 		return fmt.Errorf("%w: project repository is not configured", ErrInvalidInput)

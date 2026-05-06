@@ -107,18 +107,22 @@ type QueryGitOpsValuesCandidates struct {
 	reader  GitOpsFieldCandidateReader
 }
 
+// NewQueryGitOpsStatus 创建并返回对应组件实例。
 func NewQueryGitOpsStatus(reader GitOpsStatusReader) *QueryGitOpsStatus {
 	return &QueryGitOpsStatus{reader: reader}
 }
 
+// NewQueryGitOpsBindingTargets 创建并返回对应组件实例。
 func NewQueryGitOpsBindingTargets(reader GitOpsBindingTargetReader) *QueryGitOpsBindingTargets {
 	return &QueryGitOpsBindingTargets{reader: reader}
 }
 
+// NewQueryGitOpsTemplateFields 创建并返回对应组件实例。
 func NewQueryGitOpsTemplateFields(reader GitOpsTemplateFieldReader) *QueryGitOpsTemplateFields {
 	return &QueryGitOpsTemplateFields{reader: reader}
 }
 
+// NewQueryGitOpsFieldCandidates 创建并返回对应组件实例。
 func NewQueryGitOpsFieldCandidates(
 	appRepo appdomain.Repository,
 	reader GitOpsFieldCandidateReader,
@@ -126,6 +130,7 @@ func NewQueryGitOpsFieldCandidates(
 	return &QueryGitOpsFieldCandidates{appRepo: appRepo, reader: reader}
 }
 
+// NewQueryGitOpsValuesCandidates 创建并返回对应组件实例。
 func NewQueryGitOpsValuesCandidates(
 	appRepo appdomain.Repository,
 	reader GitOpsFieldCandidateReader,
@@ -143,6 +148,7 @@ type QueryGitOpsScanPathStatus struct {
 	reader  GitOpsFieldCandidateReader
 }
 
+// NewQueryGitOpsScanPathStatus 创建并返回对应组件实例。
 func NewQueryGitOpsScanPathStatus(
 	appRepo appdomain.Repository,
 	reader GitOpsFieldCandidateReader,
@@ -150,6 +156,7 @@ func NewQueryGitOpsScanPathStatus(
 	return &QueryGitOpsScanPathStatus{appRepo: appRepo, reader: reader}
 }
 
+// Execute 封装当前模块的业务处理逻辑。
 func (uc *QueryGitOpsScanPathStatus) Execute(ctx context.Context, applicationID string, gitopsType string) (QueryGitOpsScanPathStatusOutput, error) {
 	if uc == nil || uc.appRepo == nil || uc.reader == nil {
 		return QueryGitOpsScanPathStatusOutput{}, fmt.Errorf("%w: gitops manager is not configured", ErrInvalidInput)
@@ -176,6 +183,7 @@ func (uc *QueryGitOpsScanPathStatus) Execute(ctx context.Context, applicationID 
 	}, nil
 }
 
+// Execute 封装当前模块的业务处理逻辑。
 func (uc *QueryGitOpsStatus) Execute(ctx context.Context) (QueryGitOpsStatusOutput, error) {
 	if uc == nil || uc.reader == nil {
 		return QueryGitOpsStatusOutput{}, fmt.Errorf("%w: gitops manager is not configured", ErrInvalidInput)
@@ -208,6 +216,7 @@ func (uc *QueryGitOpsStatus) Execute(ctx context.Context) (QueryGitOpsStatusOutp
 	}, nil
 }
 
+// shortCommit 封装当前模块的业务处理逻辑。
 func shortCommit(value string) string {
 	value = strings.TrimSpace(value)
 	if len(value) <= 12 {
@@ -216,6 +225,7 @@ func shortCommit(value string) string {
 	return value[:12]
 }
 
+// Execute 封装当前模块的业务处理逻辑。
 func (uc *QueryGitOpsBindingTargets) Execute(ctx context.Context) ([]QueryGitOpsBindingTargetOutput, error) {
 	if uc == nil || uc.reader == nil {
 		return nil, fmt.Errorf("%w: gitops manager is not configured", ErrInvalidInput)
@@ -237,6 +247,7 @@ func (uc *QueryGitOpsBindingTargets) Execute(ctx context.Context) ([]QueryGitOps
 	return result, nil
 }
 
+// Execute 封装当前模块的业务处理逻辑。
 func (uc *QueryGitOpsTemplateFields) Execute(ctx context.Context) ([]QueryGitOpsTemplateFieldOutput, error) {
 	if uc == nil || uc.reader == nil {
 		return nil, fmt.Errorf("%w: gitops manager is not configured", ErrInvalidInput)
@@ -264,6 +275,7 @@ func (uc *QueryGitOpsTemplateFields) Execute(ctx context.Context) ([]QueryGitOps
 	return result, nil
 }
 
+// Execute 封装当前模块的业务处理逻辑。
 func (uc *QueryGitOpsFieldCandidates) Execute(
 	ctx context.Context,
 	applicationID string,
@@ -302,6 +314,7 @@ func (uc *QueryGitOpsFieldCandidates) Execute(
 	return result, nil
 }
 
+// Execute 封装当前模块的业务处理逻辑。
 func (uc *QueryGitOpsValuesCandidates) Execute(
 	ctx context.Context,
 	applicationID string,

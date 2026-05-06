@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// generateID 封装当前模块的业务处理逻辑。
 func generateID(prefix string) string {
 	b := make([]byte, 12)
 	if _, err := rand.Read(b); err != nil {

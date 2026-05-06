@@ -19,6 +19,7 @@ type ReleaseOrderPipelineStageView struct {
 	Stages       []domain.ReleaseOrderPipelineStage
 }
 
+// ListPipelineStagesView 查询并返回列表数据。
 func (uc *ReleaseOrderManager) ListPipelineStagesView(
 	ctx context.Context,
 	orderID string,
@@ -81,6 +82,7 @@ func (uc *ReleaseOrderManager) ListPipelineStagesView(
 	return view, nil
 }
 
+// GetPipelineStageLog 查询并返回指定资源数据。
 func (uc *ReleaseOrderManager) GetPipelineStageLog(
 	ctx context.Context,
 	orderID string,
@@ -139,6 +141,7 @@ func (uc *ReleaseOrderManager) GetPipelineStageLog(
 	return stage, logResult, nil
 }
 
+// refreshPipelineStages 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) refreshPipelineStages(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -226,6 +229,7 @@ func (uc *ReleaseOrderManager) refreshPipelineStages(
 	return "", nil
 }
 
+// resolveBuildURLForPipelineStages 解析上下文数据，得到后续流程需要的结果。
 func (uc *ReleaseOrderManager) resolveBuildURLForPipelineStages(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -274,6 +278,7 @@ func (uc *ReleaseOrderManager) resolveBuildURLForPipelineStages(
 	return buildURL, "", nil
 }
 
+// stablePipelineStageID 封装当前模块的业务处理逻辑。
 func stablePipelineStageID(orderID string, executorType string, pipelineScope string, stageKey string) string {
 	sum := sha1.Sum([]byte(
 		strings.TrimSpace(orderID) + ":" +
@@ -284,6 +289,7 @@ func stablePipelineStageID(orderID string, executorType string, pipelineScope st
 	return "rps-" + hex.EncodeToString(sum[:12])
 }
 
+// defaultPipelineStageMessage 封装当前模块的业务处理逻辑。
 func defaultPipelineStageMessage(status domain.OrderStatus) string {
 	switch status {
 	case domain.OrderStatusPending:
@@ -299,6 +305,7 @@ func defaultPipelineStageMessage(status domain.OrderStatus) string {
 	}
 }
 
+// trimPipelineStageError 封装当前模块的业务处理逻辑。
 func trimPipelineStageError(err error) string {
 	if err == nil {
 		return "未知错误"
@@ -313,6 +320,7 @@ func trimPipelineStageError(err error) string {
 	return message
 }
 
+// refreshArgoCDStages 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) refreshArgoCDStages(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -422,6 +430,7 @@ func (uc *ReleaseOrderManager) refreshArgoCDStages(
 	return syncMessage, nil
 }
 
+// argoCDUpdateStageName 更新业务资源并返回处理结果。
 func argoCDUpdateStageName(gitopsType domain.GitOpsType) string {
 	if normalizeTemplateGitOpsType(gitopsType, true) == domain.GitOpsTypeHelm {
 		return "CD 更新 Helm Values"
@@ -429,6 +438,7 @@ func argoCDUpdateStageName(gitopsType domain.GitOpsType) string {
 	return "CD 更新 GitOps 配置"
 }
 
+// pipelineStageStatusFromStep 封装当前模块的业务处理逻辑。
 func pipelineStageStatusFromStep(step *domain.ReleaseOrderStep) domain.PipelineStageStatus {
 	if step == nil {
 		return domain.PipelineStageStatusPending
@@ -445,6 +455,7 @@ func pipelineStageStatusFromStep(step *domain.ReleaseOrderStep) domain.PipelineS
 	}
 }
 
+// pipelineStageRawStatusFromStep 封装当前模块的业务处理逻辑。
 func pipelineStageRawStatusFromStep(step *domain.ReleaseOrderStep) string {
 	if step == nil {
 		return ""
@@ -452,6 +463,7 @@ func pipelineStageRawStatusFromStep(step *domain.ReleaseOrderStep) string {
 	return strings.TrimSpace(step.Message)
 }
 
+// stageNameFromStep 封装当前模块的业务处理逻辑。
 func stageNameFromStep(step *domain.ReleaseOrderStep) string {
 	if step == nil {
 		return ""
@@ -459,6 +471,7 @@ func stageNameFromStep(step *domain.ReleaseOrderStep) string {
 	return strings.TrimSpace(step.StepName)
 }
 
+// stageStartedAt 封装当前模块的业务处理逻辑。
 func stageStartedAt(step *domain.ReleaseOrderStep) *time.Time {
 	if step == nil {
 		return nil
@@ -466,6 +479,7 @@ func stageStartedAt(step *domain.ReleaseOrderStep) *time.Time {
 	return step.StartedAt
 }
 
+// stageFinishedAt 封装当前模块的业务处理逻辑。
 func stageFinishedAt(step *domain.ReleaseOrderStep) *time.Time {
 	if step == nil {
 		return nil
@@ -473,6 +487,7 @@ func stageFinishedAt(step *domain.ReleaseOrderStep) *time.Time {
 	return step.FinishedAt
 }
 
+// computePipelineStageDuration 封装当前模块的业务处理逻辑。
 func computePipelineStageDuration(step *domain.ReleaseOrderStep, now time.Time) int64 {
 	if step == nil || step.StartedAt == nil {
 		return 0
@@ -487,6 +502,7 @@ func computePipelineStageDuration(step *domain.ReleaseOrderStep, now time.Time) 
 	return end.Sub(*step.StartedAt).Milliseconds()
 }
 
+// mapArgoCDSyncStageStatus 同步外部或内部状态数据。
 func mapArgoCDSyncStageStatus(syncStatus string, operationPhase string) domain.PipelineStageStatus {
 	switch strings.ToLower(strings.TrimSpace(operationPhase)) {
 	case "failed", "error":
@@ -509,6 +525,7 @@ func mapArgoCDSyncStageStatus(syncStatus string, operationPhase string) domain.P
 	}
 }
 
+// mapArgoCDHealthStageStatus 封装当前模块的业务处理逻辑。
 func mapArgoCDHealthStageStatus(healthStatus string, operationPhase string) domain.PipelineStageStatus {
 	switch strings.ToLower(strings.TrimSpace(healthStatus)) {
 	case "healthy":

@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	releaseSettingsKeyEnvOptions  = "release_env_options"
-	releaseSettingsKeyConcurrency = "release_concurrency"
+	releaseSettingsKeyEnvOptions   = "release_env_options"
+	releaseSettingsKeyConcurrency  = "release_concurrency"
 	releaseSettingsKeyGitOpsConfig = "release_gitops_config"
-	settingsUpdatedAtSQLiteLayout = "2006-01-02 15:04:05"
+	settingsUpdatedAtSQLiteLayout  = "2006-01-02 15:04:05"
 )
 
 type DatabaseReleaseStore struct {
@@ -24,6 +24,7 @@ type DatabaseReleaseStore struct {
 	fallback usecase.ReleaseSettingsStore
 }
 
+// NewDatabaseReleaseStore 创建并返回对应组件实例。
 func NewDatabaseReleaseStore(db *sql.DB, driver string, fallback usecase.ReleaseSettingsStore) *DatabaseReleaseStore {
 	return &DatabaseReleaseStore{
 		db:       db,
@@ -32,6 +33,7 @@ func NewDatabaseReleaseStore(db *sql.DB, driver string, fallback usecase.Release
 	}
 }
 
+// InitSchema 封装当前模块的业务处理逻辑。
 func (s *DatabaseReleaseStore) InitSchema(ctx context.Context) error {
 	if s == nil || s.db == nil {
 		return fmt.Errorf("release settings store db is nil")
@@ -58,6 +60,7 @@ CREATE TABLE IF NOT EXISTS system_settings (
 	}
 }
 
+// LoadEnvOptions 封装当前模块的业务处理逻辑。
 func (s *DatabaseReleaseStore) LoadEnvOptions(ctx context.Context) ([]string, error) {
 	var stored []string
 	ok, err := s.loadJSONSetting(ctx, releaseSettingsKeyEnvOptions, &stored)
@@ -73,6 +76,7 @@ func (s *DatabaseReleaseStore) LoadEnvOptions(ctx context.Context) ([]string, er
 	return s.fallback.LoadEnvOptions(ctx)
 }
 
+// SaveEnvOptions 封装当前模块的业务处理逻辑。
 func (s *DatabaseReleaseStore) SaveEnvOptions(ctx context.Context, values []string) error {
 	values = normalizeStringList(values)
 	if len(values) == 0 {
@@ -87,6 +91,7 @@ func (s *DatabaseReleaseStore) SaveEnvOptions(ctx context.Context, values []stri
 	return nil
 }
 
+// LoadConcurrencySettings 封装当前模块的业务处理逻辑。
 func (s *DatabaseReleaseStore) LoadConcurrencySettings(ctx context.Context) (usecase.ReleaseConcurrencySettingsOutput, error) {
 	var stored usecase.ReleaseConcurrencySettingsOutput
 	ok, err := s.loadJSONSetting(ctx, releaseSettingsKeyConcurrency, &stored)
@@ -102,6 +107,7 @@ func (s *DatabaseReleaseStore) LoadConcurrencySettings(ctx context.Context) (use
 	return s.fallback.LoadConcurrencySettings(ctx)
 }
 
+// SaveConcurrencySettings 封装当前模块的业务处理逻辑。
 func (s *DatabaseReleaseStore) SaveConcurrencySettings(ctx context.Context, input usecase.ReleaseConcurrencySettingsInput) error {
 	normalized := normalizeDBConcurrencySettings(usecase.ReleaseConcurrencySettingsOutput(input))
 	if err := s.saveJSONSetting(ctx, releaseSettingsKeyConcurrency, normalized); err != nil {
@@ -113,6 +119,7 @@ func (s *DatabaseReleaseStore) SaveConcurrencySettings(ctx context.Context, inpu
 	return nil
 }
 
+// loadJSONSetting 封装当前模块的业务处理逻辑。
 func (s *DatabaseReleaseStore) loadJSONSetting(ctx context.Context, key string, target interface{}) (bool, error) {
 	if s == nil || s.db == nil {
 		return false, fmt.Errorf("release settings store db is nil")
@@ -134,6 +141,7 @@ func (s *DatabaseReleaseStore) loadJSONSetting(ctx context.Context, key string, 
 	return true, nil
 }
 
+// saveJSONSetting 封装当前模块的业务处理逻辑。
 func (s *DatabaseReleaseStore) saveJSONSetting(ctx context.Context, key string, value interface{}) error {
 	if s == nil || s.db == nil {
 		return fmt.Errorf("release settings store db is nil")
@@ -163,6 +171,7 @@ ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, u
 	return nil
 }
 
+// LoadGitOpsConfig 封装当前模块的业务处理逻辑。
 func (s *DatabaseReleaseStore) LoadGitOpsConfig(ctx context.Context) (usecase.ReleaseGitOpsConfigOutput, error) {
 	var stored usecase.ReleaseGitOpsConfigOutput
 	ok, err := s.loadJSONSetting(ctx, releaseSettingsKeyGitOpsConfig, &stored)
@@ -178,6 +187,7 @@ func (s *DatabaseReleaseStore) LoadGitOpsConfig(ctx context.Context) (usecase.Re
 	return s.fallback.LoadGitOpsConfig(ctx)
 }
 
+// SaveGitOpsConfig 封装当前模块的业务处理逻辑。
 func (s *DatabaseReleaseStore) SaveGitOpsConfig(ctx context.Context, input usecase.ReleaseGitOpsConfigInput) error {
 	normalized := normalizeDBGitOpsConfig(usecase.ReleaseGitOpsConfigOutput(input))
 	if err := s.saveJSONSetting(ctx, releaseSettingsKeyGitOpsConfig, normalized); err != nil {
@@ -189,6 +199,7 @@ func (s *DatabaseReleaseStore) SaveGitOpsConfig(ctx context.Context, input useca
 	return nil
 }
 
+// normalizeDBGitOpsConfig 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeDBGitOpsConfig(input usecase.ReleaseGitOpsConfigOutput) usecase.ReleaseGitOpsConfigOutput {
 	helmPath := strings.TrimSpace(input.HelmScanPath)
 	if helmPath == "" {
@@ -204,6 +215,7 @@ func normalizeDBGitOpsConfig(input usecase.ReleaseGitOpsConfigOutput) usecase.Re
 	}
 }
 
+// normalizeDBConcurrencySettings 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeDBConcurrencySettings(input usecase.ReleaseConcurrencySettingsOutput) usecase.ReleaseConcurrencySettingsOutput {
 	scope := input.LockScope
 	if !scope.Valid() {

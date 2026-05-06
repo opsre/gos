@@ -11,6 +11,7 @@ type JenkinsSyncTask struct {
 	done <-chan struct{}
 }
 
+// Stop 封装当前模块的业务处理逻辑。
 func (t JenkinsSyncTask) Stop() {
 	if t.stop == nil {
 		return
@@ -22,6 +23,7 @@ func (t JenkinsSyncTask) Stop() {
 	<-t.done
 }
 
+// StartJenkinsAutoSyncTask 同步外部或内部状态数据。
 func StartJenkinsAutoSyncTask(cfg JenkinsConfig, run func(context.Context) error) JenkinsSyncTask {
 	return startJenkinsTask(
 		cfg.Enabled && cfg.AutoSyncEnabled,
@@ -32,6 +34,7 @@ func StartJenkinsAutoSyncTask(cfg JenkinsConfig, run func(context.Context) error
 	)
 }
 
+// StartJenkinsReleaseTrackTask 封装当前模块的业务处理逻辑。
 func StartJenkinsReleaseTrackTask(cfg JenkinsConfig, run func(context.Context) error) JenkinsSyncTask {
 	return startJenkinsTask(
 		cfg.Enabled && cfg.ReleaseTrackEnabled,
@@ -42,6 +45,7 @@ func StartJenkinsReleaseTrackTask(cfg JenkinsConfig, run func(context.Context) e
 	)
 }
 
+// StartReleaseTrackTask 封装当前模块的业务处理逻辑。
 func StartReleaseTrackTask(intervalSec int, run func(context.Context) error) JenkinsSyncTask {
 	return startJenkinsTask(
 		true,
@@ -52,6 +56,7 @@ func StartReleaseTrackTask(intervalSec int, run func(context.Context) error) Jen
 	)
 }
 
+// startJenkinsTask 封装当前模块的业务处理逻辑。
 func startJenkinsTask(
 	enabled bool,
 	interval time.Duration,

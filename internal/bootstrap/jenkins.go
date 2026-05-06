@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// CheckJenkinsConnection 检查业务状态并返回校验结果。
 func CheckJenkinsConnection(cfg Config) error {
 	if !cfg.Jenkins.Enabled {
 		return nil
@@ -43,6 +44,7 @@ func CheckJenkinsConnection(cfg Config) error {
 	)
 }
 
+// pingJenkins 封装当前模块的业务处理逻辑。
 func pingJenkins(client *http.Client, url, username, apiToken string) error {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {

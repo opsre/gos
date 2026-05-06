@@ -2,6 +2,7 @@ package main
 
 import "testing"
 
+// TestResolveAgentName 解析上下文数据，得到后续流程需要的结果。
 func TestResolveAgentName(t *testing.T) {
 	t.Parallel()
 
@@ -57,6 +58,7 @@ func TestResolveAgentName(t *testing.T) {
 	}
 }
 
+// TestFormatAgentNameIP 封装当前模块的业务处理逻辑。
 func TestFormatAgentNameIP(t *testing.T) {
 	t.Parallel()
 

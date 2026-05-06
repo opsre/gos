@@ -13,6 +13,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// TestExecutorParamRepositoryListByApplicationsMatchesKeywordAcrossApplicationAndParamKey 查询并返回列表数据。
 func TestExecutorParamRepositoryListByApplicationsMatchesKeywordAcrossApplicationAndParamKey(t *testing.T) {
 	t.Parallel()
 
@@ -69,6 +70,7 @@ func TestExecutorParamRepositoryListByApplicationsMatchesKeywordAcrossApplicatio
 	}
 }
 
+// TestExecutorParamRepositoryListByApplicationsHonorsApplicationScope 查询并返回列表数据。
 func TestExecutorParamRepositoryListByApplicationsHonorsApplicationScope(t *testing.T) {
 	t.Parallel()
 
@@ -101,6 +103,7 @@ type executorParamRepositoryTestBundle struct {
 	executorParams *ExecutorParamRepository
 }
 
+// newTestExecutorParamRepositoryBundle 封装当前模块的业务处理逻辑。
 func newTestExecutorParamRepositoryBundle(t *testing.T) executorParamRepositoryTestBundle {
 	t.Helper()
 
@@ -136,6 +139,7 @@ func newTestExecutorParamRepositoryBundle(t *testing.T) executorParamRepositoryT
 	}
 }
 
+// seedExecutorParamSearchFixture 封装当前模块的业务处理逻辑。
 func seedExecutorParamSearchFixture(t *testing.T, bundle executorParamRepositoryTestBundle) {
 	t.Helper()
 

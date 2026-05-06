@@ -16,6 +16,7 @@ type CreateApplication struct {
 	now         func() time.Time
 }
 
+// NewCreateApplication 创建并返回对应组件实例。
 func NewCreateApplication(repo domain.Repository, projectRepo projectdomain.Repository) *CreateApplication {
 	return &CreateApplication{
 		repo:        repo,
@@ -26,6 +27,7 @@ func NewCreateApplication(repo domain.Repository, projectRepo projectdomain.Repo
 	}
 }
 
+// Execute 封装当前模块的业务处理逻辑。
 func (uc *CreateApplication) Execute(ctx context.Context, input CreateInput) (domain.Application, error) {
 	if uc.repo == nil || uc.projectRepo == nil {
 		return domain.Application{}, fmt.Errorf("%w: application repository is not configured", ErrInvalidInput)

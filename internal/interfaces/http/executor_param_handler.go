@@ -34,6 +34,7 @@ type ExecutorParamAccessResolver interface {
 	) (canView bool, canEdit bool, err error)
 }
 
+// NewExecutorParamHandler 创建并返回对应组件实例。
 func NewExecutorParamHandler(
 	manager *usecase.ExecutorParamDefManager,
 	syncer *usecase.SyncExecutorParamDefs,
@@ -48,6 +49,7 @@ func NewExecutorParamHandler(
 	}
 }
 
+// RegisterRoutes 封装当前模块的业务处理逻辑。
 func (h *ExecutorParamHandler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/applications/:id/executor-param-defs", h.ListByApplication)
 	router.GET("/pipelines/:id/param-defs", h.ListByPipeline)
@@ -563,6 +565,7 @@ func (h *ExecutorParamHandler) Sync(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
+// toExecutorParamResponse 将领域对象转换为接口响应结构。
 func toExecutorParamResponse(item domain.ExecutorParamDef) ExecutorParamDefResponse {
 	return ExecutorParamDefResponse{
 		ID:                item.ID,
@@ -593,6 +596,7 @@ func toExecutorParamResponse(item domain.ExecutorParamDef) ExecutorParamDefRespo
 	}
 }
 
+// resolveReleaseCreatePermission 解析上下文数据，得到后续流程需要的结果。
 func (h *ExecutorParamHandler) resolveReleaseCreatePermission(
 	ctx context.Context,
 	user userdomain.User,
@@ -614,6 +618,7 @@ func (h *ExecutorParamHandler) resolveReleaseCreatePermission(
 	return allowed, nil
 }
 
+// writeExecutorParamHTTPError 写入处理结果或错误信息。
 func writeExecutorParamHTTPError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrInvalidInput),
@@ -634,6 +639,7 @@ func writeExecutorParamHTTPError(c *gin.Context, err error) {
 	}
 }
 
+// parseOptionalBool 解析输入内容并返回结构化结果。
 func parseOptionalBool(c *gin.Context, name string) (*bool, error) {
 	raw := strings.TrimSpace(c.Query(name))
 	if raw == "" {

@@ -14,6 +14,7 @@ import (
 	domain "gos/internal/domain/release"
 )
 
+// TestShouldTriggerTemplateHook 封装当前模块的业务处理逻辑。
 func TestShouldTriggerTemplateHook(t *testing.T) {
 	t.Parallel()
 
@@ -85,6 +86,7 @@ func TestShouldTriggerTemplateHook(t *testing.T) {
 	}
 }
 
+// TestHookMatchesOrderEnv 封装当前模块的业务处理逻辑。
 func TestHookMatchesOrderEnv(t *testing.T) {
 	t.Parallel()
 
@@ -137,6 +139,7 @@ func TestHookMatchesOrderEnv(t *testing.T) {
 	}
 }
 
+// TestBuildTemplateHookEnvSkipMessage 组装业务执行所需的输入数据。
 func TestBuildTemplateHookEnvSkipMessage(t *testing.T) {
 	t.Parallel()
 
@@ -147,6 +150,7 @@ func TestBuildTemplateHookEnvSkipMessage(t *testing.T) {
 	}
 }
 
+// TestParseHookTaskBatchIdentity 解析输入内容并返回结构化结果。
 func TestParseHookTaskBatchIdentity(t *testing.T) {
 	t.Parallel()
 
@@ -168,6 +172,7 @@ func TestParseHookTaskBatchIdentity(t *testing.T) {
 	}
 }
 
+// TestParseHookTaskIDFromTerminalMessage 解析输入内容并返回结构化结果。
 func TestParseHookTaskIDFromTerminalMessage(t *testing.T) {
 	t.Parallel()
 
@@ -181,6 +186,7 @@ func TestParseHookTaskIDFromTerminalMessage(t *testing.T) {
 	}
 }
 
+// TestParseHookExecuteStage 解析输入内容并返回结构化结果。
 func TestParseHookExecuteStage(t *testing.T) {
 	t.Parallel()
 
@@ -192,6 +198,7 @@ func TestParseHookExecuteStage(t *testing.T) {
 	}
 }
 
+// TestMergeAgentTaskVariablesOverridesReleaseVariables 封装当前模块的业务处理逻辑。
 func TestMergeAgentTaskVariablesOverridesReleaseVariables(t *testing.T) {
 	t.Parallel()
 
@@ -218,6 +225,7 @@ func TestMergeAgentTaskVariablesOverridesReleaseVariables(t *testing.T) {
 	}
 }
 
+// TestEvaluateMainReleaseStatus 启动当前进程并完成依赖初始化。
 func TestEvaluateMainReleaseStatus(t *testing.T) {
 	t.Parallel()
 
@@ -252,6 +260,7 @@ func TestEvaluateMainReleaseStatus(t *testing.T) {
 	}
 }
 
+// TestDeriveHookReleaseStatus 封装当前模块的业务处理逻辑。
 func TestDeriveHookReleaseStatus(t *testing.T) {
 	t.Parallel()
 
@@ -280,6 +289,7 @@ func TestDeriveHookReleaseStatus(t *testing.T) {
 	}
 }
 
+// TestBuildNotificationRichValues 组装业务执行所需的输入数据。
 func TestBuildNotificationRichValues(t *testing.T) {
 	t.Parallel()
 
@@ -300,6 +310,7 @@ func TestBuildNotificationRichValues(t *testing.T) {
 	}
 }
 
+// TestEnforceNotificationCoreVariables 封装当前模块的业务处理逻辑。
 func TestEnforceNotificationCoreVariables(t *testing.T) {
 	t.Parallel()
 
@@ -328,6 +339,7 @@ func TestEnforceNotificationCoreVariables(t *testing.T) {
 	}
 }
 
+// TestContainsUnresolvedNotificationCorePlaceholder 解析上下文数据，得到后续流程需要的结果。
 func TestContainsUnresolvedNotificationCorePlaceholder(t *testing.T) {
 	t.Parallel()
 
@@ -342,6 +354,7 @@ func TestContainsUnresolvedNotificationCorePlaceholder(t *testing.T) {
 	}
 }
 
+// TestSendTemplateWebhookTimeout 封装当前模块的业务处理逻辑。
 func TestSendTemplateWebhookTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -373,6 +386,7 @@ func TestSendTemplateWebhookTimeout(t *testing.T) {
 	}
 }
 
+// TestBuildNotificationHookRequestAddsDingTalkSignature 组装业务执行所需的输入数据。
 func TestBuildNotificationHookRequestAddsDingTalkSignature(t *testing.T) {
 	t.Parallel()
 

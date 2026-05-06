@@ -9,6 +9,7 @@ import (
 	domain "gos/internal/domain/release"
 )
 
+// TestUpdatePendingReleaseOrderRebuildsSnapshot 组装业务执行所需的输入数据。
 func TestUpdatePendingReleaseOrderRebuildsSnapshot(t *testing.T) {
 	t.Parallel()
 
@@ -128,6 +129,7 @@ func TestUpdatePendingReleaseOrderRebuildsSnapshot(t *testing.T) {
 	order.TemplateName = oldTemplate.Name
 	order.BindingID = oldBindings[0].BindingID
 	order.PipelineID = oldBindings[0].PipelineID
+	order.ReleaseName = "before name"
 	order.Remark = "before update"
 	executions := []domain.ReleaseOrderExecution{
 		{
@@ -166,6 +168,7 @@ func TestUpdatePendingReleaseOrderRebuildsSnapshot(t *testing.T) {
 	updated, err := manager.Update(ctx, order.ID, UpdateReleaseOrderInput{
 		ApplicationID: "app-1",
 		TemplateID:    newTemplate.ID,
+		ReleaseName:   "after name",
 		EnvCode:       "prod",
 		GitRef:        "release/new",
 		Remark:        "after update",
@@ -194,8 +197,18 @@ func TestUpdatePendingReleaseOrderRebuildsSnapshot(t *testing.T) {
 	if updated.GitRef != "release/new" {
 		t.Fatalf("updated git_ref = %s, want %s", updated.GitRef, "release/new")
 	}
+	if updated.ReleaseName != "after name" {
+		t.Fatalf("updated release_name = %s, want %s", updated.ReleaseName, "after name")
+	}
 	if updated.Remark != "after update" {
 		t.Fatalf("updated remark = %s, want %s", updated.Remark, "after update")
+	}
+	stored, err := repo.GetByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	if stored.ReleaseName != "after name" {
+		t.Fatalf("stored release_name = %s, want %s", stored.ReleaseName, "after name")
 	}
 
 	storedExecutions, err := repo.ListExecutions(ctx, order.ID)
@@ -223,6 +236,7 @@ func TestUpdatePendingReleaseOrderRebuildsSnapshot(t *testing.T) {
 	}
 }
 
+// TestCreateReleaseOrderDoesNotPromoteCIBranchToGitRefWithoutBuiltinMapping 创建业务资源并返回处理结果。
 func TestCreateReleaseOrderDoesNotPromoteCIBranchToGitRefWithoutBuiltinMapping(t *testing.T) {
 	t.Parallel()
 
@@ -291,6 +305,7 @@ func TestCreateReleaseOrderDoesNotPromoteCIBranchToGitRefWithoutBuiltinMapping(t
 	order, err := manager.Create(ctx, CreateReleaseOrderInput{
 		ApplicationID: "app-1",
 		TemplateID:    template.ID,
+		ReleaseName:   "CI only release",
 		EnvCode:       "dev",
 		CreatorUserID: "user-1",
 		TriggeredBy:   "user-1",
@@ -310,8 +325,12 @@ func TestCreateReleaseOrderDoesNotPromoteCIBranchToGitRefWithoutBuiltinMapping(t
 	if order.GitRef != "" {
 		t.Fatalf("created git_ref = %q, want empty when template has no builtin branch mapping", order.GitRef)
 	}
+	if order.ReleaseName != "CI only release" {
+		t.Fatalf("created release_name = %q, want %q", order.ReleaseName, "CI only release")
+	}
 }
 
+// TestUpdateReleaseOrderDoesNotPromoteCIBranchToGitRefWithoutBuiltinMapping 更新业务资源并返回处理结果。
 func TestUpdateReleaseOrderDoesNotPromoteCIBranchToGitRefWithoutBuiltinMapping(t *testing.T) {
 	t.Parallel()
 
@@ -425,6 +444,7 @@ func TestUpdateReleaseOrderDoesNotPromoteCIBranchToGitRefWithoutBuiltinMapping(t
 	}
 }
 
+// TestUpdateReleaseOrderRejectsNonPendingStatus 更新业务资源并返回处理结果。
 func TestUpdateReleaseOrderRejectsNonPendingStatus(t *testing.T) {
 	t.Parallel()
 
@@ -456,6 +476,7 @@ func TestUpdateReleaseOrderRejectsNonPendingStatus(t *testing.T) {
 	}
 }
 
+// TestUpdateReleaseOrderRejectsApplicationChange 更新业务资源并返回处理结果。
 func TestUpdateReleaseOrderRejectsApplicationChange(t *testing.T) {
 	t.Parallel()
 
@@ -509,26 +530,32 @@ type releaseOrderUpdateApplicationRepoStub struct {
 	app appdomain.Application
 }
 
+// Create 创建业务资源并返回处理结果。
 func (s releaseOrderUpdateApplicationRepoStub) Create(context.Context, appdomain.Application) error {
 	panic("unexpected call")
 }
 
+// GetByID 查询并返回指定资源数据。
 func (s releaseOrderUpdateApplicationRepoStub) GetByID(context.Context, string) (appdomain.Application, error) {
 	return s.app, nil
 }
 
+// List 查询并返回列表数据。
 func (s releaseOrderUpdateApplicationRepoStub) List(context.Context, appdomain.ListFilter) ([]appdomain.Application, int64, error) {
 	panic("unexpected call")
 }
 
+// Update 更新业务资源并返回处理结果。
 func (s releaseOrderUpdateApplicationRepoStub) Update(context.Context, string, appdomain.UpdateInput, time.Time) (appdomain.Application, error) {
 	panic("unexpected call")
 }
 
+// Delete 删除业务资源并返回处理结果。
 func (s releaseOrderUpdateApplicationRepoStub) Delete(context.Context, string) error {
 	panic("unexpected call")
 }
 
+// InitSchema 封装当前模块的业务处理逻辑。
 func (s releaseOrderUpdateApplicationRepoStub) InitSchema(context.Context) error {
 	return nil
 }

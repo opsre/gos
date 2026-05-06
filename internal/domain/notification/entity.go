@@ -9,6 +9,7 @@ const (
 	SourceTypeWeCom    SourceType = "wecom"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s SourceType) Valid() bool {
 	switch s {
 	case SourceTypeDingTalk, SourceTypeWeCom:
@@ -29,6 +30,7 @@ const (
 	ConditionOperatorNotEmpty    ConditionOperator = "not_empty"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s ConditionOperator) Valid() bool {
 	switch s {
 	case ConditionOperatorEquals,

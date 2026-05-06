@@ -24,6 +24,7 @@ const OfficialWebsiteView = () => import('../views/marketing/OfficialWebsiteView
 const ReleaseOrderCreateView = () => import('../views/release/ReleaseOrderCreateView.vue')
 const ReleaseOrderDetailView = () => import('../views/release/ReleaseOrderDetailView.vue')
 const ReleaseOrderListView = () => import('../views/release/ReleaseOrderListView.vue')
+const ReleaseOrderScheduleView = () => import('../views/release/ReleaseOrderScheduleView.vue')
 const ReleaseApprovalWorkbenchView = () => import('../views/release/ReleaseApprovalWorkbenchView.vue')
 const ReleaseTemplateView = () => import('../views/release/ReleaseTemplateView.vue')
 const SystemNotificationView = () => import('../views/system/SystemNotificationView.vue')
@@ -220,6 +221,12 @@ export const router = createRouter({
           name: 'release-approval-workbench',
           component: ReleaseApprovalWorkbenchView,
           meta: { title: '审批工作台' },
+        },
+        {
+          path: '/release-schedules',
+          name: 'release-order-schedules',
+          component: ReleaseOrderScheduleView,
+          meta: { title: '预约发布' },
         },
         {
           path: '/releases/new',

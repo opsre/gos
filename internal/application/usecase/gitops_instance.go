@@ -45,10 +45,12 @@ type CreateGitOpsInstanceInput struct {
 
 type UpdateGitOpsInstanceInput = CreateGitOpsInstanceInput
 
+// NewGitOpsInstanceManager 创建并返回对应组件实例。
 func NewGitOpsInstanceManager(repo domain.Repository, factory GitOpsServiceFactory, platformRepo GitOpsCommitTemplateFieldReader) *GitOpsInstanceManager {
 	return &GitOpsInstanceManager{repo: repo, factory: factory, platformRepo: platformRepo, now: func() time.Time { return time.Now().UTC() }}
 }
 
+// List 查询并返回列表数据。
 func (uc *GitOpsInstanceManager) List(ctx context.Context, filter domain.InstanceListFilter) ([]domain.Instance, int64, error) {
 	if uc == nil || uc.repo == nil {
 		return nil, 0, fmt.Errorf("%w: gitops instance manager is not configured", ErrInvalidInput)
@@ -68,6 +70,7 @@ func (uc *GitOpsInstanceManager) List(ctx context.Context, filter domain.Instanc
 	return uc.repo.ListInstances(ctx, filter)
 }
 
+// ListActive 查询并返回列表数据。
 func (uc *GitOpsInstanceManager) ListActive(ctx context.Context) ([]domain.Instance, error) {
 	if uc == nil || uc.repo == nil {
 		return nil, fmt.Errorf("%w: gitops instance manager is not configured", ErrInvalidInput)
@@ -75,6 +78,7 @@ func (uc *GitOpsInstanceManager) ListActive(ctx context.Context) ([]domain.Insta
 	return uc.repo.ListActiveInstances(ctx)
 }
 
+// Create 创建业务资源并返回处理结果。
 func (uc *GitOpsInstanceManager) Create(ctx context.Context, input CreateGitOpsInstanceInput) (domain.Instance, error) {
 	if uc == nil || uc.repo == nil {
 		return domain.Instance{}, fmt.Errorf("%w: gitops instance manager is not configured", ErrInvalidInput)
@@ -112,6 +116,7 @@ func (uc *GitOpsInstanceManager) Create(ctx context.Context, input CreateGitOpsI
 	return created, nil
 }
 
+// Update 更新业务资源并返回处理结果。
 func (uc *GitOpsInstanceManager) Update(ctx context.Context, id string, input UpdateGitOpsInstanceInput) (domain.Instance, error) {
 	if uc == nil || uc.repo == nil {
 		return domain.Instance{}, fmt.Errorf("%w: gitops instance manager is not configured", ErrInvalidInput)
@@ -161,6 +166,7 @@ func (uc *GitOpsInstanceManager) Update(ctx context.Context, id string, input Up
 	return updated, nil
 }
 
+// GetStatus 查询并返回指定资源数据。
 func (uc *GitOpsInstanceManager) GetStatus(ctx context.Context, id string) (gitopsinfra.Status, domain.Instance, error) {
 	if uc == nil || uc.repo == nil || uc.factory == nil {
 		return gitopsinfra.Status{}, domain.Instance{}, fmt.Errorf("%w: gitops instance manager is not configured", ErrInvalidInput)
@@ -204,6 +210,7 @@ func (uc *GitOpsInstanceManager) GetStatus(ctx context.Context, id string) (gito
 	return status, item, err
 }
 
+// BuildServiceByID 组装业务执行所需的输入数据。
 func (uc *GitOpsInstanceManager) BuildServiceByID(ctx context.Context, id string) (domain.Instance, *gitopsinfra.Service, error) {
 	if uc == nil || uc.repo == nil || uc.factory == nil {
 		return domain.Instance{}, nil, fmt.Errorf("%w: gitops instance manager is not configured", ErrInvalidInput)
@@ -219,6 +226,7 @@ func (uc *GitOpsInstanceManager) BuildServiceByID(ctx context.Context, id string
 	return item, service, nil
 }
 
+// ListFieldCandidates 查询并返回列表数据。
 func (uc *GitOpsInstanceManager) ListFieldCandidates(ctx context.Context, appKey string) ([]domain.FieldCandidate, error) {
 	if uc == nil || uc.repo == nil || uc.factory == nil {
 		return nil, fmt.Errorf("%w: gitops instance manager is not configured", ErrInvalidInput)
@@ -282,6 +290,7 @@ func (uc *GitOpsInstanceManager) ListFieldCandidates(ctx context.Context, appKey
 	return result, nil
 }
 
+// ListValuesCandidates 查询并返回列表数据。
 func (uc *GitOpsInstanceManager) ListValuesCandidates(ctx context.Context, appKey string) ([]domain.ValuesCandidate, error) {
 	if uc == nil || uc.repo == nil || uc.factory == nil {
 		return nil, fmt.Errorf("%w: gitops instance manager is not configured", ErrInvalidInput)
@@ -343,6 +352,7 @@ func (uc *GitOpsInstanceManager) ListValuesCandidates(ctx context.Context, appKe
 	return result, nil
 }
 
+// CheckScanPath 检查业务状态并返回校验结果。
 func (uc *GitOpsInstanceManager) CheckScanPath(ctx context.Context, appKey string, gitopsType string) (string, bool, error) {
 	if uc == nil || uc.repo == nil || uc.factory == nil {
 		return "", false, fmt.Errorf("%w: gitops instance manager is not configured", ErrInvalidInput)
@@ -372,6 +382,7 @@ func (uc *GitOpsInstanceManager) CheckScanPath(ctx context.Context, appKey strin
 	return "", false, nil
 }
 
+// normalizeCreateInput 标准化输入值，保证后续逻辑使用统一格式。
 func (uc *GitOpsInstanceManager) normalizeCreateInput(ctx context.Context, input CreateGitOpsInstanceInput) (domain.Instance, error) {
 	code, err := normalizeGitOpsInstanceCode(input.InstanceCode)
 	if err != nil {
@@ -433,6 +444,7 @@ func (uc *GitOpsInstanceManager) normalizeCreateInput(ctx context.Context, input
 	}, nil
 }
 
+// normalizeUpdateInput 标准化输入值，保证后续逻辑使用统一格式。
 func (uc *GitOpsInstanceManager) normalizeUpdateInput(ctx context.Context, current domain.Instance, input UpdateGitOpsInstanceInput) (domain.Instance, error) {
 	code, err := normalizeGitOpsInstanceCode(input.InstanceCode)
 	if err != nil {
@@ -517,6 +529,7 @@ func (uc *GitOpsInstanceManager) normalizeUpdateInput(ctx context.Context, curre
 	}, nil
 }
 
+// normalizeGitOpsInstanceCode 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeGitOpsInstanceCode(value string) (string, error) {
 	value = strings.TrimSpace(strings.ToLower(value))
 	if value == "" {
@@ -528,6 +541,7 @@ func normalizeGitOpsInstanceCode(value string) (string, error) {
 	return value, nil
 }
 
+// normalizeGitOpsLocalRoot 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeGitOpsLocalRoot(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {

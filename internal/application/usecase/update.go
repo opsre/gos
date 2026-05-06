@@ -16,6 +16,7 @@ type UpdateApplication struct {
 	now         func() time.Time
 }
 
+// NewUpdateApplication 创建并返回对应组件实例。
 func NewUpdateApplication(repo domain.Repository, projectRepo projectdomain.Repository) *UpdateApplication {
 	return &UpdateApplication{
 		repo:        repo,
@@ -26,6 +27,7 @@ func NewUpdateApplication(repo domain.Repository, projectRepo projectdomain.Repo
 	}
 }
 
+// Execute 封装当前模块的业务处理逻辑。
 func (uc *UpdateApplication) Execute(ctx context.Context, id string, input domain.UpdateInput) (domain.Application, error) {
 	if uc.repo == nil || uc.projectRepo == nil {
 		return domain.Application{}, fmt.Errorf("%w: application repository is not configured", ErrInvalidInput)
@@ -70,6 +72,7 @@ func (uc *UpdateApplication) Execute(ctx context.Context, id string, input domai
 	return uc.repo.Update(ctx, id, clean, uc.now())
 }
 
+// normalizeGitOpsBranchMappings 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeGitOpsBranchMappings(values []domain.GitOpsBranchMapping) []domain.GitOpsBranchMapping {
 	if len(values) == 0 {
 		return nil
@@ -98,6 +101,7 @@ func normalizeGitOpsBranchMappings(values []domain.GitOpsBranchMapping) []domain
 	return result
 }
 
+// normalizeReleaseBranchOptions 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeReleaseBranchOptions(values []domain.ReleaseBranchOption) []domain.ReleaseBranchOption {
 	if len(values) == 0 {
 		return nil

@@ -2,6 +2,7 @@
 import {
   CheckCircleFilled,
   ClockCircleFilled,
+  CopyOutlined,
   DeleteOutlined,
   DownOutlined,
   EnvironmentOutlined,
@@ -37,6 +38,8 @@ import {
   getReleaseOrderStats,
   getReleaseOrderByID,
   getReleaseOrderPrecheck,
+  listReleaseOrderExecutions,
+  listReleaseOrderPipelineStages,
   listReleaseOrderParams,
   listReleaseOrders,
   replayReleaseOrderByID,
@@ -50,6 +53,8 @@ import type {
   ReleaseOperationType,
   ReleaseOrder,
   ReleaseOrderBusinessStatus,
+  ReleaseOrderExecution,
+  ReleaseOrderPipelineStage,
   ReleaseOrderParam,
   ReleaseOrderPrecheck,
   ReleaseOrderStatus,
@@ -70,6 +75,18 @@ interface ApprovalFlowNode {
   title: string;
   caption: string;
   tone: "done" | "active" | "pending" | "rejected";
+}
+
+type ReleaseRealtimeProgressTone = "running" | "success" | "failed" | "pending";
+
+interface ReleaseRealtimeProgress {
+  badgeText: string;
+  failureText: string;
+  loading: boolean;
+  percent: number;
+  phaseText: string;
+  source: "pipeline" | "argocd" | "status";
+  tone: ReleaseRealtimeProgressTone;
 }
 
 
@@ -126,6 +143,7 @@ const batchDeleting = ref(false);
 const dataSource = ref<ReleaseOrder[]>([]);
 const total = ref(0);
 const lastLoadedAt = ref("");
+const multiSelectMode = ref(false);
 const selectedOrderIDs = ref<string[]>([]);
 const spotlightOrderItems = ref<ReleaseOrder[]>([]);
 const overviewQueryKey = ref("");
@@ -140,6 +158,11 @@ const overviewStatusStats = ref({
 
 const overviewChartRef = ref<HTMLElement | null>(null);
 let overviewChart: ECharts | null = null;
+const realtimeProgressMap = reactive<Record<string, ReleaseRealtimeProgress>>({});
+const realtimeProgressMaxPercent = reactive<Record<string, number>>({});
+const realtimeProgressInflight = new Set<string>();
+let realtimeProgressRequestSeq = 0;
+let realtimeProgressTimer: number | undefined;
 
 const applicationsLoading = ref(false);
 const envOptionsLoading = ref(false);
@@ -156,6 +179,7 @@ const executePreviewPrecheck = ref<ReleaseOrderPrecheck | null>(null);
 const batchExecutePreviewVisible = ref(false);
 const batchExecutePreviewLoading = ref(false);
 const batchExecuteSubmitting = ref(false);
+const batchExecuteName = ref("");
 const batchExecuteStagedDispatchMode = ref<BatchExecuteStagedDispatchMode>("execute");
 const batchExecutePreviewOrderIDs = ref<string[]>([]);
 const advancedSearchExpanded = ref(false);
@@ -173,6 +197,8 @@ const batchExecutePreviewItems = ref<BatchExecutePreviewItem[]>([]);
 const filters = reactive({
   application_id: "",
   keyword: "",
+  concurrent_batch_no: "",
+  concurrent_batch_name: "",
   triggered_by: "",
   env_code: "",
   operation_type: "" as ReleaseOperationType | "",
@@ -186,6 +212,8 @@ const filters = reactive({
 const activeQuery = reactive({
   application_id: "",
   keyword: "",
+  concurrent_batch_no: "",
+  concurrent_batch_name: "",
   triggered_by: "",
   env_code: "",
   operation_type: "" as ReleaseOperationType | "",
@@ -196,36 +224,17 @@ const activeQuery = reactive({
 });
 
 const initialColumns: TableColumnsType<ReleaseOrder> = [
-  { title: "发布单号", dataIndex: "order_no", key: "order_no", width: 220 },
-  { title: "创建时间", dataIndex: "created_at", key: "created_at", width: 190 },
+  { title: "发布单号", dataIndex: "order_no", key: "order_no", width: 190 },
+  { title: "状态", key: "status", width: 100 },
+  { title: "发布名称", dataIndex: "release_name", key: "release_name", width: 100 },
+  { title: "创建时间", dataIndex: "created_at", key: "created_at", width: 145 },
   {
     title: "应用名称",
     dataIndex: "application_name",
     key: "application_name",
-    width: 180,
-  },
-  { title: "环境", dataIndex: "env_code", key: "env_code", width: 110 },
-  { title: "状态", dataIndex: "status", key: "status", width: 120 },
-  {
-    title: "触发方式",
-    dataIndex: "trigger_type",
-    key: "trigger_type",
     width: 130,
   },
-  {
-    title: "创建者",
-    dataIndex: "triggered_by",
-    key: "triggered_by",
-    width: 140,
-  },
-  { title: "开始时间", dataIndex: "started_at", key: "started_at", width: 190 },
-  {
-    title: "结束时间",
-    dataIndex: "finished_at",
-    key: "finished_at",
-    width: 190,
-  },
-  { title: "操作", key: "actions", width: 340, fixed: "right" },
+  { title: "操作", key: "actions", width: 160 },
 ];
 const { columns } = useResizableColumns(initialColumns, {
   minWidth: 100,
@@ -332,6 +341,20 @@ const activeFilterTags = computed(() => {
       value: activeQuery.keyword,
     });
   }
+  if (activeQuery.concurrent_batch_no) {
+    tags.push({
+      key: "concurrent_batch_no",
+      label: "并发单号",
+      value: activeQuery.concurrent_batch_no,
+    });
+  }
+  if (activeQuery.concurrent_batch_name) {
+    tags.push({
+      key: "concurrent_batch_name",
+      label: "并发名称",
+      value: activeQuery.concurrent_batch_name,
+    });
+  }
   if (activeQuery.triggered_by) {
     tags.push({
       key: "triggered_by",
@@ -377,6 +400,8 @@ const hasAdvancedFilter = computed(() =>
   Boolean(
     filters.application_id ||
     filters.keyword.trim() ||
+    filters.concurrent_batch_no.trim() ||
+    filters.concurrent_batch_name.trim() ||
     filters.triggered_by.trim() ||
     filters.operation_type ||
     filters.trigger_type ||
@@ -387,6 +412,8 @@ const hasActiveAdvancedFilter = computed(() =>
   Boolean(
     activeQuery.application_id ||
     activeQuery.keyword ||
+    activeQuery.concurrent_batch_no ||
+    activeQuery.concurrent_batch_name ||
     activeQuery.triggered_by ||
     activeQuery.operation_type ||
     activeQuery.trigger_type ||
@@ -399,6 +426,8 @@ const hasPendingAdvancedFilterChanges = computed(
   () =>
     filters.application_id !== activeQuery.application_id ||
     filters.keyword.trim() !== activeQuery.keyword ||
+    filters.concurrent_batch_no.trim() !== activeQuery.concurrent_batch_no ||
+    filters.concurrent_batch_name.trim() !== activeQuery.concurrent_batch_name ||
     filters.triggered_by.trim() !== activeQuery.triggered_by ||
     filters.operation_type !== activeQuery.operation_type ||
     filters.trigger_type !== activeQuery.trigger_type ||
@@ -413,6 +442,8 @@ function optionLabel(options: SelectOption[], value: string) {
 function applyActiveQueryFromFilters() {
   activeQuery.application_id = filters.application_id;
   activeQuery.keyword = filters.keyword.trim();
+  activeQuery.concurrent_batch_no = filters.concurrent_batch_no.trim();
+  activeQuery.concurrent_batch_name = filters.concurrent_batch_name.trim();
   activeQuery.triggered_by = filters.triggered_by.trim();
   activeQuery.env_code = filters.env_code.trim();
   activeQuery.operation_type = filters.operation_type;
@@ -449,6 +480,31 @@ function formatTime(value: string | null) {
     return "-";
   }
   return dayjs(value).format("YYYY-MM-DD HH:mm:ss");
+}
+
+async function copyReleaseOrderNo(orderNo: string) {
+  const text = String(orderNo || "").trim();
+  if (!text) {
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    message.success("发布单号已复制");
+  } catch {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      message.success("发布单号已复制");
+    } catch {
+      message.error("复制失败，请手动选择发布单号");
+    }
+  }
 }
 
 function rawStatusText(status: ReleaseOrderStatus) {
@@ -585,8 +641,443 @@ function businessStatusText(status: ReleaseOrderBusinessStatus) {
   }
 }
 
+function businessStatusTone(status: ReleaseOrderBusinessStatus) {
+  switch (status) {
+    case "deploy_success":
+      return "success";
+    case "deploy_failed":
+    case "rejected":
+    case "cancelled":
+      return "failed";
+    case "deploying":
+    case "building":
+    case "approving":
+      return "running";
+    default:
+      return "pending";
+  }
+}
+
+function businessStatusIcon(status: ReleaseOrderBusinessStatus) {
+  switch (businessStatusTone(status)) {
+    case "success":
+      return CheckCircleFilled;
+    case "failed":
+      return CloseCircleFilled;
+    case "running":
+      return LoadingOutlined;
+    default:
+      return ClockCircleFilled;
+  }
+}
+
 function isRunningBusinessStatus(status: ReleaseOrderBusinessStatus) {
   return status === "deploying" || status === "approving" || status === "building";
+}
+
+function clampPercent(value: number, min = 0, max = 100) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function statusPercent(record: ReleaseOrder) {
+  const status = orderBusinessStatus(record);
+  switch (status) {
+    case "deploying":
+      return 50;
+    case "building":
+      return 25;
+    case "built_waiting_deploy":
+      return 45;
+    case "approving":
+      return 10;
+    case "queued":
+      return 5;
+    case "running":
+      return 35;
+    default:
+      return 0;
+  }
+}
+
+function pendingProgressBadgeText(record: ReleaseOrder, scope?: string) {
+  const status = orderBusinessStatus(record);
+  const normalizedScope = String(scope || "").toLowerCase();
+  if (status === "built_waiting_deploy" || normalizedScope === "cd") {
+    return "待部署";
+  }
+  if (status === "pending_execution" || status === "approved") {
+    return supportsStagedDispatch(record) || normalizedScope === "ci" ? "待构建" : "待执行";
+  }
+  return businessStatusText(status);
+}
+
+function runningProgressBadgeText(record: ReleaseOrder, scope?: string) {
+  const status = orderBusinessStatus(record);
+  const normalizedScope = String(scope || "").toLowerCase();
+  if (status === "building" || normalizedScope === "ci") {
+    return "构建中";
+  }
+  if (status === "deploying" || normalizedScope === "cd") {
+    return "部署中";
+  }
+  if (status === "approving") {
+    return "审批中";
+  }
+  if (status === "queued") {
+    return "排队中";
+  }
+  return "执行中";
+}
+
+function progressBadgeText(
+  tone: ReleaseRealtimeProgressTone,
+  record?: ReleaseOrder,
+  scope?: string,
+) {
+  switch (tone) {
+    case "running":
+      return record ? runningProgressBadgeText(record, scope) : "执行中";
+    case "success":
+      return "成功";
+    case "failed":
+      return "失败";
+    default:
+      return record ? pendingProgressBadgeText(record, scope) : "待执行";
+  }
+}
+
+function progressIcon(progress: ReleaseRealtimeProgress) {
+  switch (progress.tone) {
+    case "success":
+      return CheckCircleFilled;
+    case "failed":
+      return CloseCircleFilled;
+    case "running":
+      return LoadingOutlined;
+    default:
+      return ClockCircleFilled;
+  }
+}
+
+function progressToneClass(progress: ReleaseRealtimeProgress) {
+  return `release-progress-cell--${progress.tone}`;
+}
+
+function pipelineScopeText(scope: string) {
+  switch (String(scope || "").toLowerCase()) {
+    case "ci":
+      return "CI";
+    case "cd":
+      return "CD";
+    default:
+      return String(scope || "Pipeline").toUpperCase();
+  }
+}
+
+function isArgoCDStage(stage: Pick<ReleaseOrderPipelineStage, "executor_type" | "stage_name" | "raw_status">) {
+  const text = `${stage.executor_type || ""} ${stage.stage_name || ""} ${stage.raw_status || ""}`.toLowerCase();
+  return text.includes("argo");
+}
+
+function fallbackRealtimeProgress(record: ReleaseOrder): ReleaseRealtimeProgress {
+  const status = orderBusinessStatus(record);
+  const failed = status === "deploy_failed" || status === "rejected";
+  const success = status === "deploy_success";
+  const running = isRunningBusinessStatus(status) || status === "queued";
+  const tone: ReleaseRealtimeProgressTone = failed
+    ? "failed"
+    : success
+      ? "success"
+      : running
+        ? "running"
+        : "pending";
+  const percent =
+    tone === "success"
+      ? 100
+      : tone === "failed"
+        ? 100
+        : status === "deploying"
+          ? 42
+          : status === "building"
+            ? 28
+            : status === "approving"
+              ? 18
+              : status === "queued"
+                ? 8
+                : 0;
+
+  return {
+    badgeText: progressBadgeText(tone, record),
+    failureText: record.rejected_reason || record.queued_reason || "查看失败原因",
+    loading: false,
+    percent,
+    phaseText: businessStatusText(status),
+    source: "status",
+    tone,
+  };
+}
+
+function deriveStageProgress(
+  record: ReleaseOrder,
+  stages: ReleaseOrderPipelineStage[],
+): ReleaseRealtimeProgress | null {
+  if (!stages.length) {
+    return null;
+  }
+  const sortedStages = [...stages].sort((left, right) => {
+    if (left.sort_no === right.sort_no) {
+      return left.created_at.localeCompare(right.created_at);
+    }
+    return left.sort_no - right.sort_no;
+  });
+  const total = sortedStages.length;
+  const completedCount = sortedStages.filter((item) =>
+    item.status === "success" || item.status === "skipped",
+  ).length;
+  const failedStage = sortedStages.find((item) => item.status === "failed");
+  const cancelledStage = sortedStages.find((item) => item.status === "cancelled");
+  const runningStage = sortedStages.find((item) => item.status === "running");
+  const pendingStage = sortedStages.find((item) => item.status === "pending");
+  const activeStage =
+    failedStage ||
+    cancelledStage ||
+    runningStage ||
+    pendingStage ||
+    [...sortedStages].reverse().find((item) => item.status === "success" || item.status === "skipped") ||
+    sortedStages[0];
+  const hasArgoCD = sortedStages.some(isArgoCDStage);
+  const activeIsArgoCD = activeStage ? isArgoCDStage(activeStage) : hasArgoCD;
+  const tone: ReleaseRealtimeProgressTone = failedStage
+    ? "failed"
+    : cancelledStage
+      ? "pending"
+      : completedCount === total
+        ? "success"
+        : runningStage
+          ? "running"
+          : "pending";
+  let percent =
+    tone === "success"
+      ? 100
+      : tone === "failed"
+        ? clampPercent((completedCount / total) * 100, 8, 100)
+        : tone === "running"
+          ? clampPercent(((completedCount + 0.5) / total) * 100, 8, 98)
+          : clampPercent((completedCount / total) * 100, 0, 98);
+  if (tone === "running" || tone === "pending") {
+    const prev = realtimeProgressMaxPercent[record.id] || 0;
+    percent = Math.max(percent, prev);
+    realtimeProgressMaxPercent[record.id] = percent;
+  }
+  const source = activeIsArgoCD ? "argocd" : "pipeline";
+
+  return {
+    badgeText: progressBadgeText(tone, record, activeStage?.pipeline_scope),
+    failureText: failedStage?.raw_status || record.rejected_reason || "查看失败原因",
+    loading: false,
+    percent,
+    phaseText: "",
+    source,
+    tone,
+  };
+}
+
+function deriveExecutionProgress(
+  record: ReleaseOrder,
+  executions: ReleaseOrderExecution[],
+): ReleaseRealtimeProgress | null {
+  if (!executions.length) {
+    return null;
+  }
+  const total = executions.length;
+  const completedCount = executions.filter((item) =>
+    item.status === "success" || item.status === "skipped",
+  ).length;
+  const failedExecution = executions.find((item) => item.status === "failed");
+  const runningExecution = executions.find((item) => item.status === "running");
+  const activeExecution =
+    failedExecution ||
+    runningExecution ||
+    executions.find((item) => item.status === "pending") ||
+    [...executions].reverse().find((item) => item.status === "success" || item.status === "skipped") ||
+    executions[0];
+  const activeProvider = String(activeExecution?.provider || "").toLowerCase();
+  const tone: ReleaseRealtimeProgressTone = failedExecution
+    ? "failed"
+    : completedCount === total
+      ? "success"
+      : runningExecution
+        ? "running"
+        : "pending";
+  let percent =
+    tone === "success"
+      ? 100
+      : tone === "failed"
+        ? clampPercent((completedCount / total) * 100, 8, 100)
+        : tone === "running"
+          ? clampPercent(((completedCount + 0.5) / total) * 100, 8, 98)
+          : clampPercent((completedCount / total) * 100, 0, 98);
+  if (tone === "running" || tone === "pending") {
+    const prev = realtimeProgressMaxPercent[record.id] || 0;
+    percent = Math.max(percent, prev);
+    realtimeProgressMaxPercent[record.id] = percent;
+  }
+  const source = activeProvider.includes("argo") ? "argocd" : "pipeline";
+  const phasePrefix = source === "argocd" ? "ArgoCD" : pipelineScopeText(activeExecution?.pipeline_scope || "");
+  const phaseName = activeExecution?.binding_name || businessStatusText(orderBusinessStatus(record));
+
+  return {
+    badgeText: progressBadgeText(tone, record, activeExecution?.pipeline_scope),
+    failureText: record.rejected_reason || "查看失败原因",
+    loading: false,
+    percent,
+    phaseText: `${phasePrefix} · ${phaseName}`,
+    source,
+    tone,
+  };
+}
+
+async function fetchRealtimeProgress(record: ReleaseOrder): Promise<ReleaseRealtimeProgress> {
+  const [stageResult, executionResult] = await Promise.allSettled([
+    listReleaseOrderPipelineStages(record.id),
+    listReleaseOrderExecutions(record.id),
+  ]);
+  const stageProgress =
+    stageResult.status === "fulfilled"
+      ? deriveStageProgress(record, stageResult.value.data || [])
+      : null;
+  if (stageProgress) {
+    return stageProgress;
+  }
+  const executionProgress =
+    executionResult.status === "fulfilled"
+      ? deriveExecutionProgress(record, executionResult.value.data || [])
+      : null;
+  return executionProgress || fallbackRealtimeProgress(record);
+}
+
+async function loadVisibleOrderRealtimeProgress(
+  records: ReleaseOrder[],
+  options?: { silent?: boolean },
+) {
+  const requestSeq = ++realtimeProgressRequestSeq;
+  const currentIDs = new Set(records.map((item) => item.id));
+
+  Object.keys(realtimeProgressMap).forEach((id) => {
+    if (!currentIDs.has(id)) {
+      delete realtimeProgressMap[id];
+      delete realtimeProgressMaxPercent[id];
+      realtimeProgressInflight.delete(id);
+    }
+  });
+
+  const targets = records.filter((record) => {
+    if (realtimeProgressInflight.has(record.id)) {
+      return false;
+    }
+    const existing = realtimeProgressMap[record.id];
+    const status = orderBusinessStatus(record);
+    const isActive = isRunningBusinessStatus(status) || status === "queued";
+    const isStale =
+      !existing ||
+      existing.loading ||
+      existing.source === "status" ||
+      (existing.tone === "running" && !isActive);
+    return isActive || isStale;
+  });
+
+  targets.forEach((record) => {
+    realtimeProgressInflight.add(record.id);
+    if (!realtimeProgressMap[record.id]) {
+      const fb = fallbackRealtimeProgress(record);
+      realtimeProgressMap[record.id] = { ...fb, loading: true };
+      if (fb.percent > 0) {
+        realtimeProgressMaxPercent[record.id] = fb.percent;
+      }
+    }
+  });
+
+  if (!targets.length) {
+    return;
+  }
+
+  const results = await Promise.allSettled(
+    targets.map(async (record) => ({
+      id: record.id,
+      progress: await fetchRealtimeProgress(record),
+    })),
+  );
+  targets.forEach((record) => {
+    realtimeProgressInflight.delete(record.id);
+  });
+  if (requestSeq !== realtimeProgressRequestSeq) {
+    return;
+  }
+  const visibleIDs = currentIDs;
+  results.forEach((result) => {
+    if (result.status !== "fulfilled" || !visibleIDs.has(result.value.id)) {
+      return;
+    }
+    realtimeProgressMap[result.value.id] = result.value.progress;
+  });
+
+  if (!options?.silent) {
+    lastLoadedAt.value = dayjs().format("YYYY-MM-DD HH:mm:ss");
+  }
+}
+
+function realtimeProgress(record: ReleaseOrder) {
+  return realtimeProgressMap[record.id] || fallbackRealtimeProgress(record);
+}
+
+function releaseOrderEffectRowClassName(record: ReleaseOrder) {
+  const status = orderBusinessStatus(record);
+  const tone = isRunningBusinessStatus(status) ? "running"
+    : status === "deploy_success" ? "success"
+    : status === "deploy_failed" || status === "rejected" ? "failed"
+    : "pending";
+  const classNames = [
+    "release-order-effect-row",
+    `release-order-effect-row--${tone}`,
+  ];
+  if (multiSelectMode.value) {
+    classNames.push("release-order-effect-row--selection-enabled");
+  }
+  if (isOrderSelected(record)) {
+    classNames.push("release-order-effect-row--selected");
+  }
+  if (!canSelectOrder(record)) {
+    classNames.push("release-order-effect-row--selection-disabled");
+  }
+  return classNames.join(" ");
+}
+
+function shouldPollRealtimeProgress() {
+  return dataSource.value.some((record) => {
+    const progress = realtimeProgress(record);
+    const status = orderBusinessStatus(record);
+    return (
+      progress.tone === "running" ||
+      ["approving", "building", "queued", "deploying"].includes(status)
+    );
+  });
+}
+
+function startListRefreshTimer() {
+  stopRealtimeProgressTimer();
+  realtimeProgressTimer = window.setInterval(() => {
+    void loadReleaseOrders({ silent: true, force: true });
+  }, 10000);
+}
+
+function stopRealtimeProgressTimer() {
+  if (realtimeProgressTimer !== undefined) {
+    window.clearInterval(realtimeProgressTimer);
+    realtimeProgressTimer = undefined;
+  }
 }
 
 function triggerTypeText(
@@ -890,6 +1381,36 @@ function resolveDispatchAction(record: ReleaseOrder): ReleaseOrderDispatchAction
   return "execute";
 }
 
+function rowPrimaryAction(record: ReleaseOrder): ReleaseOrderDispatchAction | "" {
+  if (canBuild(record)) {
+    return "build";
+  }
+  if (canDeploy(record)) {
+    return "deploy";
+  }
+  if (canExecute(record)) {
+    return "execute";
+  }
+  return "";
+}
+
+function rowPrimaryActionText(record: ReleaseOrder) {
+  const action = rowPrimaryAction(record);
+  return action ? dispatchActionText(action) : "";
+}
+
+function handleRowPrimaryAction(record: ReleaseOrder) {
+  const action = rowPrimaryAction(record);
+  if (!action) {
+    return;
+  }
+  if (action === "execute") {
+    void openExecutePreviewModal(record);
+    return;
+  }
+  void openExecutePreviewModal(record, action);
+}
+
 function dispatchActionText(action: ReleaseOrderDispatchAction) {
   switch (action) {
     case "build":
@@ -963,6 +1484,17 @@ function replayFailureText(record: ReleaseOrder) {
   return isCiOnlyRecovery(record) ? "CI 标准重放创建失败" : "标准重放创建失败";
 }
 
+function hasMoreRowActions(record: ReleaseOrder) {
+  return (
+    canEdit(record) ||
+    canConfirmLive(record) ||
+    canTriggerArgoReplay(record) ||
+    canTriggerStandardReplay(record) ||
+    canCancel(record) ||
+    authStore.isAdmin
+  );
+}
+
 const selectedExecutableOrders = computed(() =>
   dataSource.value.filter(
     (item) => selectedOrderIDs.value.includes(item.id) && canExecute(item),
@@ -1014,6 +1546,7 @@ const batchDispatchModeLabel = computed(() =>
     ? "仅构建可分段单"
     : "直接进入部署流程",
 );
+const normalizedBatchExecuteName = computed(() => batchExecuteName.value.trim());
 
 const canShowBatchExecuteBar = computed(
   () =>
@@ -1029,21 +1562,46 @@ const canBatchDelete = computed(
     !batchDeleting.value,
 );
 
-const tableRowSelection = computed(() => rowSelection.value);
+const selectedOrderIDSet = computed(() => new Set(selectedOrderIDs.value));
 
-const rowSelection = computed(() => ({
-  type: "checkbox" as const,
-  fixed: true as const,
-  columnWidth: 52,
-  selectedRowKeys: selectedOrderIDs.value,
-  preserveSelectedRowKeys: false,
-  getCheckboxProps: (record: ReleaseOrder) => ({
-    disabled: !authStore.isAdmin && !canExecute(record),
-  }),
-  onChange: (keys: Array<string | number>) => {
-    selectedOrderIDs.value = keys.map((item) => String(item));
-  },
-}));
+function canSelectOrder(record: ReleaseOrder) {
+  return authStore.isAdmin || canExecute(record);
+}
+
+function isOrderSelected(record: ReleaseOrder) {
+  return selectedOrderIDSet.value.has(record.id);
+}
+
+function selectionButtonTitle(record: ReleaseOrder) {
+  if (!canSelectOrder(record)) {
+    return "当前发布单不可选择";
+  }
+  return isOrderSelected(record) ? "取消选择" : "选择发布单";
+}
+
+function toggleOrderSelection(record: ReleaseOrder) {
+  if (!multiSelectMode.value || !canSelectOrder(record)) {
+    return;
+  }
+  const nextSelectedIDs = new Set(selectedOrderIDs.value);
+  if (nextSelectedIDs.has(record.id)) {
+    nextSelectedIDs.delete(record.id);
+  } else {
+    nextSelectedIDs.add(record.id);
+  }
+  selectedOrderIDs.value = Array.from(nextSelectedIDs);
+}
+
+function toggleMultiSelectMode() {
+  multiSelectMode.value = !multiSelectMode.value;
+  if (!multiSelectMode.value) {
+    selectedOrderIDs.value = [];
+  }
+}
+
+function clearSelectedOrders() {
+  selectedOrderIDs.value = [];
+}
 
 async function loadApplicationOptions() {
   if (!canLoadApplications.value) {
@@ -1105,7 +1663,6 @@ async function loadOverviewStats(options?: { force?: boolean; silent?: boolean }
     overviewStatusStats.value = stats;
     overviewQueryKey.value = nextKey;
     renderOverviewChart();
-    await loadSpotlightOrders({ silent: options?.silent });
   } catch (error) {
     if (!options?.silent) {
       message.error(extractHTTPErrorMessage(error, "发布统计加载失败"));
@@ -1118,6 +1675,8 @@ async function loadSpotlightOrders(options?: { silent?: boolean }) {
     const response = await listReleaseOrders({
       application_id: activeQuery.application_id || undefined,
       keyword: activeQuery.keyword || undefined,
+      concurrent_batch_no: activeQuery.concurrent_batch_no || undefined,
+      concurrent_batch_name: activeQuery.concurrent_batch_name || undefined,
       triggered_by: activeQuery.triggered_by || undefined,
       env_code: activeQuery.env_code || undefined,
       operation_type: activeQuery.operation_type || undefined,
@@ -1278,6 +1837,7 @@ async function loadReleaseOrders(options?: { silent?: boolean; force?: boolean }
       visibleIDs.has(item),
     );
     lastLoadedAt.value = dayjs().format("YYYY-MM-DD HH:mm:ss");
+    void loadSpotlightOrders({ silent: true });
   } catch (error) {
     if (!silent) {
       message.error(extractHTTPErrorMessage(error, "发布单列表加载失败"));
@@ -1305,6 +1865,10 @@ function clearFilterTag(key: string) {
     filters.application_id = "";
   } else if (key === "keyword") {
     filters.keyword = "";
+  } else if (key === "concurrent_batch_no") {
+    filters.concurrent_batch_no = "";
+  } else if (key === "concurrent_batch_name") {
+    filters.concurrent_batch_name = "";
   } else if (key === "triggered_by") {
     filters.triggered_by = "";
   } else if (key === "env_code") {
@@ -1376,6 +1940,8 @@ function handleSearch() {
 function handleReset() {
   filters.application_id = "";
   filters.keyword = "";
+  filters.concurrent_batch_no = "";
+  filters.concurrent_batch_name = "";
   filters.triggered_by = "";
   filters.env_code = "";
   filters.operation_type = "";
@@ -1653,6 +2219,7 @@ async function handleReplay(record: ReleaseOrder) {
 async function handleBatchExecute(
   mode: BatchExecuteStagedDispatchMode = "execute",
   orderIDs: string[] = [],
+  batchName = normalizedBatchExecuteName.value,
 ) {
   const targetOrderIDs = (
     orderIDs.length > 0
@@ -1665,10 +2232,16 @@ async function handleBatchExecute(
     message.warning("请至少选择两张待执行发布单");
     return;
   }
+  const normalizedBatchName = String(batchName || "").trim();
+  if (!normalizedBatchName) {
+    message.warning("请填写并发名称");
+    return;
+  }
   batchExecuting.value = true;
   try {
     const payload: BatchExecuteReleaseOrdersPayload = {
       order_ids: targetOrderIDs,
+      batch_name: normalizedBatchName,
       staged_dispatch_mode: mode,
     };
     const response = await batchExecuteReleaseOrders(payload);
@@ -1676,10 +2249,10 @@ async function handleBatchExecute(
     const successCount =
       response.data.orders.length - response.data.dispatch_errors.length;
     if (response.data.dispatch_errors.length === 0) {
-      message.success(`已发起并发执行，批次号：${response.data.batch_no}`);
+      message.success(`已发起并发执行：${response.data.batch_name || normalizedBatchName}`);
     } else {
       message.warning(
-        `并发执行批次 ${response.data.batch_no} 已创建，成功调度 ${successCount} 张，${response.data.dispatch_errors.length} 张需关注`,
+        `并发执行批次 ${response.data.batch_name || response.data.batch_no} 已创建，成功调度 ${successCount} 张，${response.data.dispatch_errors.length} 张需关注`,
       );
     }
     await loadOverviewStats({ force: true, silent: true });
@@ -1764,6 +2337,7 @@ function closeBatchExecutePreviewModal() {
   batchExecutePreviewVisible.value = false;
   batchExecutePreviewItems.value = [];
   batchExecutePreviewOrderIDs.value = [];
+  batchExecuteName.value = "";
   batchExecuteStagedDispatchMode.value = "execute";
 }
 
@@ -1826,6 +2400,7 @@ async function openBatchExecutePreviewModal() {
   batchExecutePreviewOrderIDs.value = [...selectedExecutableOrders.value].map(
     (item) => item.id,
   );
+  batchExecuteName.value = "";
   batchExecuteStagedDispatchMode.value = "execute";
   batchExecutePreviewVisible.value = true;
   await loadBatchExecutePreviewItems();
@@ -1839,11 +2414,16 @@ async function confirmBatchExecute() {
     message.warning("请至少选择两张待执行发布单");
     return;
   }
+  if (!normalizedBatchExecuteName.value) {
+    message.warning("请填写并发名称");
+    return;
+  }
   batchExecuteSubmitting.value = true;
   try {
     await handleBatchExecute(
       batchExecuteStagedDispatchMode.value,
       previewOrderIDs,
+      normalizedBatchExecuteName.value,
     );
     closeBatchExecutePreviewModal();
   } finally {
@@ -1928,11 +2508,12 @@ onMounted(async () => {
   applyActiveQueryFromFilters();
   await loadOverviewStats({ force: true, silent: true });
   await loadReleaseOrders();
-
+  startListRefreshTimer();
   window.addEventListener("resize", handleOverviewChartResize);
 });
 
 onBeforeUnmount(() => {
+  stopRealtimeProgressTimer();
   window.removeEventListener("resize", handleOverviewChartResize);
   disposeOverviewChart();
 });
@@ -1947,18 +2528,19 @@ function handleOverviewChartResize() {
     <div class="page-header-card page-header">
       <div class="page-header-copy">
         <h2 class="page-title">发布</h2>
-        <div v-if="selectedOrderIDs.length > 0" class="page-header-selection">
-          已勾选 <strong>{{ selectedOrderIDs.length }}</strong> 条
-          <template v-if="selectedExecutableOrders.length > 0">
-            ，{{ selectedExecutableOrders.length }} 条可执行
-          </template>
-        </div>
       </div>
       <a-space :size="10">
-        <template v-if="selectedOrderIDs.length > 0">
+        <a-button
+          class="release-toolbar-action-btn"
+          :class="{ 'release-toolbar-action-btn--primary': multiSelectMode }"
+          @click="toggleMultiSelectMode"
+        >
+          {{ multiSelectMode ? "退出多选" : "多选" }}
+        </a-button>
+        <template v-if="multiSelectMode && selectedOrderIDs.length > 0">
           <a-button
             class="release-toolbar-action-btn release-toolbar-action-btn--ghost"
-            @click="selectedOrderIDs = []"
+            @click="clearSelectedOrders"
           >
             清空勾选
           </a-button>
@@ -2174,6 +2756,24 @@ function handleOverviewChartResize() {
               @keydown.enter.prevent="handleSearch"
             />
           </a-form-item>
+          <a-form-item label="并发单号" class="filter-grid-item">
+            <a-input
+              v-model:value="filters.concurrent_batch_no"
+              class="filter-select"
+              allow-clear
+              placeholder="按并发单号模糊匹配"
+              @keydown.enter.prevent="handleSearch"
+            />
+          </a-form-item>
+          <a-form-item label="并发名称" class="filter-grid-item">
+            <a-input
+              v-model:value="filters.concurrent_batch_name"
+              class="filter-select"
+              allow-clear
+              placeholder="按并发名称模糊匹配"
+              @keydown.enter.prevent="handleSearch"
+            />
+          </a-form-item>
           <a-form-item
             label="应用"
             class="filter-grid-item filter-grid-item--app"
@@ -2248,13 +2848,14 @@ function handleOverviewChartResize() {
     <a-card class="table-card" :bordered="true">
       <a-table
         class="release-order-table"
+        :class="{ 'release-order-table--selecting': multiSelectMode }"
         row-key="id"
-        :row-selection="tableRowSelection"
+        :row-class-name="releaseOrderEffectRowClassName"
         :columns="columns"
         :data-source="dataSource"
         :loading="loading"
         :pagination="false"
-        :scroll="{ x: 1650 }"
+        :scroll="{ x: 960 }"
       >
         <template #expandedRowRender="{ record }">
           <div class="approval-flow-card release-list-expand-card">
@@ -2292,53 +2893,87 @@ function handleOverviewChartResize() {
         </template>
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'status'">
-            <a-tag :color="businessStatusColor(orderBusinessStatus(record))" class="status-tag">
-              <LoadingOutlined v-if="isRunningBusinessStatus(orderBusinessStatus(record))" spin />
-              <span>{{ businessStatusText(orderBusinessStatus(record)) }}</span>
-            </a-tag>
+            <div class="status-cell">
+              <a-tag :color="businessStatusColor(orderBusinessStatus(record))" class="status-tag">
+                <LoadingOutlined v-if="isRunningBusinessStatus(orderBusinessStatus(record))" spin />
+                <span>{{ businessStatusText(orderBusinessStatus(record)) }}</span>
+              </a-tag>
+              <div
+                v-if="isRunningBusinessStatus(orderBusinessStatus(record)) || orderBusinessStatus(record) === 'queued' || orderBusinessStatus(record) === 'running'"
+                class="status-progress-track-wrap"
+              >
+                <div class="status-progress-track">
+                  <span :style="{ width: `${statusPercent(record)}%` }"></span>
+                </div>
+                <span class="status-progress-percent">{{ statusPercent(record) }}%</span>
+              </div>
+            </div>
           </template>
           <template v-else-if="column.key === 'started_at'">
             {{ formatTime(record.started_at) }}
           </template>
           <template v-else-if="column.key === 'order_no'">
-            <a-space :size="6" wrap>
-              <span>{{ record.order_no }}</span>
-              <a-tag
-                v-if="record.live_state_status === 'pending_confirm' && record.live_state_can_confirm"
-                class="dashboard-chip dashboard-chip-warning"
+            <div class="release-order-no-cell" :class="{ 'release-order-no-cell--selecting': multiSelectMode }">
+              <button
+                v-if="multiSelectMode"
+                type="button"
+                class="release-row-select-btn"
+                :class="{ 'release-row-select-btn--selected': isOrderSelected(record) }"
+                :disabled="!canSelectOrder(record)"
+                :aria-pressed="isOrderSelected(record)"
+                :title="selectionButtonTitle(record)"
+                @click.stop="toggleOrderSelection(record)"
               >
-                待确认生效
-              </a-tag>
-              <a-tag
-                v-else-if="record.live_state_is_current"
-                class="dashboard-chip dashboard-chip-running"
+                <CheckCircleFilled v-if="isOrderSelected(record)" />
+                <span v-else class="release-row-select-btn-dot"></span>
+                <span class="release-row-select-btn-text">
+                  {{ isOrderSelected(record) ? "已选" : "选择" }}
+                </span>
+              </button>
+              <button
+                class="release-order-no-trigger"
+                type="button"
+                @click.stop="copyReleaseOrderNo(record.order_no)"
               >
-                当前生效
-              </a-tag>
-              <a-tag
-                v-if="record.is_concurrent"
-                class="dashboard-chip dashboard-chip-running"
-                >并发执行</a-tag
-              >
-              <a-tag
-                v-if="record.operation_type === 'rollback'"
-                class="dashboard-chip dashboard-chip-danger"
-              >
-                {{ operationTypeText(record.operation_type) }}
-              </a-tag>
-              <a-tag
-                v-else-if="record.operation_type === 'replay'"
-                class="dashboard-chip dashboard-chip-warning"
-              >
-                {{ operationTypeText(record.operation_type) }}
-              </a-tag>
-              <a-tag
-                v-if="record.concurrent_batch_no"
-                class="dashboard-chip dashboard-chip-neutral"
-              >
-                {{ record.concurrent_batch_no }}
-              </a-tag>
-            </a-space>
+                <span class="release-order-no-text">
+                  <span class="release-order-no-text-value">{{ record.order_no }}</span>
+                </span>
+              </button>
+              <div class="release-order-no-tags">
+                <a-tag
+                  v-if="record.live_state_status === 'pending_confirm' && record.live_state_can_confirm"
+                  class="dashboard-chip dashboard-chip-warning"
+                >
+                  待确认生效
+                </a-tag>
+                <a-tag
+                  v-else-if="record.live_state_is_current"
+                  class="dashboard-chip dashboard-chip-running"
+                >
+                  当前生效
+                </a-tag>
+                <a-tag
+                  v-if="record.is_concurrent"
+                  class="dashboard-chip dashboard-chip-running"
+                  >并发执行</a-tag
+                >
+                <a-tag
+                  v-if="record.concurrent_batch_no"
+                  class="dashboard-chip dashboard-chip-neutral"
+                >
+                  {{ record.concurrent_batch_name || record.concurrent_batch_no }}
+                </a-tag>
+              </div>
+            </div>
+          </template>
+          <template v-else-if="column.key === 'release_name'">
+            <span class="release-name-text">{{ record.release_name || "-" }}</span>
+          </template>
+          <template v-else-if="column.key === 'application_name'">
+            <div class="release-app-cell">
+              <span>{{ record.application_name || "-" }}</span>
+              <small v-if="record.env_code">{{ record.env_code }}</small>
+            </div>
           </template>
           <template v-else-if="column.key === 'finished_at'">
             {{ formatTime(record.finished_at) }}
@@ -2350,134 +2985,102 @@ function handleOverviewChartResize() {
             {{ triggerTypeText(record.trigger_type) }}
           </template>
           <template v-else-if="column.key === 'actions'">
-            <a-space>
+            <a-space class="release-row-actions">
               <a-button type="link" size="small" @click="toDetail(record.id)"
                 >详情</a-button
               >
               <a-button
+                v-if="rowPrimaryAction(record)"
                 type="link"
                 size="small"
-                :disabled="!canEdit(record)"
-                @click="handleEdit(record)"
+                class="release-row-action-primary"
+                :loading="executingID === record.id && executePreviewAction === rowPrimaryAction(record)"
+                @click="handleRowPrimaryAction(record)"
               >
-                编辑
+                {{ rowPrimaryActionText(record) }}
               </a-button>
-              <a-button
-                v-if="canBuild(record)"
-                type="link"
-                size="small"
-                :disabled="!canBuild(record)"
-                :loading="executingID === record.id && executePreviewAction === 'build'"
-                @click="openExecutePreviewModal(record, 'build')"
+              <a-dropdown
+                v-if="hasMoreRowActions(record)"
+                overlay-class-name="release-row-more-menu"
+                :trigger="['click']"
               >
-                仅构建
-              </a-button>
-              <a-button
-                v-else-if="canDeploy(record)"
-                type="link"
-                size="small"
-                :disabled="!canDeploy(record)"
-                :loading="executingID === record.id && executePreviewAction === 'deploy'"
-                @click="openExecutePreviewModal(record, 'deploy')"
-              >
-                发布
-              </a-button>
-              <a-button
-                v-else-if="canExecute(record)"
-                type="link"
-                size="small"
-                :disabled="!canExecute(record)"
-                :loading="executingID === record.id && executePreviewAction === 'execute'"
-                @click="openExecutePreviewModal(record)"
-              >
-                发布
-              </a-button>
-              <a-button
-                v-if="canConfirmLive(record)"
-                type="link"
-                size="small"
-                :loading="confirmingLiveID === record.id"
-                @click="handleConfirmLive(record)"
-              >
-                确认生效
-              </a-button>
-              <a-popconfirm
-                v-if="canTriggerArgoReplay(record)"
-                :disabled="!canRollback(record)"
-                title="确认基于当前发布单创建一键重发单吗？"
-                ok-text="确认重发"
-                cancel-text="取消"
-                @confirm="handleRollback(record)"
-              >
-                <template #icon>
-                  <ExclamationCircleOutlined class="danger-icon" />
+                <a-button type="link" size="small" class="release-row-action-more" @click.prevent>
+                  更多
+                  <DownOutlined />
+                </a-button>
+                <template #overlay>
+                  <a-menu>
+                    <a-menu-item v-if="canEdit(record)" @click="handleEdit(record)">
+                      编辑
+                    </a-menu-item>
+                    <a-menu-item v-if="canConfirmLive(record)" @click="handleConfirmLive(record)">
+                      确认生效
+                    </a-menu-item>
+                    <a-menu-item v-if="canTriggerArgoReplay(record)" :disabled="!canRollback(record)">
+                      <a-popconfirm
+                        :disabled="!canRollback(record)"
+                        title="确认基于当前发布单创建一键重发单吗？"
+                        ok-text="确认重发"
+                        cancel-text="取消"
+                        @confirm="handleRollback(record)"
+                      >
+                        <template #icon>
+                          <ExclamationCircleOutlined class="danger-icon" />
+                        </template>
+                        <span class="release-row-menu-text">
+                          {{ recoveringID === record.id ? "重发中" : "一键重发" }}
+                        </span>
+                      </a-popconfirm>
+                    </a-menu-item>
+                    <a-menu-item v-else-if="canTriggerStandardReplay(record)" :disabled="!canReplay(record)">
+                      <a-popconfirm
+                        :disabled="!canReplay(record)"
+                        :title="replayConfirmTitle(record)"
+                        :ok-text="isCiOnlyRecovery(record) ? '确认重发' : '确认重放'"
+                        cancel-text="取消"
+                        @confirm="handleReplay(record)"
+                      >
+                        <template #icon>
+                          <ExclamationCircleOutlined />
+                        </template>
+                        <span class="release-row-menu-text">
+                          {{ recoveringID === record.id ? "重发中" : replayActionText(record) }}
+                        </span>
+                      </a-popconfirm>
+                    </a-menu-item>
+                    <a-menu-item v-if="canCancel(record)">
+                      <a-popconfirm
+                        title="确认取消当前发布单吗？"
+                        ok-text="确认"
+                        cancel-text="取消"
+                        @confirm="handleCancel(record)"
+                      >
+                        <template #icon>
+                          <ExclamationCircleOutlined class="danger-icon" />
+                        </template>
+                        <span class="release-row-menu-text release-row-menu-text-danger">
+                          {{ cancellingID === record.id ? "取消中" : "取消" }}
+                        </span>
+                      </a-popconfirm>
+                    </a-menu-item>
+                    <a-menu-item v-if="authStore.isAdmin">
+                      <a-popconfirm
+                        title="确认删除该发布记录吗？删除后不可恢复"
+                        ok-text="确认删除"
+                        cancel-text="取消"
+                        @confirm="handleDelete(record)"
+                      >
+                        <template #icon>
+                          <ExclamationCircleOutlined class="danger-icon" />
+                        </template>
+                        <span class="release-row-menu-text release-row-menu-text-danger">
+                          {{ deletingID === record.id ? "删除中" : "删除" }}
+                        </span>
+                      </a-popconfirm>
+                    </a-menu-item>
+                  </a-menu>
                 </template>
-                <a-button
-                  type="link"
-                  size="small"
-                  class="rollback-trigger-link"
-                  :disabled="!canRollback(record)"
-                  :loading="recoveringID === record.id"
-                  >一键重发</a-button
-                >
-              </a-popconfirm>
-              <a-popconfirm
-                v-else-if="canTriggerStandardReplay(record)"
-                :disabled="!canReplay(record)"
-                :title="replayConfirmTitle(record)"
-                :ok-text="isCiOnlyRecovery(record) ? '确认重发' : '确认重放'"
-                cancel-text="取消"
-                @confirm="handleReplay(record)"
-              >
-                <template #icon>
-                  <ExclamationCircleOutlined />
-                </template>
-                <a-button
-                  type="link"
-                  size="small"
-                  class="rollback-trigger-link"
-                  :disabled="!canReplay(record)"
-                  :loading="recoveringID === record.id"
-                  >{{ replayActionText(record) }}</a-button
-                >
-              </a-popconfirm>
-              <a-popconfirm
-                v-if="canCancel(record)"
-                title="确认取消当前发布单吗？"
-                ok-text="确认"
-                cancel-text="取消"
-                @confirm="handleCancel(record)"
-              >
-                <template #icon>
-                  <ExclamationCircleOutlined class="danger-icon" />
-                </template>
-                <a-button
-                  type="link"
-                  size="small"
-                  danger
-                  :loading="cancellingID === record.id"
-                  >取消</a-button
-                >
-              </a-popconfirm>
-              <a-button v-else type="link" size="small" disabled>取消</a-button>
-              <a-popconfirm
-                v-if="authStore.isAdmin"
-                title="确认删除该发布记录吗？删除后不可恢复"
-                ok-text="确认删除"
-                cancel-text="取消"
-                @confirm="handleDelete(record)"
-              >
-                <template #icon>
-                  <ExclamationCircleOutlined class="danger-icon" />
-                </template>
-                <a-button
-                  type="link"
-                  size="small"
-                  danger
-                  :loading="deletingID === record.id"
-                  >删除</a-button
-                >
-              </a-popconfirm>
+              </a-dropdown>
             </a-space>
           </template>
         </template>
@@ -2506,7 +3109,9 @@ function handleOverviewChartResize() {
       :confirm-loading="batchExecuteSubmitting"
       :ok-button-props="{
         disabled:
-          batchExecutePreviewItems.length < 2 || batchExecutePreviewLoading,
+          batchExecutePreviewItems.length < 2 ||
+          batchExecutePreviewLoading ||
+          !normalizedBatchExecuteName,
       }"
       @ok="confirmBatchExecute"
       @cancel="closeBatchExecutePreviewModal"
@@ -2538,6 +3143,22 @@ function handleOverviewChartResize() {
         :paragraph="{ rows: 8 }"
       />
       <template v-else>
+        <a-form layout="vertical" class="batch-preview-form">
+          <a-form-item
+            label="并发名称"
+            required
+            :validate-status="normalizedBatchExecuteName ? '' : 'error'"
+            :help="normalizedBatchExecuteName ? '' : '并发名称必填'"
+          >
+            <a-input
+              v-model:value="batchExecuteName"
+              allow-clear
+              :maxlength="128"
+              placeholder="请输入本次并发发布名称"
+              @keydown.enter.prevent="confirmBatchExecute"
+            />
+          </a-form-item>
+        </a-form>
         <div class="batch-preview-overview">
           <div class="batch-preview-metric">
             <div class="batch-preview-metric-label">待执行单</div>
@@ -3020,18 +3641,6 @@ function handleOverviewChartResize() {
   cursor: not-allowed;
 }
 
-.page-header-selection {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  line-height: 1.4;
-}
-
-.page-header-selection strong {
-  color: var(--color-text-main);
-  font-weight: 600;
-}
-
 .release-overview-card,
 .filter-card,
 .table-card {
@@ -3493,6 +4102,533 @@ function handleOverviewChartResize() {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.release-order-table :deep(.ant-table-container) {
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+}
+
+.release-order-table :deep(.ant-table) {
+  border-radius: 14px;
+  background: transparent;
+}
+
+.release-order-table :deep(.ant-table-thead > tr > th),
+.release-order-table :deep(.ant-table-thead .ant-table-cell),
+.release-order-table :deep(.ant-table-thead .ant-table-cell-fix-left),
+.release-order-table :deep(.ant-table-thead .ant-table-cell-fix-right) {
+  border-bottom: 1px solid rgba(59, 130, 246, 0.24);
+  background: var(--color-dashboard-900) !important;
+  color: var(--color-dashboard-text) !important;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.release-order-table :deep(.ant-table-thead > tr > th::before) {
+  display: none;
+}
+
+.release-order-table :deep(.ant-table-tbody > tr.release-order-effect-row > td) {
+  height: 88px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.7);
+  overflow: hidden;
+}
+
+.release-order-table--selecting :deep(.ant-table-tbody > tr.release-order-effect-row > td) {
+  position: relative;
+  background-clip: padding-box;
+}
+
+.release-order-table--selecting :deep(.ant-table-tbody > tr.release-order-effect-row:hover > td),
+.release-order-table--selecting :deep(.ant-table-tbody > tr.release-order-effect-row > td.ant-table-cell-row-hover) {
+  background-color: rgba(255, 255, 255, 0.28) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    inset 0 -1px 0 rgba(226, 232, 240, 0.38),
+    0 18px 40px rgba(15, 23, 42, 0.08);
+}
+
+.release-order-table--selecting :deep(.ant-table-tbody > tr.release-order-effect-row:hover > td::after),
+.release-order-table--selecting :deep(.ant-table-tbody > tr.release-order-effect-row > td.ant-table-cell-row-hover::after) {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  pointer-events: none;
+}
+
+.release-order-table--selecting :deep(.ant-table-tbody > tr.release-order-effect-row--selected > td) {
+  background-color: rgba(239, 246, 255, 0.38) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(191, 219, 254, 0.52),
+    0 18px 40px rgba(59, 130, 246, 0.1);
+}
+
+.release-order-table--selecting :deep(.ant-table-tbody > tr.release-order-effect-row--selected > td::after) {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: rgba(239, 246, 255, 0.62);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+
+.release-progress-cell-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.release-row-select-btn {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  left: -14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 72px;
+  height: 36px;
+  padding: 0 11px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.42);
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-4px, -50%) scale(0.96);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.68),
+    0 10px 22px rgba(15, 23, 42, 0.05);
+  backdrop-filter: blur(14px) saturate(135%);
+  -webkit-backdrop-filter: blur(14px) saturate(135%);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease;
+}
+
+.release-order-table--selecting :deep(.release-order-effect-row:hover) .release-row-select-btn,
+.release-order-table--selecting :deep(.release-order-effect-row--selected) .release-row-select-btn {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(0, -50%) scale(1);
+}
+
+.release-row-select-btn:hover,
+.release-row-select-btn:focus-visible {
+  border-color: rgba(96, 165, 250, 0.34);
+  background: rgba(255, 255, 255, 0.56);
+  color: #0f172a;
+}
+
+.release-row-select-btn--selected {
+  border-color: rgba(147, 197, 253, 0.74);
+  background: linear-gradient(180deg, rgba(241, 247, 255, 0.9), rgba(223, 235, 255, 0.8));
+  color: #1d4ed8;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 12px 26px rgba(59, 130, 246, 0.12);
+}
+
+.release-row-select-btn:disabled {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.28);
+  color: rgba(100, 116, 139, 0.72);
+  cursor: not-allowed;
+}
+
+.release-row-select-btn-dot {
+  width: 9px;
+  height: 9px;
+  border: 2px solid currentColor;
+  border-radius: 999px;
+}
+
+.release-row-select-btn-text {
+  white-space: nowrap;
+}
+
+.release-progress-cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.release-progress-status-row {
+  display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.release-progress-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.release-progress-status-icon {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 14px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
+}
+
+.release-progress-status-icon--success {
+  border-color: rgba(34, 197, 94, 0.2);
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.release-progress-status-icon--failed {
+  border-color: rgba(248, 113, 113, 0.2);
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.release-progress-status-icon--running {
+  border-color: rgba(96, 165, 250, 0.22);
+  background: #eaf3ff;
+  color: #1d6df2;
+}
+
+.release-progress-cell--running .release-progress-badge {
+  border: 1px solid rgba(96, 165, 250, 0.22);
+  background: #eaf3ff;
+  color: #1d6df2;
+  box-shadow: 0 8px 18px rgba(59, 130, 246, 0.12);
+}
+
+.release-progress-cell--success .release-progress-badge {
+  border: 1px solid rgba(34, 197, 94, 0.18);
+  background: #dcfce7;
+  color: #16a34a;
+  box-shadow: 0 8px 18px rgba(34, 197, 94, 0.11);
+}
+
+.release-progress-cell--failed .release-progress-badge {
+  border: 1px solid rgba(248, 113, 113, 0.18);
+  background: #fee2e2;
+  color: #ef4444;
+  box-shadow: 0 8px 18px rgba(239, 68, 68, 0.1);
+}
+
+.release-progress-cell--pending .release-progress-badge {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: #f1f5f9;
+  color: #475569;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
+}
+
+.status-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.status-progress-track-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 120px;
+}
+
+.status-progress-track {
+  flex: 1;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.18);
+  overflow: hidden;
+}
+
+.status-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #60a5fa, #3b82f6);
+  transition: width 0.3s ease;
+}
+
+.status-progress-percent {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.release-progress-track-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 150px;
+  min-width: 0;
+}
+
+.release-progress-track {
+  position: relative;
+  height: 6px;
+  min-width: 92px;
+  max-width: 150px;
+  flex: 1;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(191, 219, 254, 0.78);
+}
+
+.release-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #60a5fa, #2563eb);
+  box-shadow: 0 0 12px rgba(37, 99, 235, 0.38);
+  transition: width 0.22s ease;
+}
+
+.release-progress-percent {
+  color: #4f8cff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.release-order-no-cell {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.release-order-no-cell--selecting {
+  position: relative;
+}
+
+.release-order-no-trigger {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.release-order-no-text {
+  position: relative;
+  display: block;
+  max-width: 100%;
+  padding-right: 34px;
+  overflow: hidden;
+  color: #334155;
+  font-weight: 700;
+  line-height: 1.5;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.release-order-no-text-value {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+  -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 44px), rgba(0, 0, 0, 0.38) calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 44px), rgba(0, 0, 0, 0.38) calc(100% - 24px), transparent 100%);
+}
+
+.release-order-no-text::after {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  width: 38px;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.72) 68%, rgba(255, 255, 255, 0.88));
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  content: "";
+  pointer-events: none;
+}
+
+.release-order-no-tags {
+  display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  overflow: visible;
+}
+
+.release-order-no-tags :deep(.ant-tag) {
+  max-width: 100%;
+  margin-inline-end: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.release-name-text,
+.release-app-cell > span {
+  color: #334155;
+  font-weight: 700;
+}
+
+.release-name-text {
+  display: inline-block;
+  max-width: 188px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.release-app-cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.release-app-cell > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.release-app-cell > small {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.release-row-actions {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.release-row-actions :deep(.ant-btn) {
+  min-width: 36px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid rgba(191, 219, 254, 0.78) !important;
+  border-radius: 10px;
+  background: #ffffff !important;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
+  color: #0f172a !important;
+  font-weight: 600;
+}
+
+.release-row-action-primary {
+  border-color: rgba(96, 165, 250, 0.6) !important;
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+}
+
+.release-row-action-more :deep(.anticon) {
+  margin-left: 4px;
+  font-size: 10px;
+}
+
+:global(.release-row-more-menu .ant-dropdown-menu) {
+  min-width: 128px;
+  padding: 6px;
+  border: 1px solid rgba(203, 213, 225, 0.78);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.14);
+}
+
+:global(.release-row-more-menu .ant-dropdown-menu-item) {
+  border-radius: 8px;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.release-row-menu-text {
+  display: block;
+  width: 100%;
+}
+
+.release-row-menu-text-danger {
+  color: #b91c1c;
+}
+
+.release-row-actions :deep(.ant-btn:not(:disabled):hover),
+.release-row-actions :deep(.ant-btn:not(:disabled):focus) {
+  border-color: rgba(96, 165, 250, 0.58) !important;
+  background: #f8fbff !important;
+  box-shadow: 0 10px 22px rgba(59, 130, 246, 0.12);
+  color: #0f172a !important;
+}
+
+.release-row-actions :deep(.ant-btn-dangerous:not(:disabled)) {
+  border-color: rgba(254, 202, 202, 0.86) !important;
+  background: #fffafa !important;
+  color: #b91c1c !important;
+}
+
+.release-row-actions :deep(.ant-btn-dangerous:not(:disabled):hover),
+.release-row-actions :deep(.ant-btn-dangerous:not(:disabled):focus) {
+  border-color: rgba(248, 113, 113, 0.78) !important;
+  background: #fff1f2 !important;
+  color: #991b1b !important;
+}
+
+.release-row-actions :deep(.ant-btn[disabled]),
+.release-row-actions :deep(.ant-btn.ant-btn-disabled) {
+  border-color: rgba(203, 213, 225, 0.62) !important;
+  background: #f8fafc !important;
+  box-shadow: none;
+  color: rgba(100, 116, 139, 0.62) !important;
 }
 
 .approval-flow-card {
@@ -3644,6 +4780,10 @@ function handleOverviewChartResize() {
 .rollback-trigger-link:hover,
 .rollback-trigger-link:focus {
   color: #020617;
+}
+
+.batch-preview-form {
+  margin-bottom: 16px;
 }
 
 .batch-preview-overview {

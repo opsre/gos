@@ -20,6 +20,7 @@ var (
 	activeKey         = deriveKey(defaultPassphrase)
 )
 
+// SetSecretKey 封装当前模块的业务处理逻辑。
 func SetSecretKey(passphrase string) {
 	keyMu.Lock()
 	defer keyMu.Unlock()
@@ -30,6 +31,7 @@ func SetSecretKey(passphrase string) {
 	activeKey = deriveKey(value)
 }
 
+// EncryptString 封装当前模块的业务处理逻辑。
 func EncryptString(value string) (string, error) {
 	plain := strings.TrimSpace(value)
 	if plain == "" {
@@ -55,6 +57,7 @@ func EncryptString(value string) (string, error) {
 	return encryptedPrefix + base64.StdEncoding.EncodeToString(payload), nil
 }
 
+// DecryptString 封装当前模块的业务处理逻辑。
 func DecryptString(value string) (string, error) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -87,6 +90,7 @@ func DecryptString(value string) (string, error) {
 	return string(plain), nil
 }
 
+// MaskString 封装当前模块的业务处理逻辑。
 func MaskString(value string) string {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -98,6 +102,7 @@ func MaskString(value string) string {
 	return trimmed[:2] + strings.Repeat("*", len(trimmed)-4) + trimmed[len(trimmed)-2:]
 }
 
+// deriveKey 封装当前模块的业务处理逻辑。
 func deriveKey(passphrase string) []byte {
 	sum := sha256.Sum256([]byte(passphrase))
 	key := make([]byte, len(sum))
@@ -105,6 +110,7 @@ func deriveKey(passphrase string) []byte {
 	return key
 }
 
+// currentKey 封装当前模块的业务处理逻辑。
 func currentKey() []byte {
 	keyMu.RLock()
 	defer keyMu.RUnlock()

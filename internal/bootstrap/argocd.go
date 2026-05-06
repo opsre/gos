@@ -9,6 +9,7 @@ import (
 	argocdclient "gos/internal/infrastructure/argocd"
 )
 
+// CheckArgoCDConnection 检查业务状态并返回校验结果。
 func CheckArgoCDConnection(cfg Config) error {
 	if !cfg.ArgoCD.Enabled {
 		return nil

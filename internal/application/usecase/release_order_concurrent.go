@@ -13,12 +13,14 @@ import (
 )
 
 type BatchExecuteReleaseOrdersInput struct {
-	OrderIDs            []string
+	OrderIDs           []string
+	BatchName          string
 	StagedDispatchMode BatchExecuteStagedDispatchMode
 }
 
 type BatchExecuteReleaseOrdersOutput struct {
 	BatchNo        string                `json:"batch_no"`
+	BatchName      string                `json:"batch_name"`
 	Orders         []domain.ReleaseOrder `json:"orders"`
 	DispatchErrors []string              `json:"dispatch_errors"`
 }
@@ -61,6 +63,7 @@ type ReleaseOrderConcurrentBatchProgressOutput struct {
 	OrderID      string                                    `json:"order_id"`
 	OrderNo      string                                    `json:"order_no"`
 	BatchNo      string                                    `json:"batch_no"`
+	BatchName    string                                    `json:"batch_name"`
 	IsConcurrent bool                                      `json:"is_concurrent"`
 	Total        int                                       `json:"total"`
 	Queued       int                                       `json:"queued"`
@@ -71,10 +74,15 @@ type ReleaseOrderConcurrentBatchProgressOutput struct {
 	Items        []ReleaseOrderConcurrentBatchProgressItem `json:"items"`
 }
 
+// BatchExecute 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) BatchExecute(ctx context.Context, input BatchExecuteReleaseOrdersInput) (BatchExecuteReleaseOrdersOutput, error) {
 	orderIDs := normalizeBatchExecuteOrderIDs(input.OrderIDs)
 	if len(orderIDs) < 2 {
 		return BatchExecuteReleaseOrdersOutput{}, fmt.Errorf("%w: 至少选择两张待执行发布单", ErrInvalidInput)
+	}
+	batchName := strings.TrimSpace(input.BatchName)
+	if batchName == "" {
+		return BatchExecuteReleaseOrdersOutput{}, fmt.Errorf("%w: 并发名称不能为空", ErrInvalidInput)
 	}
 	mode := normalizeBatchExecuteStagedDispatchMode(input.StagedDispatchMode)
 
@@ -125,12 +133,13 @@ func (uc *ReleaseOrderManager) BatchExecute(ctx context.Context, input BatchExec
 	}
 
 	batchNo := generateConcurrentBatchNo(uc.now())
-	if err := uc.repo.UpdateConcurrentBatch(ctx, orderIDs, batchNo, true); err != nil {
+	if err := uc.repo.UpdateConcurrentBatch(ctx, orderIDs, batchNo, batchName, true); err != nil {
 		return BatchExecuteReleaseOrdersOutput{}, err
 	}
 
 	output := BatchExecuteReleaseOrdersOutput{
 		BatchNo:        batchNo,
+		BatchName:      batchName,
 		Orders:         make([]domain.ReleaseOrder, 0, len(orderIDs)),
 		DispatchErrors: make([]string, 0),
 	}
@@ -163,6 +172,7 @@ func (uc *ReleaseOrderManager) BatchExecute(ctx context.Context, input BatchExec
 	return output, nil
 }
 
+// GetConcurrentBatchProgress 查询并返回指定资源数据。
 func (uc *ReleaseOrderManager) GetConcurrentBatchProgress(ctx context.Context, id string) (ReleaseOrderConcurrentBatchProgressOutput, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -176,6 +186,7 @@ func (uc *ReleaseOrderManager) GetConcurrentBatchProgress(ctx context.Context, i
 		OrderID:      order.ID,
 		OrderNo:      order.OrderNo,
 		BatchNo:      strings.TrimSpace(order.ConcurrentBatchNo),
+		BatchName:    strings.TrimSpace(order.ConcurrentBatchName),
 		IsConcurrent: order.IsConcurrent,
 		Items:        make([]ReleaseOrderConcurrentBatchProgressItem, 0),
 	}
@@ -277,6 +288,7 @@ func (uc *ReleaseOrderManager) GetConcurrentBatchProgress(ctx context.Context, i
 	return output, nil
 }
 
+// normalizeBatchExecuteOrderIDs 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeBatchExecuteOrderIDs(values []string) []string {
 	result := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
@@ -294,6 +306,7 @@ func normalizeBatchExecuteOrderIDs(values []string) []string {
 	return result
 }
 
+// generateConcurrentBatchNo 封装当前模块的业务处理逻辑。
 func generateConcurrentBatchNo(now time.Time) string {
 	entropy := make([]byte, 3)
 	if _, err := rand.Read(entropy); err != nil {
@@ -302,6 +315,7 @@ func generateConcurrentBatchNo(now time.Time) string {
 	return "CB-" + now.UTC().Format("20060102150405") + "-" + strings.ToUpper(hex.EncodeToString(entropy))
 }
 
+// normalizeBatchDispatchErrorMessage 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeBatchDispatchErrorMessage(err error) string {
 	message := strings.TrimSpace(err.Error())
 	if message == "" {
@@ -310,6 +324,7 @@ func normalizeBatchDispatchErrorMessage(err error) string {
 	return message
 }
 
+// normalizeBatchExecuteStagedDispatchMode 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeBatchExecuteStagedDispatchMode(mode BatchExecuteStagedDispatchMode) BatchExecuteStagedDispatchMode {
 	switch strings.ToLower(strings.TrimSpace(string(mode))) {
 	case string(BatchExecuteStagedDispatchModeBuild):
@@ -319,6 +334,7 @@ func normalizeBatchExecuteStagedDispatchMode(mode BatchExecuteStagedDispatchMode
 	}
 }
 
+// resolveBatchExecuteDispatchAction 解析上下文数据，得到后续流程需要的结果。
 func resolveBatchExecuteDispatchAction(
 	order domain.ReleaseOrder,
 	executions []domain.ReleaseOrderExecution,
@@ -333,6 +349,7 @@ func resolveBatchExecuteDispatchAction(
 	return ReleaseOrderDispatchActionBuild
 }
 
+// supportsBatchStagedDispatch 封装当前模块的业务处理逻辑。
 func supportsBatchStagedDispatch(order domain.ReleaseOrder, executions []domain.ReleaseOrderExecution) bool {
 	if order.OperationType != domain.OperationTypeDeploy {
 		return false
@@ -350,6 +367,7 @@ func supportsBatchStagedDispatch(order domain.ReleaseOrder, executions []domain.
 	return hasCI && hasCD
 }
 
+// resolveConcurrentBatchQueueState 解析上下文数据，得到后续流程需要的结果。
 func resolveConcurrentBatchQueueState(
 	status domain.OrderStatus,
 	hasRunningExecution bool,
@@ -384,6 +402,7 @@ func resolveConcurrentBatchQueueState(
 	return ReleaseOrderConcurrentBatchQueueStatePending
 }
 
+// hasRunningExecution 封装当前模块的业务处理逻辑。
 func hasRunningExecution(executions []domain.ReleaseOrderExecution) bool {
 	for _, item := range executions {
 		if item.Status == domain.ExecutionStatusRunning {
@@ -393,6 +412,7 @@ func hasRunningExecution(executions []domain.ReleaseOrderExecution) bool {
 	return false
 }
 
+// shouldQueueInConcurrentBatch 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) shouldQueueInConcurrentBatch(
 	ctx context.Context,
 	order domain.ReleaseOrder,

@@ -20,6 +20,7 @@ type releaseOrderStepAgentTaskCache struct {
 	tasksByBatchKey map[string][]agentdomain.Task
 }
 
+// enrichAgentTaskStepDetails 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) enrichAgentTaskStepDetails(ctx context.Context, steps []domain.ReleaseOrderStep) []domain.ReleaseOrderStep {
 	if len(steps) == 0 || uc.agentRepo == nil {
 		return steps
@@ -45,6 +46,7 @@ func (uc *ReleaseOrderManager) enrichAgentTaskStepDetails(ctx context.Context, s
 	return result
 }
 
+// enrichSingleAgentTaskStep 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) enrichSingleAgentTaskStep(
 	ctx context.Context,
 	step domain.ReleaseOrderStep,
@@ -84,6 +86,7 @@ func (uc *ReleaseOrderManager) enrichSingleAgentTaskStep(
 	return step, nil
 }
 
+// loadAgentTaskForStep 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) loadAgentTaskForStep(
 	ctx context.Context,
 	taskID string,
@@ -104,6 +107,7 @@ func (uc *ReleaseOrderManager) loadAgentTaskForStep(
 	return item, nil
 }
 
+// loadAgentTaskBatchForStep 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) loadAgentTaskBatchForStep(
 	ctx context.Context,
 	sourceTaskID string,
@@ -138,6 +142,7 @@ func (uc *ReleaseOrderManager) loadAgentTaskBatchForStep(
 	return items, nil
 }
 
+// collectAgentTaskIDs 封装当前模块的业务处理逻辑。
 func collectAgentTaskIDs(tasks []agentdomain.Task) []string {
 	if len(tasks) == 0 {
 		return []string{}
@@ -151,6 +156,7 @@ func collectAgentTaskIDs(tasks []agentdomain.Task) []string {
 	return result
 }
 
+// buildSingleAgentTaskSummary 组装业务执行所需的输入数据。
 func buildSingleAgentTaskSummary(task agentdomain.Task) string {
 	parts := []string{
 		fmt.Sprintf("目标 Agent：%s", firstNonEmpty(strings.TrimSpace(task.AgentCode), "未分配")),
@@ -162,6 +168,7 @@ func buildSingleAgentTaskSummary(task agentdomain.Task) string {
 	return strings.Join(parts, "，")
 }
 
+// buildSingleAgentTaskDetailLog 组装业务执行所需的输入数据。
 func buildSingleAgentTaskDetailLog(task agentdomain.Task) string {
 	sections := []string{
 		fmt.Sprintf("任务号：%s", strings.TrimSpace(task.ID)),
@@ -186,6 +193,7 @@ func buildSingleAgentTaskDetailLog(task agentdomain.Task) string {
 	return truncateAgentTaskDetailLog(strings.Join(sections, "\n\n"))
 }
 
+// buildAgentTaskBatchDetailLog 组装业务执行所需的输入数据。
 func buildAgentTaskBatchDetailLog(tasks []agentdomain.Task, sourceTaskID string, batchID string) string {
 	sections := []string{buildTaskBatchSummary("", tasks)}
 	if strings.TrimSpace(sourceTaskID) != "" {
@@ -220,6 +228,7 @@ func buildAgentTaskBatchDetailLog(tasks []agentdomain.Task, sourceTaskID string,
 	return truncateAgentTaskDetailLog(strings.Join(sections, "\n\n"))
 }
 
+// formatAgentTaskDisplayTime 封装当前模块的业务处理逻辑。
 func formatAgentTaskDisplayTime(value *time.Time) string {
 	if value == nil || value.IsZero() {
 		return ""
@@ -227,6 +236,7 @@ func formatAgentTaskDisplayTime(value *time.Time) string {
 	return value.UTC().Format(time.RFC3339)
 }
 
+// formatAgentTaskStreamSection 封装当前模块的业务处理逻辑。
 func formatAgentTaskStreamSection(title string, text string) string {
 	content := strings.TrimSpace(text)
 	if content == "" {
@@ -235,6 +245,7 @@ func formatAgentTaskStreamSection(title string, text string) string {
 	return title + "\n" + tailTruncateText(content, 4000)
 }
 
+// truncateAgentTaskDetailLog 封装当前模块的业务处理逻辑。
 func truncateAgentTaskDetailLog(text string) string {
 	content := strings.TrimSpace(text)
 	if content == "" {
@@ -243,6 +254,7 @@ func truncateAgentTaskDetailLog(text string) string {
 	return tailTruncateText(content, releaseOrderAgentTaskLogDisplayLimit)
 }
 
+// tailTruncateText 封装当前模块的业务处理逻辑。
 func tailTruncateText(text string, limit int) string {
 	content := strings.TrimSpace(text)
 	if limit <= 0 || len(content) <= limit {

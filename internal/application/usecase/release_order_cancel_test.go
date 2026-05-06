@@ -12,6 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// TestCancelPendingOrderMarksExecutionsCancelled 封装当前模块的业务处理逻辑。
 func TestCancelPendingOrderMarksExecutionsCancelled(t *testing.T) {
 	t.Parallel()
 
@@ -49,6 +50,7 @@ func TestCancelPendingOrderMarksExecutionsCancelled(t *testing.T) {
 	}
 }
 
+// TestCancelRunningOrderMarksAllNonTerminalExecutionsCancelled 封装当前模块的业务处理逻辑。
 func TestCancelRunningOrderMarksAllNonTerminalExecutionsCancelled(t *testing.T) {
 	t.Parallel()
 
@@ -87,6 +89,7 @@ func TestCancelRunningOrderMarksAllNonTerminalExecutionsCancelled(t *testing.T) 
 	}
 }
 
+// TestSyncCancelledOrderDoesNotRevivePendingExecution 同步外部或内部状态数据。
 func TestSyncCancelledOrderDoesNotRevivePendingExecution(t *testing.T) {
 	t.Parallel()
 
@@ -135,6 +138,7 @@ func TestSyncCancelledOrderDoesNotRevivePendingExecution(t *testing.T) {
 	}
 }
 
+// newReleaseOrderManagerForCancelTest 封装当前模块的业务处理逻辑。
 func newReleaseOrderManagerForCancelTest(t *testing.T) (*ReleaseOrderManager, *sqlrepo.ReleaseRepository) {
 	t.Helper()
 
@@ -168,6 +172,7 @@ CREATE TABLE IF NOT EXISTS sys_user (
 	return NewReleaseOrderManager(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), repo
 }
 
+// testReleaseOrder 封装当前模块的业务处理逻辑。
 func testReleaseOrder(id, orderNo string, status domain.OrderStatus, now time.Time) domain.ReleaseOrder {
 	return domain.ReleaseOrder{
 		ID:                  id,
@@ -189,6 +194,7 @@ func testReleaseOrder(id, orderNo string, status domain.OrderStatus, now time.Ti
 	}
 }
 
+// testReleaseExecution 封装当前模块的业务处理逻辑。
 func testReleaseExecution(orderID, executionID string, scope domain.PipelineScope, status domain.ExecutionStatus, now time.Time) domain.ReleaseOrderExecution {
 	return domain.ReleaseOrderExecution{
 		ID:             executionID,
@@ -204,6 +210,7 @@ func testReleaseExecution(orderID, executionID string, scope domain.PipelineScop
 	}
 }
 
+// testReleaseStep 封装当前模块的业务处理逻辑。
 func testReleaseStep(orderID, stepID string, scope domain.StepScope, code string, status domain.StepStatus, sortNo int, now time.Time) domain.ReleaseOrderStep {
 	return domain.ReleaseOrderStep{
 		ID:             stepID,

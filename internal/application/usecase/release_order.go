@@ -42,6 +42,7 @@ type ReleaseOrderManager struct {
 type CreateReleaseOrderInput struct {
 	ApplicationID   string
 	TemplateID      string
+	ReleaseName     string
 	PreviousOrderNo string
 	EnvCode         string
 	SonService      string
@@ -79,6 +80,8 @@ type ListReleaseOrderInput struct {
 	ApprovalApproverUserID      string
 	CreatorUserID               string
 	Keyword                     string
+	ConcurrentBatchNo           string
+	ConcurrentBatchName         string
 	TriggeredBy                 string
 	BindingID                   string
 	EnvCode                     string
@@ -141,6 +144,7 @@ type GitOpsReleaseService interface {
 	RenderTemplate(template string, fields map[string]string) string
 }
 
+// NewReleaseOrderManager 创建并返回对应组件实例。
 func NewReleaseOrderManager(
 	repo domain.Repository,
 	appRepo appdomain.Repository,
@@ -178,6 +182,7 @@ func NewReleaseOrderManager(
 	}
 }
 
+// Create 创建业务资源并返回处理结果。
 func (uc *ReleaseOrderManager) Create(
 	ctx context.Context,
 	input CreateReleaseOrderInput,
@@ -293,6 +298,7 @@ func (uc *ReleaseOrderManager) Create(
 	order := domain.ReleaseOrder{
 		ID:                    generateID("ro"),
 		OrderNo:               generateOrderNo(now),
+		ReleaseName:           strings.TrimSpace(input.ReleaseName),
 		PreviousOrderNo:       strings.TrimSpace(input.PreviousOrderNo),
 		OperationType:         domain.OperationTypeDeploy,
 		ApplicationID:         applicationID,
@@ -376,6 +382,7 @@ func (uc *ReleaseOrderManager) Create(
 	return uc.repo.GetByID(ctx, order.ID)
 }
 
+// Update 更新业务资源并返回处理结果。
 func (uc *ReleaseOrderManager) Update(
 	ctx context.Context,
 	orderID string,
@@ -522,6 +529,7 @@ func (uc *ReleaseOrderManager) Update(
 	order := domain.ReleaseOrder{
 		ID:                    existing.ID,
 		OrderNo:               existing.OrderNo,
+		ReleaseName:           strings.TrimSpace(input.ReleaseName),
 		PreviousOrderNo:       existing.PreviousOrderNo,
 		OperationType:         existing.OperationType,
 		SourceOrderID:         existing.SourceOrderID,
@@ -613,6 +621,7 @@ func (uc *ReleaseOrderManager) Update(
 	return uc.repo.GetByID(ctx, order.ID)
 }
 
+// CreateRollbackByApplication 创建业务资源并返回处理结果。
 func (uc *ReleaseOrderManager) CreateRollbackByApplication(
 	ctx context.Context,
 	applicationID string,
@@ -625,6 +634,7 @@ func (uc *ReleaseOrderManager) CreateRollbackByApplication(
 	return domain.ReleaseOrder{}, fmt.Errorf("%w: 按应用自动恢复已废弃，请基于指定发布单发起重放", ErrInvalidInput)
 }
 
+// CreateStandardRollbackByOrder 创建业务资源并返回处理结果。
 func (uc *ReleaseOrderManager) CreateStandardRollbackByOrder(
 	ctx context.Context,
 	sourceOrderID string,
@@ -699,6 +709,7 @@ func (uc *ReleaseOrderManager) CreateStandardRollbackByOrder(
 	return order, nil
 }
 
+// CreatePipelineReplayByOrder 创建业务资源并返回处理结果。
 func (uc *ReleaseOrderManager) CreatePipelineReplayByOrder(
 	ctx context.Context,
 	sourceOrderID string,
@@ -800,6 +811,7 @@ func (uc *ReleaseOrderManager) CreatePipelineReplayByOrder(
 	return order, nil
 }
 
+// validateCreateTemplateParams 创建业务资源并返回处理结果。
 func (uc *ReleaseOrderManager) validateCreateTemplateParams(
 	ctx context.Context,
 	templateID string,
@@ -902,14 +914,17 @@ type releasedTemplateParamRule struct {
 	ValueSource       domain.TemplateParamValueSource
 }
 
+// buildReleaseTemplateScopeParamKey 组装业务执行所需的输入数据。
 func buildReleaseTemplateScopeParamKey(scope domain.PipelineScope, paramKey string) string {
 	return strings.ToLower(strings.TrimSpace(string(scope))) + "::" + strings.ToLower(strings.TrimSpace(paramKey))
 }
 
+// buildReleaseTemplateParamKey 组装业务执行所需的输入数据。
 func buildReleaseTemplateParamKey(scope domain.PipelineScope, paramKey string, executorParamName string) string {
 	return buildReleaseTemplateScopeParamKey(scope, paramKey) + "::" + strings.ToLower(strings.TrimSpace(executorParamName))
 }
 
+// resolveReleaseTemplateRule 解析上下文数据，得到后续流程需要的结果。
 func resolveReleaseTemplateRule(
 	allowed map[string]releasedTemplateParamRule,
 	allowedByParamKey map[string]releasedTemplateParamRule,
@@ -931,6 +946,7 @@ func resolveReleaseTemplateRule(
 	return rule, buildReleaseTemplateParamKey(rule.PipelineScope, rule.ParamKey, rule.ExecutorParamName), true
 }
 
+// executorParamNameOrKey 封装当前模块的业务处理逻辑。
 func executorParamNameOrKey(executorParamName string, paramKey string) string {
 	if strings.TrimSpace(executorParamName) != "" {
 		return strings.TrimSpace(executorParamName)
@@ -938,6 +954,7 @@ func executorParamNameOrKey(executorParamName string, paramKey string) string {
 	return strings.TrimSpace(paramKey)
 }
 
+// templateUsesArgoCD 封装当前模块的业务处理逻辑。
 func templateUsesArgoCD(bindings []domain.ReleaseTemplateBinding) bool {
 	for _, item := range bindings {
 		if item.PipelineScope != domain.PipelineScopeCD {
@@ -950,6 +967,7 @@ func templateUsesArgoCD(bindings []domain.ReleaseTemplateBinding) bool {
 	return false
 }
 
+// materializeCreateTemplateParams 创建业务资源并返回处理结果。
 func (uc *ReleaseOrderManager) materializeCreateTemplateParams(
 	ctx context.Context,
 	app appdomain.Application,
@@ -1043,6 +1061,7 @@ func (uc *ReleaseOrderManager) materializeCreateTemplateParams(
 	return resolvedParams, nil
 }
 
+// resolveCreateStandardFieldValue 解析上下文数据，得到后续流程需要的结果。
 func resolveCreateStandardFieldValue(
 	key string,
 	envCode string,
@@ -1082,6 +1101,7 @@ func resolveCreateStandardFieldValue(
 	}
 }
 
+// resolveTemplateForCreate 解析上下文数据，得到后续流程需要的结果。
 func (uc *ReleaseOrderManager) resolveTemplateForCreate(
 	ctx context.Context,
 	applicationID string,
@@ -1114,6 +1134,7 @@ type releaseOrderSummaryFields struct {
 	ImageTag    string
 }
 
+// resolveReleaseOrderSummaryFields 解析上下文数据，得到后续流程需要的结果。
 func resolveReleaseOrderSummaryFields(params []CreateReleaseOrderParamInput) releaseOrderSummaryFields {
 	result := releaseOrderSummaryFields{}
 	for _, item := range params {
@@ -1148,6 +1169,7 @@ func resolveReleaseOrderSummaryFields(params []CreateReleaseOrderParamInput) rel
 	return result
 }
 
+// firstNonEmpty 封装当前模块的业务处理逻辑。
 func firstNonEmpty(values ...string) string {
 	for _, item := range values {
 		value := strings.TrimSpace(item)
@@ -1158,6 +1180,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+// buildRollbackRemark 组装业务执行所需的输入数据。
 func buildRollbackRemark(source domain.ReleaseOrder) string {
 	orderNo := strings.TrimSpace(source.OrderNo)
 	if orderNo == "" {
@@ -1166,6 +1189,7 @@ func buildRollbackRemark(source domain.ReleaseOrder) string {
 	return fmt.Sprintf("重发自发布单 %s", orderNo)
 }
 
+// buildReplayRemark 组装业务执行所需的输入数据。
 func buildReplayRemark(source domain.ReleaseOrder, scope domain.PipelineScope) string {
 	orderNo := strings.TrimSpace(source.OrderNo)
 	scopeLabel := strings.ToUpper(string(scope))
@@ -1178,6 +1202,7 @@ func buildReplayRemark(source domain.ReleaseOrder, scope domain.PipelineScope) s
 	return fmt.Sprintf("按发布单 %s 的 %s 参数重放", orderNo, scopeLabel)
 }
 
+// loadRecoverySourceOrder 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) loadRecoverySourceOrder(
 	ctx context.Context,
 	sourceOrderID string,
@@ -1196,6 +1221,7 @@ func (uc *ReleaseOrderManager) loadRecoverySourceOrder(
 	return sourceOrder, sourceExecutions, nil
 }
 
+// canCreateArgoReplayFromStatus 创建业务资源并返回处理结果。
 func canCreateArgoReplayFromStatus(status domain.OrderStatus) bool {
 	switch status {
 	case domain.OrderStatusPending,
@@ -1209,6 +1235,7 @@ func canCreateArgoReplayFromStatus(status domain.OrderStatus) bool {
 	}
 }
 
+// canCreatePipelineReplayFromStatus 创建业务资源并返回处理结果。
 func canCreatePipelineReplayFromStatus(status domain.OrderStatus) bool {
 	switch status {
 	case domain.OrderStatusSuccess,
@@ -1221,6 +1248,7 @@ func canCreatePipelineReplayFromStatus(status domain.OrderStatus) bool {
 	}
 }
 
+// ensureRollbackDeploySnapshot 校验前置条件，不满足时写入对应错误响应。
 func (uc *ReleaseOrderManager) ensureRollbackDeploySnapshot(
 	ctx context.Context,
 	sourceOrder domain.ReleaseOrder,
@@ -1306,6 +1334,7 @@ func (uc *ReleaseOrderManager) ensureRollbackDeploySnapshot(
 	return uc.repo.GetDeploySnapshotByOrderID(ctx, sourceOrder.ID)
 }
 
+// createRecoveryOrder 创建业务资源并返回处理结果。
 func (uc *ReleaseOrderManager) createRecoveryOrder(
 	ctx context.Context,
 	sourceOrder domain.ReleaseOrder,
@@ -1339,6 +1368,7 @@ func (uc *ReleaseOrderManager) createRecoveryOrder(
 	order := domain.ReleaseOrder{
 		ID:                    generateID("ro"),
 		OrderNo:               generateOrderNo(now),
+		ReleaseName:           sourceOrder.ReleaseName,
 		PreviousOrderNo:       sourceOrder.OrderNo,
 		OperationType:         operationType,
 		SourceOrderID:         sourceOrder.ID,
@@ -1408,6 +1438,7 @@ func (uc *ReleaseOrderManager) createRecoveryOrder(
 	return uc.repo.GetByID(ctx, order.ID)
 }
 
+// buildRecoveryParamsInput 组装业务执行所需的输入数据。
 func (uc *ReleaseOrderManager) buildRecoveryParamsInput(
 	ctx context.Context,
 	sourceOrder domain.ReleaseOrder,
@@ -1494,6 +1525,7 @@ func (uc *ReleaseOrderManager) buildRecoveryParamsInput(
 	return result, nil
 }
 
+// filterReleaseOrderParamsByScope 封装当前模块的业务处理逻辑。
 func filterReleaseOrderParamsByScope(items []domain.ReleaseOrderParam, scope domain.PipelineScope) []domain.ReleaseOrderParam {
 	filtered := make([]domain.ReleaseOrderParam, 0)
 	for _, item := range items {
@@ -1505,6 +1537,7 @@ func filterReleaseOrderParamsByScope(items []domain.ReleaseOrderParam, scope dom
 	return filtered
 }
 
+// selectRecoveryTemplateBinding 封装当前模块的业务处理逻辑。
 func selectRecoveryTemplateBinding(
 	bindings []domain.ReleaseTemplateBinding,
 	scope domain.PipelineScope,
@@ -1518,6 +1551,7 @@ func selectRecoveryTemplateBinding(
 	return domain.ReleaseTemplateBinding{}, false
 }
 
+// resolveCDExecution 解析上下文数据，得到后续流程需要的结果。
 func resolveCDExecution(items []domain.ReleaseOrderExecution) (domain.ReleaseOrderExecution, error) {
 	for _, item := range items {
 		if item.PipelineScope == domain.PipelineScopeCD {
@@ -1527,6 +1561,7 @@ func resolveCDExecution(items []domain.ReleaseOrderExecution) (domain.ReleaseOrd
 	return domain.ReleaseOrderExecution{}, fmt.Errorf("%w: 来源成功单缺少 CD 执行单元", ErrInvalidInput)
 }
 
+// resolveReplayExecution 解析上下文数据，得到后续流程需要的结果。
 func resolveReplayExecution(items []domain.ReleaseOrderExecution) (domain.ReleaseOrderExecution, error) {
 	for _, item := range items {
 		if item.PipelineScope == domain.PipelineScopeCD {
@@ -1541,6 +1576,7 @@ func resolveReplayExecution(items []domain.ReleaseOrderExecution) (domain.Releas
 	return domain.ReleaseOrderExecution{}, fmt.Errorf("%w: 来源发布单缺少可重放执行单元", ErrInvalidInput)
 }
 
+// ensureReplayParamsMatchTemplate 校验前置条件，不满足时写入对应错误响应。
 func ensureReplayParamsMatchTemplate(
 	templateParams []domain.ReleaseTemplateParam,
 	sourceScopeParams []domain.ReleaseOrderParam,
@@ -1587,6 +1623,7 @@ func ensureReplayParamsMatchTemplate(
 	return nil
 }
 
+// List 查询并返回列表数据。
 func (uc *ReleaseOrderManager) List(ctx context.Context, input ListReleaseOrderInput) ([]domain.ReleaseOrder, int64, error) {
 	const (
 		defaultPage     = 1
@@ -1596,6 +1633,8 @@ func (uc *ReleaseOrderManager) List(ctx context.Context, input ListReleaseOrderI
 
 	input.ApplicationID = strings.TrimSpace(input.ApplicationID)
 	input.Keyword = strings.TrimSpace(input.Keyword)
+	input.ConcurrentBatchNo = strings.TrimSpace(input.ConcurrentBatchNo)
+	input.ConcurrentBatchName = strings.TrimSpace(input.ConcurrentBatchName)
 	input.TriggeredBy = strings.TrimSpace(input.TriggeredBy)
 	input.BindingID = strings.TrimSpace(input.BindingID)
 	input.EnvCode = strings.TrimSpace(input.EnvCode)
@@ -1629,6 +1668,8 @@ func (uc *ReleaseOrderManager) List(ctx context.Context, input ListReleaseOrderI
 		ApprovalApproverUserID:      strings.TrimSpace(input.ApprovalApproverUserID),
 		CreatorUserID:               strings.TrimSpace(input.CreatorUserID),
 		Keyword:                     input.Keyword,
+		ConcurrentBatchNo:           input.ConcurrentBatchNo,
+		ConcurrentBatchName:         input.ConcurrentBatchName,
 		TriggeredBy:                 input.TriggeredBy,
 		BindingID:                   input.BindingID,
 		EnvCode:                     input.EnvCode,
@@ -1650,9 +1691,12 @@ func (uc *ReleaseOrderManager) List(ctx context.Context, input ListReleaseOrderI
 	return items, total, nil
 }
 
+// ListStats 查询并返回列表数据。
 func (uc *ReleaseOrderManager) ListStats(ctx context.Context, input ListReleaseOrderInput) (domain.ReleaseOrderStats, error) {
 	input.ApplicationID = strings.TrimSpace(input.ApplicationID)
 	input.Keyword = strings.TrimSpace(input.Keyword)
+	input.ConcurrentBatchNo = strings.TrimSpace(input.ConcurrentBatchNo)
+	input.ConcurrentBatchName = strings.TrimSpace(input.ConcurrentBatchName)
 	input.TriggeredBy = strings.TrimSpace(input.TriggeredBy)
 	input.BindingID = strings.TrimSpace(input.BindingID)
 	input.EnvCode = strings.TrimSpace(input.EnvCode)
@@ -1676,6 +1720,8 @@ func (uc *ReleaseOrderManager) ListStats(ctx context.Context, input ListReleaseO
 		ApprovalApproverUserID:      strings.TrimSpace(input.ApprovalApproverUserID),
 		CreatorUserID:               strings.TrimSpace(input.CreatorUserID),
 		Keyword:                     input.Keyword,
+		ConcurrentBatchNo:           input.ConcurrentBatchNo,
+		ConcurrentBatchName:         input.ConcurrentBatchName,
 		TriggeredBy:                 input.TriggeredBy,
 		BindingID:                   input.BindingID,
 		EnvCode:                     input.EnvCode,
@@ -1687,6 +1733,7 @@ func (uc *ReleaseOrderManager) ListStats(ctx context.Context, input ListReleaseO
 	})
 }
 
+// normalizeReleaseApplicationIDs 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeReleaseApplicationIDs(values []string) []string {
 	if len(values) == 0 {
 		return nil
@@ -1710,6 +1757,7 @@ func normalizeReleaseApplicationIDs(values []string) []string {
 	return result
 }
 
+// normalizeReleaseApplicationEnvScopes 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeReleaseApplicationEnvScopes(values []domain.ApplicationEnvScope) []domain.ApplicationEnvScope {
 	if len(values) == 0 {
 		return nil
@@ -1735,6 +1783,7 @@ func normalizeReleaseApplicationEnvScopes(values []domain.ApplicationEnvScope) [
 	return result
 }
 
+// GetByID 查询并返回指定资源数据。
 func (uc *ReleaseOrderManager) GetByID(ctx context.Context, id string) (domain.ReleaseOrder, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -1747,6 +1796,7 @@ func (uc *ReleaseOrderManager) GetByID(ctx context.Context, id string) (domain.R
 	return uc.reconcileOrderSnapshot(ctx, order)
 }
 
+// reconcileOrderSnapshots 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) reconcileOrderSnapshots(
 	ctx context.Context,
 	items []domain.ReleaseOrder,
@@ -1765,6 +1815,7 @@ func (uc *ReleaseOrderManager) reconcileOrderSnapshots(
 	return result, nil
 }
 
+// reconcileOrderSnapshot 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) reconcileOrderSnapshot(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -1831,6 +1882,7 @@ func (uc *ReleaseOrderManager) reconcileOrderSnapshot(
 	return uc.repo.GetByID(ctx, order.ID)
 }
 
+// deriveTerminalOrderState 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) deriveTerminalOrderState(
 	order domain.ReleaseOrder,
 	executions []domain.ReleaseOrderExecution,
@@ -1860,6 +1912,7 @@ func (uc *ReleaseOrderManager) deriveTerminalOrderState(
 	return nextStatus, finishedAt, true
 }
 
+// Cancel 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) Cancel(ctx context.Context, id string) (domain.ReleaseOrder, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -1982,6 +2035,7 @@ func (uc *ReleaseOrderManager) Cancel(ctx context.Context, id string) (domain.Re
 	return item, nil
 }
 
+// shouldFinishStepOnCancel 封装当前模块的业务处理逻辑。
 func shouldFinishStepOnCancel(step domain.ReleaseOrderStep) bool {
 	if step.Status == domain.StepStatusRunning {
 		return true
@@ -1992,6 +2046,7 @@ func shouldFinishStepOnCancel(step domain.ReleaseOrderStep) bool {
 	return step.StepScope != domain.StepScopeGlobal || step.StepCode == "global:release_finish"
 }
 
+// shouldFinishStepOnFailure 封装当前模块的业务处理逻辑。
 func shouldFinishStepOnFailure(step domain.ReleaseOrderStep) bool {
 	if strings.HasPrefix(strings.TrimSpace(step.StepCode), "hook:") {
 		return false
@@ -2005,6 +2060,7 @@ func shouldFinishStepOnFailure(step domain.ReleaseOrderStep) bool {
 	return step.StepScope != domain.StepScopeGlobal || step.StepCode == "global:release_finish"
 }
 
+// abortExecution 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) abortExecution(ctx context.Context, execution domain.ReleaseOrderExecution) string {
 	if uc.jenkins == nil {
 		return ""
@@ -2029,18 +2085,22 @@ func (uc *ReleaseOrderManager) abortExecution(ctx context.Context, execution dom
 	return "已发送 Jenkins 取消队列请求"
 }
 
+// Execute 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) Execute(ctx context.Context, id string, operatorUserID string, operatorName string) (domain.ReleaseOrder, error) {
 	return uc.dispatchOrder(ctx, id, ReleaseOrderDispatchActionExecute, operatorUserID, operatorName)
 }
 
+// Build 组装业务执行所需的输入数据。
 func (uc *ReleaseOrderManager) Build(ctx context.Context, id string, operatorUserID string, operatorName string) (domain.ReleaseOrder, error) {
 	return uc.dispatchOrder(ctx, id, ReleaseOrderDispatchActionBuild, operatorUserID, operatorName)
 }
 
+// Deploy 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) Deploy(ctx context.Context, id string, operatorUserID string, operatorName string) (domain.ReleaseOrder, error) {
 	return uc.dispatchOrder(ctx, id, ReleaseOrderDispatchActionDeploy, operatorUserID, operatorName)
 }
 
+// dispatchOrder 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) dispatchOrder(
 	ctx context.Context,
 	id string,
@@ -2242,6 +2302,7 @@ func (uc *ReleaseOrderManager) dispatchOrder(
 	return reloadedOrder, nil
 }
 
+// resolveDispatchExecution 解析上下文数据，得到后续流程需要的结果。
 func resolveDispatchExecution(
 	order domain.ReleaseOrder,
 	executions []domain.ReleaseOrderExecution,
@@ -2281,6 +2342,7 @@ func resolveDispatchExecution(
 	}
 }
 
+// currentDispatchBlockedMessage 封装当前模块的业务处理逻辑。
 func currentDispatchBlockedMessage(action ReleaseOrderDispatchAction) string {
 	switch action {
 	case ReleaseOrderDispatchActionBuild:
@@ -2292,6 +2354,7 @@ func currentDispatchBlockedMessage(action ReleaseOrderDispatchAction) string {
 	}
 }
 
+// currentDispatchResolveMessage 解析上下文数据，得到后续流程需要的结果。
 func currentDispatchResolveMessage(action ReleaseOrderDispatchAction, paramCount int) string {
 	switch action {
 	case ReleaseOrderDispatchActionBuild:
@@ -2303,6 +2366,7 @@ func currentDispatchResolveMessage(action ReleaseOrderDispatchAction, paramCount
 	}
 }
 
+// ListParams 查询并返回列表数据。
 func (uc *ReleaseOrderManager) ListParams(ctx context.Context, orderID string) ([]domain.ReleaseOrderParam, error) {
 	orderID = strings.TrimSpace(orderID)
 	if orderID == "" {
@@ -2314,6 +2378,7 @@ func (uc *ReleaseOrderManager) ListParams(ctx context.Context, orderID string) (
 	return uc.repo.ListParams(ctx, orderID)
 }
 
+// ListExecutions 查询并返回列表数据。
 func (uc *ReleaseOrderManager) ListExecutions(ctx context.Context, orderID string) ([]domain.ReleaseOrderExecution, error) {
 	orderID = strings.TrimSpace(orderID)
 	if orderID == "" {
@@ -2330,6 +2395,7 @@ func (uc *ReleaseOrderManager) ListExecutions(ctx context.Context, orderID strin
 	return uc.reconcileExecutionStates(ctx, order, items)
 }
 
+// reconcileExecutionStates 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) reconcileExecutionStates(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -2376,6 +2442,7 @@ func (uc *ReleaseOrderManager) reconcileExecutionStates(
 	return uc.repo.ListExecutions(ctx, order.ID)
 }
 
+// deriveExecutionTerminalState 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) deriveExecutionTerminalState(
 	order domain.ReleaseOrder,
 	execution domain.ReleaseOrderExecution,
@@ -2405,6 +2472,7 @@ func (uc *ReleaseOrderManager) deriveExecutionTerminalState(
 	return "", nil, false
 }
 
+// findPipelineStageByScopeAndKey 封装当前模块的业务处理逻辑。
 func findPipelineStageByScopeAndKey(
 	stages []domain.ReleaseOrderPipelineStage,
 	scope domain.PipelineScope,
@@ -2419,10 +2487,12 @@ func findPipelineStageByScopeAndKey(
 	return nil
 }
 
+// ptrTime 封装当前模块的业务处理逻辑。
 func ptrTime(value time.Time) *time.Time {
 	return &value
 }
 
+// firstNonNilTime 封装当前模块的业务处理逻辑。
 func firstNonNilTime(values ...*time.Time) *time.Time {
 	for _, item := range values {
 		if item != nil {
@@ -2432,6 +2502,7 @@ func firstNonNilTime(values ...*time.Time) *time.Time {
 	return nil
 }
 
+// startNextPendingExecution 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) startNextPendingExecution(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -2712,6 +2783,7 @@ func (uc *ReleaseOrderManager) startNextPendingExecution(
 	return nil
 }
 
+// buildJenkinsExecutionParams 组装业务执行所需的输入数据。
 func (uc *ReleaseOrderManager) buildJenkinsExecutionParams(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -2776,6 +2848,7 @@ func (uc *ReleaseOrderManager) buildJenkinsExecutionParams(
 	return buildParams, nil
 }
 
+// resolveTemplateExecutionParamValue 解析上下文数据，得到后续流程需要的结果。
 func (uc *ReleaseOrderManager) resolveTemplateExecutionParamValue(
 	order domain.ReleaseOrder,
 	scope domain.PipelineScope,
@@ -2805,6 +2878,7 @@ func (uc *ReleaseOrderManager) resolveTemplateExecutionParamValue(
 	}
 }
 
+// resolveStandardFieldValue 解析上下文数据，得到后续流程需要的结果。
 func (uc *ReleaseOrderManager) resolveStandardFieldValue(
 	order domain.ReleaseOrder,
 	orderParams []domain.ReleaseOrderParam,
@@ -2850,6 +2924,7 @@ func (uc *ReleaseOrderManager) resolveStandardFieldValue(
 	}
 }
 
+// markExecutionStartFailed 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) markExecutionStartFailed(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -2909,10 +2984,12 @@ func (uc *ReleaseOrderManager) markExecutionStartFailed(
 	}
 }
 
+// backgroundPersistenceContext 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) backgroundPersistenceContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), 10*time.Second)
 }
 
+// markOpenExecutionStepsFailed 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) markOpenExecutionStepsFailed(
 	ctx context.Context,
 	orderID string,
@@ -2935,6 +3012,7 @@ func (uc *ReleaseOrderManager) markOpenExecutionStepsFailed(
 	return nil
 }
 
+// resolveOrderGitOpsType 解析上下文数据，得到后续流程需要的结果。
 func (uc *ReleaseOrderManager) resolveOrderGitOpsType(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -2946,15 +3024,18 @@ func (uc *ReleaseOrderManager) resolveOrderGitOpsType(
 	return normalizeTemplateGitOpsType(template.GitOpsType, true), nil
 }
 
+// scopeStepCode 封装当前模块的业务处理逻辑。
 func scopeStepCode(scope domain.PipelineScope, suffix string) string {
 	return strings.ToLower(strings.TrimSpace(string(scope))) + ":" + strings.TrimSpace(suffix)
 }
 
+// markStepRunning 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) markStepRunning(ctx context.Context, orderID string, stepCode string, message string) error {
 	now := uc.now()
 	return uc.markStep(ctx, orderID, stepCode, domain.StepStatusRunning, strings.TrimSpace(message), &now, nil)
 }
 
+// markStepFinished 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) markStepFinished(
 	ctx context.Context,
 	orderID string,
@@ -2981,6 +3062,7 @@ func (uc *ReleaseOrderManager) markStepFinished(
 	return uc.markStep(ctx, orderID, stepCode, status, strings.TrimSpace(message), startedAt, &now)
 }
 
+// markStep 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) markStep(
 	ctx context.Context,
 	orderID string,
@@ -3008,6 +3090,7 @@ func (uc *ReleaseOrderManager) markStep(
 	return nil
 }
 
+// syncPipelineStageFromStep 同步外部或内部状态数据。
 func (uc *ReleaseOrderManager) syncPipelineStageFromStep(
 	ctx context.Context,
 	orderID string,
@@ -3073,6 +3156,7 @@ func (uc *ReleaseOrderManager) syncPipelineStageFromStep(
 	return uc.repo.ReplacePipelineStages(ctx, orderID, stages)
 }
 
+// isArgoCDPipelineStageKey 封装当前模块的业务处理逻辑。
 func isArgoCDPipelineStageKey(key string) bool {
 	switch strings.ToLower(strings.TrimSpace(key)) {
 	case "gitops_update", "git_commit", "git_push", "argocd_sync", "health_check":
@@ -3082,6 +3166,7 @@ func isArgoCDPipelineStageKey(key string) bool {
 	}
 }
 
+// pipelineStageStatusFromStepStatus 封装当前模块的业务处理逻辑。
 func pipelineStageStatusFromStepStatus(status domain.StepStatus) domain.PipelineStageStatus {
 	switch status {
 	case domain.StepStatusSuccess:
@@ -3095,6 +3180,7 @@ func pipelineStageStatusFromStepStatus(status domain.StepStatus) domain.Pipeline
 	}
 }
 
+// computePipelineStageDurationFromTimes 封装当前模块的业务处理逻辑。
 func computePipelineStageDurationFromTimes(startedAt *time.Time, finishedAt *time.Time, status domain.StepStatus, now time.Time) int64 {
 	if startedAt == nil {
 		return 0
@@ -3110,6 +3196,7 @@ func computePipelineStageDurationFromTimes(startedAt *time.Time, finishedAt *tim
 	return end.Sub(*startedAt).Milliseconds()
 }
 
+// ListSteps 查询并返回列表数据。
 func (uc *ReleaseOrderManager) ListSteps(ctx context.Context, orderID string) ([]domain.ReleaseOrderStep, error) {
 	orderID = strings.TrimSpace(orderID)
 	if orderID == "" {
@@ -3130,6 +3217,7 @@ func (uc *ReleaseOrderManager) ListSteps(ctx context.Context, orderID string) ([
 	return uc.enrichAgentTaskStepDetails(ctx, items), nil
 }
 
+// reconcileTerminalSteps 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) reconcileTerminalSteps(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -3237,11 +3325,13 @@ func (uc *ReleaseOrderManager) reconcileTerminalSteps(
 	return uc.repo.ListSteps(ctx, order.ID)
 }
 
+// isWaitingArgoCDHealthCheckMessage 检查业务状态并返回校验结果。
 func isWaitingArgoCDHealthCheckMessage(message string) bool {
 	text := strings.TrimSpace(message)
 	return strings.Contains(text, "等待健康检查回传")
 }
 
+// StartStep 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) StartStep(
 	ctx context.Context,
 	orderID string,
@@ -3315,6 +3405,7 @@ func (uc *ReleaseOrderManager) StartStep(
 	return updatedStep, order, nil
 }
 
+// FinishStep 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) FinishStep(
 	ctx context.Context,
 	orderID string,
@@ -3400,6 +3491,7 @@ func (uc *ReleaseOrderManager) FinishStep(
 	return updatedStep, order, nil
 }
 
+// buildCreateParams 组装业务执行所需的输入数据。
 func (uc *ReleaseOrderManager) buildCreateParams(
 	orderID string,
 	now time.Time,
@@ -3445,6 +3537,7 @@ func (uc *ReleaseOrderManager) buildCreateParams(
 	return items, nil
 }
 
+// buildCreateExecutions 组装业务执行所需的输入数据。
 func (uc *ReleaseOrderManager) buildCreateExecutions(
 	orderID string,
 	now time.Time,
@@ -3471,6 +3564,7 @@ func (uc *ReleaseOrderManager) buildCreateExecutions(
 	return items
 }
 
+// buildCreateSteps 组装业务执行所需的输入数据。
 func (uc *ReleaseOrderManager) buildCreateSteps(
 	orderID string,
 	now time.Time,
@@ -3524,6 +3618,7 @@ type releaseExecutionStepDef struct {
 	Name   string
 }
 
+// defaultExecutionStepDefs 封装当前模块的业务处理逻辑。
 func defaultExecutionStepDefs(
 	execution domain.ReleaseOrderExecution,
 	gitopsType domain.GitOpsType,
@@ -3549,6 +3644,7 @@ func defaultExecutionStepDefs(
 	}
 }
 
+// executionStepCodes 封装当前模块的业务处理逻辑。
 func executionStepCodes(execution domain.ReleaseOrderExecution) []string {
 	defs := defaultExecutionStepDefs(execution, "")
 	result := make([]string, 0, len(defs))
@@ -3558,6 +3654,7 @@ func executionStepCodes(execution domain.ReleaseOrderExecution) []string {
 	return result
 }
 
+// defaultReleaseOrderSteps 封装当前模块的业务处理逻辑。
 func defaultReleaseOrderSteps(orderID string, executions []domain.ReleaseOrderExecution, now time.Time, gitopsType domain.GitOpsType, templateHooks []domain.ReleaseTemplateHook, orderEnvCode string) []domain.ReleaseOrderStep {
 	items := make([]domain.ReleaseOrderStep, 0, 8)
 	sortNo := 1
@@ -3642,6 +3739,7 @@ func defaultReleaseOrderSteps(orderID string, executions []domain.ReleaseOrderEx
 	return items
 }
 
+// buildTemplateHookStepMessage 组装业务执行所需的输入数据。
 func buildTemplateHookStepMessage(item domain.ReleaseTemplateHook, stage domain.TemplateHookExecuteStage) string {
 	stageLabel := "发布完成时"
 	if stage == domain.TemplateHookExecuteStageBuildComplete {
@@ -3681,6 +3779,7 @@ func buildTemplateHookStepMessage(item domain.ReleaseTemplateHook, stage domain.
 	}
 }
 
+// orderExecutionsByScope 封装当前模块的业务处理逻辑。
 func orderExecutionsByScope(items []domain.ReleaseOrderExecution) []domain.ReleaseOrderExecution {
 	result := make([]domain.ReleaseOrderExecution, 0, len(items))
 	var ci, cd *domain.ReleaseOrderExecution
@@ -3701,6 +3800,7 @@ func orderExecutionsByScope(items []domain.ReleaseOrderExecution) []domain.Relea
 	return result
 }
 
+// pickPrimaryExecution 封装当前模块的业务处理逻辑。
 func pickPrimaryExecution(items []domain.ReleaseOrderExecution) (domain.ReleaseOrderExecution, bool) {
 	ordered := orderExecutionsByScope(items)
 	if len(ordered) == 0 {
@@ -3709,6 +3809,7 @@ func pickPrimaryExecution(items []domain.ReleaseOrderExecution) (domain.ReleaseO
 	return ordered[0], true
 }
 
+// deriveOrderStatusFromSteps 封装当前模块的业务处理逻辑。
 func deriveOrderStatusFromSteps(steps []domain.ReleaseOrderStep) (domain.OrderStatus, bool) {
 	if len(steps) == 0 {
 		return domain.OrderStatusRunning, false
@@ -3745,11 +3846,13 @@ func deriveOrderStatusFromSteps(steps []domain.ReleaseOrderStep) (domain.OrderSt
 	return domain.OrderStatusRunning, false
 }
 
+// isExecutableOrderStatus 封装当前模块的业务处理逻辑。
 func isExecutableOrderStatus(status domain.OrderStatus) bool {
 	normalized := strings.ToLower(strings.TrimSpace(string(status)))
 	return normalized == "pending" || normalized == "pengding" || normalized == "approved"
 }
 
+// isBuildExecutableOrderStatus 组装业务执行所需的输入数据。
 func isBuildExecutableOrderStatus(status domain.OrderStatus, approvalRequired bool) bool {
 	if approvalRequired {
 		return status == domain.OrderStatusApproved
@@ -3757,11 +3860,13 @@ func isBuildExecutableOrderStatus(status domain.OrderStatus, approvalRequired bo
 	return status == domain.OrderStatusPending || status == domain.OrderStatusApproved
 }
 
+// isEditableOrderStatus 封装当前模块的业务处理逻辑。
 func isEditableOrderStatus(status domain.OrderStatus) bool {
 	normalized := strings.ToLower(strings.TrimSpace(string(status)))
 	return normalized == "pending" || normalized == "pengding"
 }
 
+// nextQueuedOrderStatus 封装当前模块的业务处理逻辑。
 func nextQueuedOrderStatus(current domain.OrderStatus) domain.OrderStatus {
 	if current == domain.OrderStatusBuilding {
 		return domain.OrderStatusBuilding
@@ -3769,6 +3874,7 @@ func nextQueuedOrderStatus(current domain.OrderStatus) domain.OrderStatus {
 	return domain.OrderStatusQueued
 }
 
+// nextRunningOrderStatus 封装当前模块的业务处理逻辑。
 func nextRunningOrderStatus(current domain.OrderStatus) domain.OrderStatus {
 	if current == domain.OrderStatusBuilding {
 		return domain.OrderStatusBuilding
@@ -3776,6 +3882,7 @@ func nextRunningOrderStatus(current domain.OrderStatus) domain.OrderStatus {
 	return domain.OrderStatusDeploying
 }
 
+// findExecutionByScopeAndStatus 封装当前模块的业务处理逻辑。
 func findExecutionByScopeAndStatus(
 	items []domain.ReleaseOrderExecution,
 	scope domain.PipelineScope,
@@ -3789,6 +3896,7 @@ func findExecutionByScopeAndStatus(
 	return nil
 }
 
+// hasExecutionForScope 封装当前模块的业务处理逻辑。
 func hasExecutionForScope(items []domain.ReleaseOrderExecution, scope domain.PipelineScope) bool {
 	for _, item := range items {
 		if item.PipelineScope == scope {
@@ -3798,6 +3906,7 @@ func hasExecutionForScope(items []domain.ReleaseOrderExecution, scope domain.Pip
 	return false
 }
 
+// resolveInitialReleaseOrderStatus 解析上下文数据，得到后续流程需要的结果。
 func resolveInitialReleaseOrderStatus(template domain.ReleaseTemplate, creatorUserID string) domain.OrderStatus {
 	if template.ApprovalEnabled {
 		if shouldAutoApproveOnCreate(template.ApprovalEnabled, template.ApprovalApproverIDs, creatorUserID) {
@@ -3808,6 +3917,7 @@ func resolveInitialReleaseOrderStatus(template domain.ReleaseTemplate, creatorUs
 	return domain.OrderStatusPending
 }
 
+// shouldAutoApproveOnCreate 创建业务资源并返回处理结果。
 func shouldAutoApproveOnCreate(approvalEnabled bool, approverIDs []string, creatorUserID string) bool {
 	if !approvalEnabled {
 		return false
@@ -3830,6 +3940,7 @@ func shouldAutoApproveOnCreate(approvalEnabled bool, approverIDs []string, creat
 	return hasApprover
 }
 
+// ensureStepOrder 校验前置条件，不满足时写入对应错误响应。
 func ensureStepOrder(steps []domain.ReleaseOrderStep, current domain.ReleaseOrderStep) error {
 	for _, item := range steps {
 		if item.SortNo < current.SortNo && item.Status != domain.StepStatusSuccess {
@@ -3839,6 +3950,7 @@ func ensureStepOrder(steps []domain.ReleaseOrderStep, current domain.ReleaseOrde
 	return nil
 }
 
+// generateOrderNo 封装当前模块的业务处理逻辑。
 func generateOrderNo(now time.Time) string {
 	entropy := make([]byte, 4)
 	if _, err := rand.Read(entropy); err != nil {

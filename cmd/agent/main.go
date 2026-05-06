@@ -157,6 +157,7 @@ type runtimeState struct {
 
 const maxCapturedOutputBytes = 64 * 1024
 
+// snapshot 封装当前模块的业务处理逻辑。
 func (s *runtimeState) snapshot() heartbeatRequest {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -171,6 +172,7 @@ func (s *runtimeState) snapshot() heartbeatRequest {
 	}
 }
 
+// markRunning 封装当前模块的业务处理逻辑。
 func (s *runtimeState) markRunning(task *taskOutput, now time.Time) {
 	if task == nil {
 		return
@@ -186,6 +188,7 @@ func (s *runtimeState) markRunning(task *taskOutput, now time.Time) {
 	s.lastTaskFinishedAt = ""
 }
 
+// markFinished 封装当前模块的业务处理逻辑。
 func (s *runtimeState) markFinished(status, summary string, finishedAt time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -198,6 +201,7 @@ func (s *runtimeState) markFinished(status, summary string, finishedAt time.Time
 	s.lastTaskFinishedAt = finishedAt.UTC().Format(time.RFC3339)
 }
 
+// main 启动当前进程并完成依赖初始化。
 func main() {
 	var (
 		configPath        = flag.String("config", strings.TrimSpace(os.Getenv("GOS_AGENT_CONFIG")), "agent config file path")
@@ -312,6 +316,7 @@ func main() {
 	}
 }
 
+// loadRuntimeConfig 封装当前模块的业务处理逻辑。
 func loadRuntimeConfig(configPath string, fallback runtimeConfig) (runtimeConfig, error) {
 	cfg := fallback
 	if strings.TrimSpace(configPath) != "" {
@@ -394,6 +399,7 @@ func loadRuntimeConfig(configPath string, fallback runtimeConfig) (runtimeConfig
 	return cfg, nil
 }
 
+// readConfigFile 封装当前模块的业务处理逻辑。
 func readConfigFile(path string) (fileConfig, error) {
 	content, err := os.ReadFile(strings.TrimSpace(path))
 	if err != nil {
@@ -406,6 +412,7 @@ func readConfigFile(path string) (fileConfig, error) {
 	return cfg, nil
 }
 
+// bootstrapRuntimeCredentials 封装当前模块的业务处理逻辑。
 func bootstrapRuntimeCredentials(client *http.Client, cfg runtimeConfig, hostname, hostIP, statePath string, localState agentLocalState) (runtimeConfig, error) {
 	localState.MachineID = strings.TrimSpace(localState.MachineID)
 	if localState.MachineID == "" {
@@ -446,6 +453,7 @@ func bootstrapRuntimeCredentials(client *http.Client, cfg runtimeConfig, hostnam
 	return cfg, nil
 }
 
+// registerAgent 封装当前模块的业务处理逻辑。
 func registerAgent(client *http.Client, cfg runtimeConfig, hostname, hostIP, machineID string) (*registerOutput, error) {
 	var response registerResponse
 	err := postJSON(client, cfg.BaseURL+"/agent/register", registerRequest{
@@ -470,10 +478,12 @@ func registerAgent(client *http.Client, cfg runtimeConfig, hostname, hostIP, mac
 	return response.Data, nil
 }
 
+// agentStateFilePath 封装当前模块的业务处理逻辑。
 func agentStateFilePath(workDir string) string {
 	return filepath.Join(strings.TrimSpace(workDir), ".gos-agent", "state.json")
 }
 
+// loadAgentLocalState 封装当前模块的业务处理逻辑。
 func loadAgentLocalState(path string) (agentLocalState, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -496,6 +506,7 @@ func loadAgentLocalState(path string) (agentLocalState, error) {
 	return state, nil
 }
 
+// saveAgentLocalState 封装当前模块的业务处理逻辑。
 func saveAgentLocalState(path string, state agentLocalState) error {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -516,6 +527,7 @@ func saveAgentLocalState(path string, state agentLocalState) error {
 	return os.WriteFile(path, content, 0o600)
 }
 
+// generateMachineID 封装当前模块的业务处理逻辑。
 func generateMachineID() string {
 	buf := make([]byte, 16)
 	if _, err := rand.Read(buf); err != nil {
@@ -524,6 +536,7 @@ func generateMachineID() string {
 	return "machine-" + hex.EncodeToString(buf)
 }
 
+// sendHeartbeat 封装当前模块的业务处理逻辑。
 func sendHeartbeat(client *http.Client, cfg runtimeConfig, hostname, hostIP string, state *runtimeState) error {
 	payload := heartbeatRequest{
 		AgentCode:    cfg.AgentCode,
@@ -547,6 +560,7 @@ func sendHeartbeat(client *http.Client, cfg runtimeConfig, hostname, hostIP stri
 	return postJSON(client, cfg.BaseURL+"/agent/heartbeat", payload, nil)
 }
 
+// pollTask 封装当前模块的业务处理逻辑。
 func pollTask(client *http.Client, cfg runtimeConfig) (*taskOutput, error) {
 	var response taskResponse
 	err := postJSON(client, cfg.BaseURL+"/agent/tasks/poll", taskPollRequest{
@@ -559,6 +573,7 @@ func pollTask(client *http.Client, cfg runtimeConfig) (*taskOutput, error) {
 	return response.Data, nil
 }
 
+// executeTask 封装当前模块的业务处理逻辑。
 func executeTask(client *http.Client, cfg runtimeConfig, task *taskOutput, hostname, hostIP string, state *runtimeState) {
 	if task == nil {
 		return
@@ -646,6 +661,7 @@ func executeTask(client *http.Client, cfg runtimeConfig, task *taskOutput, hostn
 	log.Printf("task %s finished with status=%s exit=%d", task.ID, status, exitCode)
 }
 
+// prepareExecDir 封装当前模块的业务处理逻辑。
 func prepareExecDir(baseWorkDir, taskID string) (string, error) {
 	baseAbs, err := filepath.Abs(strings.TrimSpace(baseWorkDir))
 	if err != nil {
@@ -665,6 +681,7 @@ func prepareExecDir(baseWorkDir, taskID string) (string, error) {
 	return execAbs, nil
 }
 
+// runScript 封装当前模块的业务处理逻辑。
 func runScript(execDir, shellType, scriptPath string, timeoutSec int) (stdoutText, stderrText string, exitCode int, err error) {
 	shellPath := "/bin/sh"
 	if strings.EqualFold(strings.TrimSpace(shellType), "bash") {
@@ -693,6 +710,7 @@ func runScript(execDir, shellType, scriptPath string, timeoutSec int) (stdoutTex
 	return stdoutText, stderrText, 0, nil
 }
 
+// prepareTaskScript 封装当前模块的业务处理逻辑。
 func prepareTaskScript(baseWorkDir, execDir string, task *taskOutput) (string, error) {
 	if task == nil {
 		return "", fmt.Errorf("task is required")
@@ -712,6 +730,7 @@ func prepareTaskScript(baseWorkDir, execDir string, task *taskOutput) (string, e
 	}
 }
 
+// prepareScriptFileTask 封装当前模块的业务处理逻辑。
 func prepareScriptFileTask(baseWorkDir, execDir string, task *taskOutput) (string, error) {
 	scriptPathValue := strings.TrimSpace(task.ScriptPath)
 	if scriptPathValue == "" {
@@ -756,6 +775,7 @@ func prepareScriptFileTask(baseWorkDir, execDir string, task *taskOutput) (strin
 	return renderedPath, nil
 }
 
+// prepareFileDistributionTask 封装当前模块的业务处理逻辑。
 func prepareFileDistributionTask(execDir string, task *taskOutput) (string, error) {
 	filePathValue := strings.TrimSpace(task.ScriptPath)
 	if filePathValue == "" {
@@ -776,6 +796,7 @@ func prepareFileDistributionTask(execDir string, task *taskOutput) (string, erro
 	return targetPath, nil
 }
 
+// postJSON 封装当前模块的业务处理逻辑。
 func postJSON(client *http.Client, endpoint string, payload any, output any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -803,6 +824,7 @@ type statusError struct {
 	Body string
 }
 
+// Error 封装当前模块的业务处理逻辑。
 func (e *statusError) Error() string {
 	if strings.TrimSpace(e.Body) == "" {
 		return http.StatusText(e.Code)
@@ -816,10 +838,12 @@ type limitedBuffer struct {
 	truncated bool
 }
 
+// newLimitedBuffer 封装当前模块的业务处理逻辑。
 func newLimitedBuffer(max int) limitedBuffer {
 	return limitedBuffer{max: max}
 }
 
+// Write 写入处理结果或错误信息。
 func (b *limitedBuffer) Write(p []byte) (int, error) {
 	if b.max <= 0 {
 		b.truncated = true
@@ -839,6 +863,7 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// String 封装当前模块的业务处理逻辑。
 func (b *limitedBuffer) String() string {
 	text := b.buf.String()
 	if b.truncated {
@@ -850,6 +875,7 @@ func (b *limitedBuffer) String() string {
 	return text
 }
 
+// envOrDefault 封装当前模块的业务处理逻辑。
 func envOrDefault(key, fallback string) string {
 	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
 		return value
@@ -857,6 +883,7 @@ func envOrDefault(key, fallback string) string {
 	return fallback
 }
 
+// envDurationOrDefault 封装当前模块的业务处理逻辑。
 func envDurationOrDefault(key string, fallback time.Duration) time.Duration {
 	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
 		parsed, err := time.ParseDuration(value)
@@ -867,6 +894,7 @@ func envDurationOrDefault(key string, fallback time.Duration) time.Duration {
 	return fallback
 }
 
+// currentDir 封装当前模块的业务处理逻辑。
 func currentDir() string {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -875,10 +903,12 @@ func currentDir() string {
 	return dir
 }
 
+// parseTags 解析输入内容并返回结构化结果。
 func parseTags(raw string) []string {
 	return normalizeTags(strings.Split(raw, ","))
 }
 
+// normalizeTags 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeTags(items []string) []string {
 	result := make([]string, 0, len(items))
 	seen := make(map[string]struct{})
@@ -896,6 +926,7 @@ func normalizeTags(items []string) []string {
 	return result
 }
 
+// renderTemplate 封装当前模块的业务处理逻辑。
 func renderTemplate(script string, variables map[string]string) string {
 	result := script
 	for key, value := range variables {
@@ -904,6 +935,7 @@ func renderTemplate(script string, variables map[string]string) string {
 	return result
 }
 
+// firstLine 封装当前模块的业务处理逻辑。
 func firstLine(value, fallback string) string {
 	text := strings.TrimSpace(value)
 	if text == "" {
@@ -913,6 +945,7 @@ func firstLine(value, fallback string) string {
 	return trimText(strings.TrimSpace(lines[0]), 200)
 }
 
+// trimText 封装当前模块的业务处理逻辑。
 func trimText(value string, max int) string {
 	value = strings.TrimSpace(value)
 	if max <= 0 || len(value) <= max {
@@ -921,6 +954,7 @@ func trimText(value string, max int) string {
 	return value[:max]
 }
 
+// scriptFileName 封装当前模块的业务处理逻辑。
 func scriptFileName(shellType string) string {
 	if strings.EqualFold(strings.TrimSpace(shellType), "bash") {
 		return "run.bash"
@@ -928,6 +962,7 @@ func scriptFileName(shellType string) string {
 	return "run.sh"
 }
 
+// resolveAgentName 解析上下文数据，得到后续流程需要的结果。
 func resolveAgentName(configuredName, hostname, hostIP string) string {
 	if value := strings.TrimSpace(configuredName); value != "" {
 		return value
@@ -946,6 +981,7 @@ func resolveAgentName(configuredName, hostname, hostIP string) string {
 	}
 }
 
+// formatAgentNameIP 封装当前模块的业务处理逻辑。
 func formatAgentNameIP(hostIP string) string {
 	value := strings.TrimSpace(hostIP)
 	if value == "" {
@@ -960,6 +996,7 @@ func formatAgentNameIP(hostIP string) string {
 	return value
 }
 
+// discoverHostIP 封装当前模块的业务处理逻辑。
 func discoverHostIP() string {
 	interfaces, err := net.Interfaces()
 	if err != nil {

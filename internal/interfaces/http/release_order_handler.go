@@ -45,6 +45,7 @@ type ReleaseOrderLogStreamer interface {
 	) error
 }
 
+// NewReleaseOrderHandler 创建并返回对应组件实例。
 func NewReleaseOrderHandler(
 	manager *usecase.ReleaseOrderManager,
 	logStreamer ReleaseOrderLogStreamer,
@@ -59,6 +60,7 @@ func NewReleaseOrderHandler(
 	}
 }
 
+// RegisterRoutes 封装当前模块的业务处理逻辑。
 func (h *ReleaseOrderHandler) RegisterRoutes(router gin.IRouter) {
 	router.POST("/applications/:id/release-orders/rollback", h.CreateRollbackByApplication)
 	router.POST("/applications/:id/rollback-capability", h.GetApplicationRollbackCapability)
@@ -75,6 +77,16 @@ func (h *ReleaseOrderHandler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/release-orders", h.List)
 	router.GET("/release-orders/stats", h.Stats)
 	router.GET("/release-approval-records", h.ListApprovalRecordSummaries)
+	router.GET("/release-order-schedules", h.ListSchedules)
+	router.GET("/release-order-schedules/schedulable-release-orders", h.ListSchedulableScheduleOrders)
+	router.PUT("/release-order-schedules/:schedule_id", h.UpdateSchedule)
+	router.POST("/release-order-schedules/:schedule_id/cancel", h.CancelSchedule)
+	router.POST("/release-order-schedules/:schedule_id/submit-approval", h.SubmitScheduleApproval)
+	router.POST("/release-order-schedules/:schedule_id/approve", h.ApproveSchedule)
+	router.POST("/release-order-schedules/:schedule_id/reject", h.RejectSchedule)
+	router.GET("/release-order-schedules/:schedule_id/approval-records", h.ListScheduleApprovalRecords)
+	router.POST("/release-orders/:id/schedule", h.CreateSchedule)
+	router.GET("/release-orders/:id/schedule", h.GetActiveSchedule)
 	router.GET("/release-orders/:id", h.GetByID)
 	router.GET("/release-orders/:id/precheck", h.GetPrecheck)
 	router.GET("/release-orders/:id/concurrent-batch-progress", h.GetConcurrentBatchProgress)
@@ -102,6 +114,7 @@ func (h *ReleaseOrderHandler) RegisterRoutes(router gin.IRouter) {
 type CreateReleaseOrderRequest struct {
 	ApplicationID string                           `json:"application_id"`
 	TemplateID    string                           `json:"template_id"`
+	ReleaseName   string                           `json:"release_name"`
 	EnvCode       string                           `json:"env_code"`
 	ProjectName   string                           `json:"project_name"`
 	SonService    string                           `json:"son_service"`
@@ -144,6 +157,7 @@ type ApplicationRollbackRequest struct {
 
 type BatchExecuteReleaseOrdersRequest struct {
 	OrderIDs           []string `json:"order_ids"`
+	BatchName          string   `json:"batch_name"`
 	StagedDispatchMode string   `json:"staged_dispatch_mode"`
 }
 
@@ -154,12 +168,14 @@ type BatchDeleteReleaseOrdersRequest struct {
 type ReleaseOrderResponse struct {
 	ID                    string     `json:"id"`
 	OrderNo               string     `json:"order_no"`
+	ReleaseName           string     `json:"release_name"`
 	PreviousOrderNo       string     `json:"previous_order_no"`
 	OperationType         string     `json:"operation_type"`
 	SourceOrderID         string     `json:"source_order_id"`
 	SourceOrderNo         string     `json:"source_order_no"`
 	IsConcurrent          bool       `json:"is_concurrent"`
 	ConcurrentBatchNo     string     `json:"concurrent_batch_no"`
+	ConcurrentBatchName   string     `json:"concurrent_batch_name"`
 	ConcurrentBatchSeq    int        `json:"concurrent_batch_seq"`
 	CDProvider            string     `json:"cd_provider"`
 	HasCIExecution        bool       `json:"has_ci_execution"`
@@ -336,6 +352,7 @@ type ReleaseOrderConcurrentBatchProgressResponse struct {
 		OrderID      string                                            `json:"order_id"`
 		OrderNo      string                                            `json:"order_no"`
 		BatchNo      string                                            `json:"batch_no"`
+		BatchName    string                                            `json:"batch_name"`
 		IsConcurrent bool                                              `json:"is_concurrent"`
 		Total        int                                               `json:"total"`
 		Queued       int                                               `json:"queued"`
@@ -350,6 +367,7 @@ type ReleaseOrderConcurrentBatchProgressResponse struct {
 type ReleaseOrderBatchExecuteResponse struct {
 	Data struct {
 		BatchNo        string                 `json:"batch_no"`
+		BatchName      string                 `json:"batch_name"`
 		Orders         []ReleaseOrderResponse `json:"orders"`
 		DispatchErrors []string               `json:"dispatch_errors"`
 	} `json:"data"`
@@ -371,6 +389,80 @@ type ReleaseOrderApprovalRecordResponse struct {
 
 type ReleaseOrderApprovalRecordListResponse struct {
 	Data []ReleaseOrderApprovalRecordResponse `json:"data"`
+}
+
+type ReleaseOrderScheduleRequest struct {
+	ScheduleMode       string     `json:"schedule_mode"`
+	BuildScheduledAt   *time.Time `json:"build_scheduled_at"`
+	DeployScheduledAt  *time.Time `json:"deploy_scheduled_at"`
+	ExecuteScheduledAt *time.Time `json:"execute_scheduled_at"`
+	Timezone           string     `json:"timezone"`
+	Remark             string     `json:"remark"`
+}
+
+type ReleaseOrderScheduleResponse struct {
+	ID                    string     `json:"id"`
+	ScheduleNo            string     `json:"schedule_no"`
+	ReleaseOrderID        string     `json:"release_order_id"`
+	ReleaseOrderNo        string     `json:"release_order_no"`
+	ApplicationID         string     `json:"application_id"`
+	ApplicationName       string     `json:"application_name"`
+	EnvCode               string     `json:"env_code"`
+	TemplateID            string     `json:"template_id"`
+	TemplateName          string     `json:"template_name"`
+	ScheduleMode          string     `json:"schedule_mode"`
+	BuildScheduledAt      *time.Time `json:"build_scheduled_at"`
+	DeployScheduledAt     *time.Time `json:"deploy_scheduled_at"`
+	ExecuteScheduledAt    *time.Time `json:"execute_scheduled_at"`
+	CDConflictAt          *time.Time `json:"cd_conflict_at"`
+	Timezone              string     `json:"timezone"`
+	Status                string     `json:"status"`
+	ApprovalRequired      bool       `json:"approval_required"`
+	ApprovalMode          string     `json:"approval_mode"`
+	ApprovalApproverIDs   []string   `json:"approval_approver_ids"`
+	ApprovalApproverNames []string   `json:"approval_approver_names"`
+	ApprovedAt            *time.Time `json:"approved_at"`
+	ApprovedBy            string     `json:"approved_by"`
+	RejectedAt            *time.Time `json:"rejected_at"`
+	RejectedBy            string     `json:"rejected_by"`
+	RejectedReason        string     `json:"rejected_reason"`
+	BuildDispatchedAt     *time.Time `json:"build_dispatched_at"`
+	DeployDispatchedAt    *time.Time `json:"deploy_dispatched_at"`
+	ExecuteDispatchedAt   *time.Time `json:"execute_dispatched_at"`
+	ExpiredAt             *time.Time `json:"expired_at"`
+	CancelledAt           *time.Time `json:"cancelled_at"`
+	CancelledBy           string     `json:"cancelled_by"`
+	LastError             string     `json:"last_error"`
+	Remark                string     `json:"remark"`
+	CreatorUserID         string     `json:"creator_user_id"`
+	CreatorName           string     `json:"creator_name"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
+}
+
+type ReleaseOrderScheduleDataResponse struct {
+	Data ReleaseOrderScheduleResponse `json:"data"`
+}
+
+type ReleaseOrderScheduleListResponse struct {
+	Data     []ReleaseOrderScheduleResponse `json:"data"`
+	Page     int                            `json:"page"`
+	PageSize int                            `json:"page_size"`
+	Total    int64                          `json:"total"`
+}
+
+type ReleaseOrderScheduleApprovalRecordResponse struct {
+	ID             string    `json:"id"`
+	ScheduleID     string    `json:"schedule_id"`
+	Action         string    `json:"action"`
+	OperatorUserID string    `json:"operator_user_id"`
+	OperatorName   string    `json:"operator_name"`
+	Comment        string    `json:"comment"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+type ReleaseOrderScheduleApprovalRecordListResponse struct {
+	Data []ReleaseOrderScheduleApprovalRecordResponse `json:"data"`
 }
 
 type ReleaseOrderApprovalRecordSummaryResponse struct {
@@ -578,6 +670,19 @@ func (h *ReleaseOrderHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toReleaseOrderResponse(order)})
 }
 
+// Delete 删除资源。
+// @Summary      删除资源
+// @Description  删除资源，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/{id} [delete]
 func (h *ReleaseOrderHandler) Delete(c *gin.Context) {
 	if _, ok := ensureCurrentUserAdmin(c); !ok {
 		return
@@ -593,6 +698,19 @@ func (h *ReleaseOrderHandler) Delete(c *gin.Context) {
 	})
 }
 
+// BatchDelete 批量处理Delete。
+// @Summary      批量处理Delete
+// @Description  批量处理Delete，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/batch-delete [post]
 func (h *ReleaseOrderHandler) BatchDelete(c *gin.Context) {
 	if _, ok := ensureCurrentUserAdmin(c); !ok {
 		return
@@ -612,6 +730,19 @@ func (h *ReleaseOrderHandler) BatchDelete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// BatchExecute 批量处理Execute。
+// @Summary      批量处理Execute
+// @Description  批量处理Execute，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/batch-execute [post]
 func (h *ReleaseOrderHandler) BatchExecute(c *gin.Context) {
 	if !ensureAnyReleaseOrderDisplayPermission(c, h.authz) {
 		return
@@ -640,6 +771,7 @@ func (h *ReleaseOrderHandler) BatchExecute(c *gin.Context) {
 	}
 	output, err := h.manager.BatchExecute(c.Request.Context(), usecase.BatchExecuteReleaseOrdersInput{
 		OrderIDs:           req.OrderIDs,
+		BatchName:          strings.TrimSpace(req.BatchName),
 		StagedDispatchMode: usecase.BatchExecuteStagedDispatchMode(strings.TrimSpace(req.StagedDispatchMode)),
 	})
 	if err != nil {
@@ -648,6 +780,7 @@ func (h *ReleaseOrderHandler) BatchExecute(c *gin.Context) {
 	}
 	resp := ReleaseOrderBatchExecuteResponse{}
 	resp.Data.BatchNo = output.BatchNo
+	resp.Data.BatchName = output.BatchName
 	resp.Data.DispatchErrors = append(resp.Data.DispatchErrors, output.DispatchErrors...)
 	resp.Data.Orders = make([]ReleaseOrderResponse, 0, len(output.Orders))
 	for _, item := range output.Orders {
@@ -672,6 +805,20 @@ func (h *ReleaseOrderHandler) CreateRollbackByApplication(c *gin.Context) {
 	c.JSON(http.StatusBadRequest, gin.H{"error": "按应用自动恢复已废弃，请基于指定发布单发起重放"})
 }
 
+// GetApplicationRollbackCapability 获取Application Rollback Capability详情。
+// @Summary      获取Application Rollback Capability详情
+// @Description  获取Application Rollback Capability详情，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /applications/{id}/rollback-capability [post]
 func (h *ReleaseOrderHandler) GetApplicationRollbackCapability(c *gin.Context) {
 	applicationID := strings.TrimSpace(c.Param("id"))
 	var req ApplicationRollbackRequest
@@ -695,6 +842,20 @@ func (h *ReleaseOrderHandler) GetApplicationRollbackCapability(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toApplicationRollbackCapabilityResponse(output)})
 }
 
+// GetApplicationRollbackPrecheck 获取Application Rollback Precheck详情。
+// @Summary      获取Application Rollback Precheck详情
+// @Description  获取Application Rollback Precheck详情，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /applications/{id}/rollback-precheck [post]
 func (h *ReleaseOrderHandler) GetApplicationRollbackPrecheck(c *gin.Context) {
 	applicationID := strings.TrimSpace(c.Param("id"))
 	var req ApplicationRollbackRequest
@@ -723,6 +884,20 @@ func (h *ReleaseOrderHandler) GetApplicationRollbackPrecheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toApplicationRollbackPrecheckResponse(output)})
 }
 
+// CreateApplicationRollbackOrder 创建Application Rollback Order。
+// @Summary      创建Application Rollback Order
+// @Description  创建Application Rollback Order，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /applications/{id}/rollback-orders [post]
 func (h *ReleaseOrderHandler) CreateApplicationRollbackOrder(c *gin.Context) {
 	applicationID := strings.TrimSpace(c.Param("id"))
 	var req ApplicationRollbackRequest
@@ -759,6 +934,18 @@ func (h *ReleaseOrderHandler) CreateApplicationRollbackOrder(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"data": h.toReleaseOrderResponse(c.Request.Context(), order)})
 }
 
+// ListAppReleaseStateSummaries 查询App Release State Summaries列表。
+// @Summary      查询App Release State Summaries列表
+// @Description  查询App Release State Summaries列表，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /app-release-states/summaries [get]
 func (h *ReleaseOrderHandler) ListAppReleaseStateSummaries(c *gin.Context) {
 	if !ensureAnyReleaseOrderDisplayPermission(c, h.authz) {
 		return
@@ -797,6 +984,20 @@ func (h *ReleaseOrderHandler) ListAppReleaseStateSummaries(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": resp})
 }
 
+// ConfirmLive 处理Confirm Live接口。
+// @Summary      处理Confirm Live接口
+// @Description  处理Confirm Live接口，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/{id}/confirm-live [post]
 func (h *ReleaseOrderHandler) ConfirmLive(c *gin.Context) {
 	orderID := strings.TrimSpace(c.Param("id"))
 	existing, err := h.manager.GetByID(c.Request.Context(), orderID)
@@ -823,6 +1024,20 @@ func (h *ReleaseOrderHandler) ConfirmLive(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": resp})
 }
 
+// CreateRollbackByOrder 创建Rollback By Order。
+// @Summary      创建Rollback By Order
+// @Description  创建Rollback By Order，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/{id}/rollback [post]
 func (h *ReleaseOrderHandler) CreateRollbackByOrder(c *gin.Context) {
 	sourceOrderID := strings.TrimSpace(c.Param("id"))
 	if !ensureAnyReleaseOrderDisplayPermission(c, h.authz) {
@@ -855,6 +1070,20 @@ func (h *ReleaseOrderHandler) CreateRollbackByOrder(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"data": toReleaseOrderResponse(order)})
 }
 
+// CreateReplayByOrder 创建Replay By Order。
+// @Summary      创建Replay By Order
+// @Description  创建Replay By Order，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/{id}/replay [post]
 func (h *ReleaseOrderHandler) CreateReplayByOrder(c *gin.Context) {
 	sourceOrderID := strings.TrimSpace(c.Param("id"))
 	if !ensureAnyReleaseOrderDisplayPermission(c, h.authz) {
@@ -893,6 +1122,8 @@ func (h *ReleaseOrderHandler) CreateReplayByOrder(c *gin.Context) {
 // @Produce      json
 // @Param        application_id    query     string  false  "Application ID"
 // @Param        keyword           query     string  false  "Order keyword"
+// @Param        concurrent_batch_no    query     string  false  "Concurrent batch no"
+// @Param        concurrent_batch_name  query     string  false  "Concurrent batch name"
 // @Param        triggered_by      query     string  false  "Triggered by"
 // @Param        env_code          query     string  false  "Environment code"
 // @Param        operation_type    query     string  false  "Operation type"
@@ -943,6 +1174,8 @@ func (h *ReleaseOrderHandler) List(c *gin.Context) {
 		ApprovalApproverUserID:      strings.TrimSpace(c.Query("approval_approver_user_id")),
 		CreatorUserID:               resolveReleaseOrderCreatorFilter(currentUser),
 		Keyword:                     strings.TrimSpace(c.Query("keyword")),
+		ConcurrentBatchNo:           strings.TrimSpace(c.Query("concurrent_batch_no")),
+		ConcurrentBatchName:         strings.TrimSpace(c.Query("concurrent_batch_name")),
 		TriggeredBy:                 strings.TrimSpace(c.Query("triggered_by")),
 		EnvCode:                     c.Query("env_code"),
 		OperationType:               domain.OperationType(strings.TrimSpace(c.Query("operation_type"))),
@@ -973,6 +1206,324 @@ func (h *ReleaseOrderHandler) List(c *gin.Context) {
 	})
 }
 
+func (h *ReleaseOrderHandler) ListSchedules(c *gin.Context) {
+	if !ensureAnyReleaseOrderDisplayPermission(c, h.authz) {
+		return
+	}
+	currentUser, ok := getCurrentUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	page, err := parsePositiveInt(c, "page")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	pageSize, err := parsePositiveInt(c, "page_size")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	applicationID := strings.TrimSpace(c.Query("application_id"))
+	allowAll, visibleApplicationIDs, _, ok := resolveVisibleReleaseOrderApplicationIDs(c, h.authz)
+	if !ok {
+		return
+	}
+	visibleToUserID := ""
+	if !allowAll {
+		visibleToUserID = currentUser.ID
+	}
+	items, total, err := h.manager.ListSchedules(c.Request.Context(), usecase.ListReleaseOrderScheduleInput{
+		ApplicationID:          applicationID,
+		ApplicationIDs:         resolveReleaseListApplicationIDs(applicationID, allowAll, visibleApplicationIDs),
+		VisibleToUserID:        visibleToUserID,
+		ApprovalApproverUserID: strings.TrimSpace(c.Query("approval_approver_user_id")),
+		CreatorUserID:          strings.TrimSpace(c.Query("creator_user_id")),
+		Keyword:                strings.TrimSpace(c.Query("keyword")),
+		EnvCode:                strings.TrimSpace(c.Query("env_code")),
+		ScheduleMode:           domain.ScheduleMode(strings.TrimSpace(c.Query("schedule_mode"))),
+		Status:                 domain.ScheduleStatus(strings.TrimSpace(c.Query("status"))),
+		ScheduledAtFrom:        parseOptionalTime(c.Query("scheduled_at_from")),
+		ScheduledAtTo:          parseOptionalTime(c.Query("scheduled_at_to")),
+		Page:                   page,
+		PageSize:               pageSize,
+	})
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	resp := make([]ReleaseOrderScheduleResponse, 0, len(items))
+	for _, item := range items {
+		resp = append(resp, toReleaseOrderScheduleResponse(item))
+	}
+	c.JSON(http.StatusOK, ReleaseOrderScheduleListResponse{
+		Data:     resp,
+		Page:     resolvedPage(page),
+		PageSize: resolvedPageSize(pageSize),
+		Total:    total,
+	})
+}
+
+func (h *ReleaseOrderHandler) ListSchedulableScheduleOrders(c *gin.Context) {
+	if !ensureAnyReleaseOrderDisplayPermission(c, h.authz) {
+		return
+	}
+	currentUser, ok := getCurrentUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	page, err := parsePositiveInt(c, "page")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	pageSize, err := parsePositiveInt(c, "page_size")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	applicationID := strings.TrimSpace(c.Query("application_id"))
+	allowAll, visibleApplicationIDs, visibleEnvScopes, ok := resolveVisibleReleaseOrderApplicationIDs(c, h.authz)
+	if !ok {
+		return
+	}
+	visibleToUserID := ""
+	if !allowAll {
+		visibleToUserID = currentUser.ID
+	}
+	items, total, err := h.manager.ListSchedulableOrders(c.Request.Context(), usecase.ListSchedulableReleaseOrderInput{
+		ListReleaseOrderInput: usecase.ListReleaseOrderInput{
+			ApplicationID:               applicationID,
+			ApplicationIDs:              resolveReleaseListApplicationIDs(applicationID, allowAll, visibleApplicationIDs),
+			VisibleApplicationEnvScopes: visibleEnvScopes,
+			VisibleToUserID:             visibleToUserID,
+			CreatorUserID:               resolveReleaseOrderCreatorFilter(currentUser),
+			Keyword:                     strings.TrimSpace(c.Query("keyword")),
+			EnvCode:                     strings.TrimSpace(c.Query("env_code")),
+			OperationType:               domain.OperationType(strings.TrimSpace(c.Query("operation_type"))),
+			Page:                        page,
+			PageSize:                    pageSize,
+		},
+		ScheduleMode: domain.ScheduleMode(strings.TrimSpace(c.Query("schedule_mode"))),
+	})
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	for idx := range items {
+		items[idx] = h.enrichReleaseOrderResponseMeta(c.Request.Context(), items[idx])
+	}
+	resp := make([]ReleaseOrderResponse, 0, len(items))
+	for _, item := range items {
+		resp = append(resp, h.toReleaseOrderResponse(c.Request.Context(), item))
+	}
+	c.JSON(http.StatusOK, ReleaseOrderListResponse{
+		Data:     resp,
+		Page:     resolvedPage(page),
+		PageSize: resolvedPageSize(pageSize),
+		Total:    total,
+	})
+}
+
+func (h *ReleaseOrderHandler) CreateSchedule(c *gin.Context) {
+	order, err := h.manager.GetByID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	if !ensureReleaseOrderVisible(c, h.authz, order) {
+		return
+	}
+	if !ensureReleaseApplicationPermission(c, h.authz, "release.create", order.ApplicationID, order.EnvCode) {
+		return
+	}
+	currentUser, ok := getCurrentUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	var req ReleaseOrderScheduleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	item, err := h.manager.CreateSchedule(c.Request.Context(), order.ID, buildReleaseOrderScheduleInput(req, currentUser))
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, ReleaseOrderScheduleDataResponse{Data: toReleaseOrderScheduleResponse(item)})
+}
+
+func (h *ReleaseOrderHandler) GetActiveSchedule(c *gin.Context) {
+	order, err := h.manager.GetByID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	if !ensureReleaseOrderVisible(c, h.authz, order) {
+		return
+	}
+	item, err := h.manager.GetActiveScheduleByOrderID(c.Request.Context(), order.ID)
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, ReleaseOrderScheduleDataResponse{Data: toReleaseOrderScheduleResponse(item)})
+}
+
+func (h *ReleaseOrderHandler) UpdateSchedule(c *gin.Context) {
+	item, err := h.manager.GetScheduleByID(c.Request.Context(), c.Param("schedule_id"))
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	if !ensureReleaseApplicationPermission(c, h.authz, "release.create", item.ApplicationID, item.EnvCode) {
+		return
+	}
+	currentUser, ok := getCurrentUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if !ensureReleaseOrderScheduleCreatorActor(c, currentUser, item, "edit this release order schedule") {
+		return
+	}
+	var req ReleaseOrderScheduleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	updated, err := h.manager.UpdateSchedule(c.Request.Context(), item.ID, buildReleaseOrderScheduleInput(req, currentUser))
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, ReleaseOrderScheduleDataResponse{Data: toReleaseOrderScheduleResponse(updated)})
+}
+
+func (h *ReleaseOrderHandler) CancelSchedule(c *gin.Context) {
+	currentUser, ok := getCurrentUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	item, err := h.manager.GetScheduleByID(c.Request.Context(), c.Param("schedule_id"))
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	if !ensureReleaseApplicationPermission(c, h.authz, "release.create", item.ApplicationID, item.EnvCode) {
+		return
+	}
+	if !ensureReleaseOrderScheduleCreatorActor(c, currentUser, item, "cancel this release order schedule") {
+		return
+	}
+	updated, err := h.manager.CancelSchedule(c.Request.Context(), item.ID, resolveTriggeredBy(currentUser))
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, ReleaseOrderScheduleDataResponse{Data: toReleaseOrderScheduleResponse(updated)})
+}
+
+func (h *ReleaseOrderHandler) SubmitScheduleApproval(c *gin.Context) {
+	h.handleScheduleApprovalAction(c, "submit")
+}
+
+func (h *ReleaseOrderHandler) ApproveSchedule(c *gin.Context) {
+	h.handleScheduleApprovalAction(c, "approve")
+}
+
+func (h *ReleaseOrderHandler) RejectSchedule(c *gin.Context) {
+	h.handleScheduleApprovalAction(c, "reject")
+}
+
+func (h *ReleaseOrderHandler) handleScheduleApprovalAction(c *gin.Context, action string) {
+	currentUser, ok := getCurrentUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	schedule, err := h.manager.GetScheduleByID(c.Request.Context(), c.Param("schedule_id"))
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	order, err := h.manager.GetByID(c.Request.Context(), schedule.ReleaseOrderID)
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	if !ensureReleaseOrderVisible(c, h.authz, order) {
+		return
+	}
+	if action == "submit" && !ensureReleaseOrderScheduleCreatorActor(c, currentUser, schedule, "submit this release order schedule approval") {
+		return
+	}
+	var req ReleaseOrderApprovalActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	var item domain.ReleaseOrderSchedule
+	switch action {
+	case "submit":
+		item, err = h.manager.SubmitScheduleApproval(c.Request.Context(), c.Param("schedule_id"), strings.TrimSpace(currentUser.ID), resolveTriggeredBy(currentUser), req.Comment)
+	case "approve":
+		item, err = h.manager.ApproveSchedule(c.Request.Context(), c.Param("schedule_id"), strings.TrimSpace(currentUser.ID), resolveTriggeredBy(currentUser), req.Comment)
+	case "reject":
+		item, err = h.manager.RejectSchedule(c.Request.Context(), c.Param("schedule_id"), strings.TrimSpace(currentUser.ID), resolveTriggeredBy(currentUser), req.Comment)
+	default:
+		err = usecase.ErrInvalidInput
+	}
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, ReleaseOrderScheduleDataResponse{Data: toReleaseOrderScheduleResponse(item)})
+}
+
+func (h *ReleaseOrderHandler) ListScheduleApprovalRecords(c *gin.Context) {
+	schedule, err := h.manager.GetScheduleByID(c.Request.Context(), c.Param("schedule_id"))
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	order, err := h.manager.GetByID(c.Request.Context(), schedule.ReleaseOrderID)
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	if !ensureReleaseOrderVisible(c, h.authz, order) {
+		return
+	}
+	items, err := h.manager.ListScheduleApprovalRecords(c.Request.Context(), c.Param("schedule_id"))
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	resp := make([]ReleaseOrderScheduleApprovalRecordResponse, 0, len(items))
+	for _, item := range items {
+		resp = append(resp, toReleaseOrderScheduleApprovalRecordResponse(item))
+	}
+	c.JSON(http.StatusOK, ReleaseOrderScheduleApprovalRecordListResponse{Data: resp})
+}
+
+// Stats 处理Stats接口。
+// @Summary      处理Stats接口
+// @Description  处理Stats接口，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/stats [get]
 func (h *ReleaseOrderHandler) Stats(c *gin.Context) {
 	if !ensureAnyReleaseOrderDisplayPermission(c, h.authz) {
 		return
@@ -999,6 +1550,8 @@ func (h *ReleaseOrderHandler) Stats(c *gin.Context) {
 		ApprovalApproverUserID:      strings.TrimSpace(c.Query("approval_approver_user_id")),
 		CreatorUserID:               resolveReleaseOrderCreatorFilter(currentUser),
 		Keyword:                     strings.TrimSpace(c.Query("keyword")),
+		ConcurrentBatchNo:           strings.TrimSpace(c.Query("concurrent_batch_no")),
+		ConcurrentBatchName:         strings.TrimSpace(c.Query("concurrent_batch_name")),
 		TriggeredBy:                 strings.TrimSpace(c.Query("triggered_by")),
 		EnvCode:                     c.Query("env_code"),
 		OperationType:               domain.OperationType(strings.TrimSpace(c.Query("operation_type"))),
@@ -1014,6 +1567,18 @@ func (h *ReleaseOrderHandler) Stats(c *gin.Context) {
 	c.JSON(http.StatusOK, ReleaseOrderStatsResponse(stats))
 }
 
+// ListApprovalRecordSummaries 查询Approval Record Summaries列表。
+// @Summary      查询Approval Record Summaries列表
+// @Description  查询Approval Record Summaries列表，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-approval-records [get]
 func (h *ReleaseOrderHandler) ListApprovalRecordSummaries(c *gin.Context) {
 	if !ensureAnyReleaseOrderDisplayPermission(c, h.authz) {
 		return
@@ -1095,6 +1660,19 @@ func (h *ReleaseOrderHandler) GetByID(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": h.toReleaseOrderResponse(c.Request.Context(), item)})
 }
 
+// GetPrecheck 获取Precheck详情。
+// @Summary      获取Precheck详情
+// @Description  获取Precheck详情，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/{id}/precheck [get]
 func (h *ReleaseOrderHandler) GetPrecheck(c *gin.Context) {
 	existing, err := h.manager.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -1142,6 +1720,19 @@ func (h *ReleaseOrderHandler) GetPrecheck(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// GetConcurrentBatchProgress 获取Concurrent Batch Progress详情。
+// @Summary      获取Concurrent Batch Progress详情
+// @Description  获取Concurrent Batch Progress详情，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/{id}/concurrent-batch-progress [get]
 func (h *ReleaseOrderHandler) GetConcurrentBatchProgress(c *gin.Context) {
 	existing, err := h.manager.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -1160,6 +1751,7 @@ func (h *ReleaseOrderHandler) GetConcurrentBatchProgress(c *gin.Context) {
 	resp.Data.OrderID = output.OrderID
 	resp.Data.OrderNo = output.OrderNo
 	resp.Data.BatchNo = output.BatchNo
+	resp.Data.BatchName = output.BatchName
 	resp.Data.IsConcurrent = output.IsConcurrent
 	resp.Data.Total = output.Total
 	resp.Data.Queued = output.Queued
@@ -1188,6 +1780,19 @@ func (h *ReleaseOrderHandler) GetConcurrentBatchProgress(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// ListApprovalRecords 查询Approval Records列表。
+// @Summary      查询Approval Records列表
+// @Description  查询Approval Records列表，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/{id}/approval-records [get]
 func (h *ReleaseOrderHandler) ListApprovalRecords(c *gin.Context) {
 	if !ensureAnyReleaseOrderDisplayPermission(c, h.authz) {
 		return
@@ -1212,6 +1817,20 @@ func (h *ReleaseOrderHandler) ListApprovalRecords(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": resp})
 }
 
+// SubmitApproval 处理Submit Approval接口。
+// @Summary      处理Submit Approval接口
+// @Description  处理Submit Approval接口，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/{id}/submit-approval [post]
 func (h *ReleaseOrderHandler) SubmitApproval(c *gin.Context) {
 	existing, err := h.manager.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -1249,6 +1868,20 @@ func (h *ReleaseOrderHandler) SubmitApproval(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toReleaseOrderResponse(item)})
 }
 
+// Approve 审批通过发布单。
+// @Summary      审批通过发布单
+// @Description  审批通过发布单，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/{id}/approve [post]
 func (h *ReleaseOrderHandler) Approve(c *gin.Context) {
 	existing, err := h.manager.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -1286,6 +1919,20 @@ func (h *ReleaseOrderHandler) Approve(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toReleaseOrderResponse(item)})
 }
 
+// Reject 驳回发布单。
+// @Summary      驳回发布单
+// @Description  驳回发布单，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/{id}/reject [post]
 func (h *ReleaseOrderHandler) Reject(c *gin.Context) {
 	existing, err := h.manager.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -1395,6 +2042,20 @@ func (h *ReleaseOrderHandler) Execute(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toReleaseOrderResponse(item)})
 }
 
+// Build 处理Build接口。
+// @Summary      处理Build接口
+// @Description  处理Build接口，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/{id}/build [post]
 func (h *ReleaseOrderHandler) Build(c *gin.Context) {
 	existing, err := h.manager.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -1421,6 +2082,20 @@ func (h *ReleaseOrderHandler) Build(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toReleaseOrderResponse(item)})
 }
 
+// Deploy 处理Deploy接口。
+// @Summary      处理Deploy接口
+// @Description  处理Deploy接口，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/{id}/deploy [post]
 func (h *ReleaseOrderHandler) Deploy(c *gin.Context) {
 	existing, err := h.manager.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -1564,6 +2239,19 @@ func (h *ReleaseOrderHandler) ListParams(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": resp})
 }
 
+// ListExecutions 查询Executions列表。
+// @Summary      查询Executions列表
+// @Description  查询Executions列表，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/{id}/executions [get]
 func (h *ReleaseOrderHandler) ListExecutions(c *gin.Context) {
 	if !ensureAnyReleaseOrderDisplayPermission(c, h.authz) {
 		return
@@ -1716,16 +2404,19 @@ func (h *ReleaseOrderHandler) FinishStep(c *gin.Context) {
 	})
 }
 
+// toReleaseOrderResponse 将领域对象转换为接口响应结构。
 func toReleaseOrderResponse(item domain.ReleaseOrder, states ...*domain.AppReleaseState) ReleaseOrderResponse {
 	resp := ReleaseOrderResponse{
 		ID:                    item.ID,
 		OrderNo:               item.OrderNo,
+		ReleaseName:           item.ReleaseName,
 		PreviousOrderNo:       item.PreviousOrderNo,
 		OperationType:         string(item.OperationType),
 		SourceOrderID:         item.SourceOrderID,
 		SourceOrderNo:         item.SourceOrderNo,
 		IsConcurrent:          item.IsConcurrent,
 		ConcurrentBatchNo:     item.ConcurrentBatchNo,
+		ConcurrentBatchName:   item.ConcurrentBatchName,
 		ConcurrentBatchSeq:    item.ConcurrentBatchSeq,
 		CDProvider:            item.CDProvider,
 		HasCIExecution:        item.HasCIExecution,
@@ -1772,6 +2463,74 @@ func toReleaseOrderResponse(item domain.ReleaseOrder, states ...*domain.AppRelea
 	return resp
 }
 
+func buildReleaseOrderScheduleInput(req ReleaseOrderScheduleRequest, currentUser userdomain.User) usecase.CreateReleaseOrderScheduleInput {
+	return usecase.CreateReleaseOrderScheduleInput{
+		ScheduleMode:       domain.ScheduleMode(strings.TrimSpace(req.ScheduleMode)),
+		BuildScheduledAt:   req.BuildScheduledAt,
+		DeployScheduledAt:  req.DeployScheduledAt,
+		ExecuteScheduledAt: req.ExecuteScheduledAt,
+		Timezone:           strings.TrimSpace(req.Timezone),
+		Remark:             strings.TrimSpace(req.Remark),
+		CreatorUserID:      strings.TrimSpace(currentUser.ID),
+		CreatorName:        resolveTriggeredBy(currentUser),
+	}
+}
+
+func toReleaseOrderScheduleResponse(item domain.ReleaseOrderSchedule) ReleaseOrderScheduleResponse {
+	return ReleaseOrderScheduleResponse{
+		ID:                    item.ID,
+		ScheduleNo:            item.ScheduleNo,
+		ReleaseOrderID:        item.ReleaseOrderID,
+		ReleaseOrderNo:        item.ReleaseOrderNo,
+		ApplicationID:         item.ApplicationID,
+		ApplicationName:       item.ApplicationName,
+		EnvCode:               item.EnvCode,
+		TemplateID:            item.TemplateID,
+		TemplateName:          item.TemplateName,
+		ScheduleMode:          string(item.ScheduleMode),
+		BuildScheduledAt:      item.BuildScheduledAt,
+		DeployScheduledAt:     item.DeployScheduledAt,
+		ExecuteScheduledAt:    item.ExecuteScheduledAt,
+		CDConflictAt:          item.CDConflictAt,
+		Timezone:              item.Timezone,
+		Status:                string(item.Status),
+		ApprovalRequired:      item.ApprovalRequired,
+		ApprovalMode:          string(item.ApprovalMode),
+		ApprovalApproverIDs:   append([]string(nil), item.ApprovalApproverIDs...),
+		ApprovalApproverNames: append([]string(nil), item.ApprovalApproverNames...),
+		ApprovedAt:            item.ApprovedAt,
+		ApprovedBy:            item.ApprovedBy,
+		RejectedAt:            item.RejectedAt,
+		RejectedBy:            item.RejectedBy,
+		RejectedReason:        item.RejectedReason,
+		BuildDispatchedAt:     item.BuildDispatchedAt,
+		DeployDispatchedAt:    item.DeployDispatchedAt,
+		ExecuteDispatchedAt:   item.ExecuteDispatchedAt,
+		ExpiredAt:             item.ExpiredAt,
+		CancelledAt:           item.CancelledAt,
+		CancelledBy:           item.CancelledBy,
+		LastError:             item.LastError,
+		Remark:                item.Remark,
+		CreatorUserID:         item.CreatorUserID,
+		CreatorName:           item.CreatorName,
+		CreatedAt:             item.CreatedAt,
+		UpdatedAt:             item.UpdatedAt,
+	}
+}
+
+func toReleaseOrderScheduleApprovalRecordResponse(item domain.ReleaseOrderScheduleApprovalRecord) ReleaseOrderScheduleApprovalRecordResponse {
+	return ReleaseOrderScheduleApprovalRecordResponse{
+		ID:             item.ID,
+		ScheduleID:     item.ScheduleID,
+		Action:         string(item.Action),
+		OperatorUserID: item.OperatorUserID,
+		OperatorName:   item.OperatorName,
+		Comment:        item.Comment,
+		CreatedAt:      item.CreatedAt,
+	}
+}
+
+// toAppReleaseStateSummaryResponse 将领域对象转换为接口响应结构。
 func toAppReleaseStateSummaryResponse(item domain.AppReleaseStateSummary) AppReleaseStateSummaryResponse {
 	return AppReleaseStateSummaryResponse{
 		ApplicationID:          item.ApplicationID,
@@ -1791,6 +2550,7 @@ func toAppReleaseStateSummaryResponse(item domain.AppReleaseStateSummary) AppRel
 	}
 }
 
+// toApplicationRollbackCapabilityResponse 将领域对象转换为接口响应结构。
 func toApplicationRollbackCapabilityResponse(item usecase.ApplicationRollbackCapabilityOutput) ApplicationRollbackCapabilityResponse {
 	return ApplicationRollbackCapabilityResponse{
 		ApplicationID:   item.ApplicationID,
@@ -1829,6 +2589,7 @@ func toApplicationRollbackCapabilityResponse(item usecase.ApplicationRollbackCap
 	}
 }
 
+// toApplicationRollbackPrecheckResponse 将领域对象转换为接口响应结构。
 func toApplicationRollbackPrecheckResponse(item usecase.ApplicationRollbackPrecheckOutput) ApplicationRollbackPrecheckResponse {
 	resp := ApplicationRollbackPrecheckResponse{
 		ApplicationID:    item.ApplicationID,
@@ -1900,6 +2661,7 @@ func toApplicationRollbackPrecheckResponse(item usecase.ApplicationRollbackPrech
 	return resp
 }
 
+// toReleaseOrderResponse 将领域对象转换为接口响应结构。
 func (h *ReleaseOrderHandler) toReleaseOrderResponse(ctx context.Context, item domain.ReleaseOrder) ReleaseOrderResponse {
 	state := h.lookupAppReleaseStateByOrderID(ctx, item.ID)
 	resp := toReleaseOrderResponse(item, state)
@@ -1907,6 +2669,7 @@ func (h *ReleaseOrderHandler) toReleaseOrderResponse(ctx context.Context, item d
 	return resp
 }
 
+// canConfirmLiveForOrder 封装当前模块的业务处理逻辑。
 func (h *ReleaseOrderHandler) canConfirmLiveForOrder(
 	ctx context.Context,
 	releaseOrderID string,
@@ -1925,6 +2688,7 @@ func (h *ReleaseOrderHandler) canConfirmLiveForOrder(
 	return ok
 }
 
+// lookupAppReleaseStateByOrderID 封装当前模块的业务处理逻辑。
 func (h *ReleaseOrderHandler) lookupAppReleaseStateByOrderID(ctx context.Context, releaseOrderID string) *domain.AppReleaseState {
 	if h == nil || h.manager == nil || strings.TrimSpace(releaseOrderID) == "" {
 		return nil
@@ -1936,6 +2700,7 @@ func (h *ReleaseOrderHandler) lookupAppReleaseStateByOrderID(ctx context.Context
 	return &state
 }
 
+// splitTrimmedCSV 封装当前模块的业务处理逻辑。
 func splitTrimmedCSV(value string) []string {
 	text := strings.TrimSpace(value)
 	if text == "" {
@@ -1953,6 +2718,7 @@ func splitTrimmedCSV(value string) []string {
 	return result
 }
 
+// enrichReleaseOrderResponseMeta 封装当前模块的业务处理逻辑。
 func (h *ReleaseOrderHandler) enrichReleaseOrderResponseMeta(ctx context.Context, item domain.ReleaseOrder) domain.ReleaseOrder {
 	if h == nil || h.manager == nil || strings.TrimSpace(item.ID) == "" {
 		return item
@@ -2023,6 +2789,7 @@ func (h *ReleaseOrderHandler) enrichReleaseOrderResponseMeta(ctx context.Context
 	return item
 }
 
+// deriveReleaseBusinessStatus 封装当前模块的业务处理逻辑。
 func deriveReleaseBusinessStatus(status domain.OrderStatus, hasRunningExecution bool) domain.ReleaseBusinessStatus {
 	switch status {
 	case domain.OrderStatusDraft:
@@ -2065,6 +2832,7 @@ func deriveReleaseBusinessStatus(status domain.OrderStatus, hasRunningExecution 
 	}
 }
 
+// toReleaseOrderParamResponse 将领域对象转换为接口响应结构。
 func toReleaseOrderParamResponse(item domain.ReleaseOrderParam) ReleaseOrderParamResponse {
 	return ReleaseOrderParamResponse{
 		ID:                item.ID,
@@ -2079,6 +2847,7 @@ func toReleaseOrderParamResponse(item domain.ReleaseOrderParam) ReleaseOrderPara
 	}
 }
 
+// toReleaseOrderStepResponse 将领域对象转换为接口响应结构。
 func toReleaseOrderStepResponse(item domain.ReleaseOrderStep) ReleaseOrderStepResponse {
 	return ReleaseOrderStepResponse{
 		ID:                 item.ID,
@@ -2100,6 +2869,7 @@ func toReleaseOrderStepResponse(item domain.ReleaseOrderStep) ReleaseOrderStepRe
 	}
 }
 
+// toReleaseOrderExecutionResponse 将领域对象转换为接口响应结构。
 func toReleaseOrderExecutionResponse(item domain.ReleaseOrderExecution) ReleaseOrderExecutionResponse {
 	return ReleaseOrderExecutionResponse{
 		ID:             item.ID,
@@ -2120,6 +2890,7 @@ func toReleaseOrderExecutionResponse(item domain.ReleaseOrderExecution) ReleaseO
 	}
 }
 
+// toReleaseOrderApprovalRecordResponse 将领域对象转换为接口响应结构。
 func toReleaseOrderApprovalRecordResponse(item domain.ReleaseOrderApprovalRecord) ReleaseOrderApprovalRecordResponse {
 	return ReleaseOrderApprovalRecordResponse{
 		ID:             item.ID,
@@ -2132,6 +2903,7 @@ func toReleaseOrderApprovalRecordResponse(item domain.ReleaseOrderApprovalRecord
 	}
 }
 
+// toReleaseOrderApprovalRecordSummaryResponse 将领域对象转换为接口响应结构。
 func toReleaseOrderApprovalRecordSummaryResponse(item domain.ReleaseOrderApprovalRecordSummary) ReleaseOrderApprovalRecordSummaryResponse {
 	return ReleaseOrderApprovalRecordSummaryResponse{
 		ID:              item.ID,
@@ -2152,6 +2924,7 @@ func toReleaseOrderApprovalRecordSummaryResponse(item domain.ReleaseOrderApprova
 	}
 }
 
+// writeReleaseOrderHTTPError 写入处理结果或错误信息。
 func writeReleaseOrderHTTPError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrInvalidInput),
@@ -2167,12 +2940,14 @@ func writeReleaseOrderHTTPError(c *gin.Context, err error) {
 		errors.Is(err, domain.ErrStepNotFound),
 		errors.Is(err, domain.ErrPipelineStageNotFound),
 		errors.Is(err, domain.ErrTemplateNotFound),
+		errors.Is(err, domain.ErrScheduleNotFound),
 		errors.Is(err, domain.ErrDeploySnapshotNotFound),
 		errors.Is(err, domain.ErrAppReleaseStateNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 
 	case errors.Is(err, domain.ErrOrderDuplicated),
 		errors.Is(err, domain.ErrTemplateDuplicated),
+		errors.Is(err, domain.ErrScheduleDuplicated),
 		errors.Is(err, domain.ErrAppReleaseStateNotConfirmable),
 		errors.Is(err, usecase.ErrConcurrentReleaseBlocked):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
@@ -2182,6 +2957,7 @@ func writeReleaseOrderHTTPError(c *gin.Context, err error) {
 	}
 }
 
+// normalizeReleaseOrderErrorMessage 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeReleaseOrderErrorMessage(err error) string {
 	if err == nil {
 		return "invalid input"
@@ -2214,6 +2990,7 @@ func normalizeReleaseOrderErrorMessage(err error) string {
 	return message
 }
 
+// ensureCurrentUserAdmin 校验前置条件，不满足时写入对应错误响应。
 func ensureCurrentUserAdmin(c *gin.Context) (userdomain.User, bool) {
 	user, ok := getCurrentUser(c)
 	if !ok {
@@ -2227,6 +3004,7 @@ func ensureCurrentUserAdmin(c *gin.Context) (userdomain.User, bool) {
 	return user, true
 }
 
+// ensureReleaseApplicationPermission 校验前置条件，不满足时写入对应错误响应。
 func ensureReleaseApplicationPermission(
 	c *gin.Context,
 	authz RequestAuthorizer,
@@ -2250,6 +3028,7 @@ func ensureReleaseApplicationPermission(
 	)
 }
 
+// ensureReleaseOrderApprovalActor 校验前置条件，不满足时写入对应错误响应。
 func ensureReleaseOrderApprovalActor(
 	c *gin.Context,
 	user userdomain.User,
@@ -2268,6 +3047,7 @@ func ensureReleaseOrderApprovalActor(
 	return false
 }
 
+// ensureReleaseOrderExecuteActor 校验前置条件，不满足时写入对应错误响应。
 func ensureReleaseOrderExecuteActor(
 	c *gin.Context,
 	user userdomain.User,
@@ -2276,6 +3056,7 @@ func ensureReleaseOrderExecuteActor(
 	return ensureReleaseOrderCreatorActor(c, user, order, "execute this release order")
 }
 
+// ensureReleaseOrderCancelActor 校验前置条件，不满足时写入对应错误响应。
 func ensureReleaseOrderCancelActor(
 	c *gin.Context,
 	user userdomain.User,
@@ -2287,6 +3068,7 @@ func ensureReleaseOrderCancelActor(
 	return ensureReleaseOrderCreatorActor(c, user, order, "cancel this release order")
 }
 
+// ensureReleaseOrderEditableActor 校验前置条件，不满足时写入对应错误响应。
 func ensureReleaseOrderEditableActor(
 	c *gin.Context,
 	user userdomain.User,
@@ -2298,6 +3080,7 @@ func ensureReleaseOrderEditableActor(
 	return ensureReleaseOrderCreatorActor(c, user, order, "edit this release order")
 }
 
+// ensureReleaseOrderCreatorActor 校验前置条件，不满足时写入对应错误响应。
 func ensureReleaseOrderCreatorActor(
 	c *gin.Context,
 	user userdomain.User,
@@ -2316,6 +3099,28 @@ func ensureReleaseOrderCreatorActor(
 	return false
 }
 
+func ensureReleaseOrderScheduleCreatorActor(
+	c *gin.Context,
+	user userdomain.User,
+	schedule domain.ReleaseOrderSchedule,
+	action string,
+) bool {
+	if user.Role == userdomain.RoleAdmin {
+		return true
+	}
+	currentUserID := strings.TrimSpace(user.ID)
+	if currentUserID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return false
+	}
+	if strings.TrimSpace(schedule.CreatorUserID) == currentUserID {
+		return true
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": "forbidden: only schedule creator can " + strings.TrimSpace(action)})
+	return false
+}
+
+// ensureAnyReleaseOrderDisplayPermission 校验前置条件，不满足时写入对应错误响应。
 func ensureAnyReleaseOrderDisplayPermission(c *gin.Context, authz RequestAuthorizer) bool {
 	if _, ok := getCurrentUser(c); !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
@@ -2328,6 +3133,7 @@ func ensureAnyReleaseOrderDisplayPermission(c *gin.Context, authz RequestAuthori
 	return true
 }
 
+// ensureReleaseOrderVisible 校验前置条件，不满足时写入对应错误响应。
 func ensureReleaseOrderVisible(
 	c *gin.Context,
 	authz RequestAuthorizer,
@@ -2354,6 +3160,7 @@ func ensureReleaseOrderVisible(
 	return true
 }
 
+// buildReleaseOrderInput 组装业务执行所需的输入数据。
 func buildReleaseOrderInput(req CreateReleaseOrderRequest, currentUser userdomain.User) usecase.CreateReleaseOrderInput {
 	params := make([]usecase.CreateReleaseOrderParamInput, 0, len(req.Params))
 	for _, item := range req.Params {
@@ -2378,6 +3185,7 @@ func buildReleaseOrderInput(req CreateReleaseOrderRequest, currentUser userdomai
 	return usecase.CreateReleaseOrderInput{
 		ApplicationID: req.ApplicationID,
 		TemplateID:    req.TemplateID,
+		ReleaseName:   req.ReleaseName,
 		EnvCode:       req.EnvCode,
 		SonService:    "",
 		GitRef:        req.GitRef,
@@ -2391,6 +3199,7 @@ func buildReleaseOrderInput(req CreateReleaseOrderRequest, currentUser userdomai
 	}
 }
 
+// resolveVisibleReleaseOrderApplicationIDs 解析上下文数据，得到后续流程需要的结果。
 func resolveVisibleReleaseOrderApplicationIDs(
 	c *gin.Context,
 	authz RequestAuthorizer,
@@ -2432,6 +3241,7 @@ func resolveVisibleReleaseOrderApplicationIDs(
 	return false, applicationIDs, envScopes, true
 }
 
+// resolveReleaseListApplicationIDs 解析上下文数据，得到后续流程需要的结果。
 func resolveReleaseListApplicationIDs(applicationID string, allowAll bool, visibleApplicationIDs []string) []string {
 	if allowAll {
 		return nil
@@ -2439,11 +3249,13 @@ func resolveReleaseListApplicationIDs(applicationID string, allowAll bool, visib
 	return visibleApplicationIDs
 }
 
+// resolveReleaseOrderCreatorFilter 解析上下文数据，得到后续流程需要的结果。
 func resolveReleaseOrderCreatorFilter(user userdomain.User) string {
 	_ = user
 	return ""
 }
 
+// canCurrentUserViewReleaseOrder 封装当前模块的业务处理逻辑。
 func canCurrentUserViewReleaseOrder(
 	ctx context.Context,
 	authz RequestAuthorizer,
@@ -2467,6 +3279,7 @@ func canCurrentUserViewReleaseOrder(
 	return canViewReleaseOrderApplication(ctx, authz, user, order.ApplicationID, order.EnvCode)
 }
 
+// canViewReleaseOrderApplication 封装当前模块的业务处理逻辑。
 func canViewReleaseOrderApplication(
 	ctx context.Context,
 	authz RequestAuthorizer,
@@ -2526,6 +3339,7 @@ func canViewReleaseOrderApplication(
 	return false, nil
 }
 
+// mergeReleaseVisibleApplicationIDs 封装当前模块的业务处理逻辑。
 func mergeReleaseVisibleApplicationIDs(
 	applicationIDs []string,
 	envScopes []domain.ApplicationEnvScope,
@@ -2558,6 +3372,7 @@ func mergeReleaseVisibleApplicationIDs(
 	return result
 }
 
+// writeEmptyReleaseOrderList 写入处理结果或错误信息。
 func writeEmptyReleaseOrderList(c *gin.Context, page int, pageSize int) {
 	c.JSON(http.StatusOK, gin.H{
 		"data":      []ReleaseOrderResponse{},
@@ -2567,6 +3382,7 @@ func writeEmptyReleaseOrderList(c *gin.Context, page int, pageSize int) {
 	})
 }
 
+// containsString 封装当前模块的业务处理逻辑。
 func containsString(items []string, target string) bool {
 	value := strings.TrimSpace(target)
 	if value == "" {
@@ -2580,6 +3396,7 @@ func containsString(items []string, target string) bool {
 	return false
 }
 
+// firstNonEmpty 封装当前模块的业务处理逻辑。
 func firstNonEmpty(values ...string) string {
 	for _, item := range values {
 		value := strings.TrimSpace(item)
@@ -2590,6 +3407,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+// resolveTriggeredBy 解析上下文数据，得到后续流程需要的结果。
 func resolveTriggeredBy(user userdomain.User) string {
 	displayName := strings.TrimSpace(user.DisplayName)
 	if displayName != "" {
@@ -2602,6 +3420,7 @@ func resolveTriggeredBy(user userdomain.User) string {
 	return strings.TrimSpace(user.ID)
 }
 
+// parseNonNegativeInt64Query 解析输入内容并返回结构化结果。
 func parseNonNegativeInt64Query(c *gin.Context, name string) (int64, error) {
 	raw := strings.TrimSpace(c.Query(name))
 	if raw == "" {

@@ -35,6 +35,7 @@ type TrackReleaseExecution struct {
 	now     func() time.Time
 }
 
+// NewTrackReleaseExecution 创建并返回对应组件实例。
 func NewTrackReleaseExecution(
 	manager *ReleaseOrderManager,
 	jenkins JenkinsReleaseStatusClient,
@@ -48,6 +49,7 @@ func NewTrackReleaseExecution(
 	}
 }
 
+// Execute 封装当前模块的业务处理逻辑。
 func (uc *TrackReleaseExecution) Execute(ctx context.Context) (TrackReleaseExecutionOutput, error) {
 	if uc == nil || uc.manager == nil {
 		return TrackReleaseExecutionOutput{}, nil
@@ -108,6 +110,7 @@ func (uc *TrackReleaseExecution) Execute(ctx context.Context) (TrackReleaseExecu
 	return output, nil
 }
 
+// listRunningOrders 查询并返回列表数据。
 func (uc *TrackReleaseExecution) listRunningOrders(ctx context.Context) ([]domain.ReleaseOrder, error) {
 	const pageSize = 100
 
@@ -130,6 +133,7 @@ func (uc *TrackReleaseExecution) listRunningOrders(ctx context.Context) ([]domai
 	return result, nil
 }
 
+// syncOrder 同步外部或内部状态数据。
 func (uc *TrackReleaseExecution) syncOrder(ctx context.Context, order domain.ReleaseOrder) (bool, bool, error) {
 	if order.Status == domain.OrderStatusCancelled {
 		return uc.syncCancelledOrder(ctx, order)
@@ -398,6 +402,7 @@ func (uc *TrackReleaseExecution) syncOrder(ctx context.Context, order domain.Rel
 	}
 }
 
+// syncArgoCDExecution 同步外部或内部状态数据。
 func (uc *TrackReleaseExecution) syncArgoCDExecution(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -560,6 +565,7 @@ func (uc *TrackReleaseExecution) syncArgoCDExecution(
 	}
 }
 
+// stepStatusValue 封装当前模块的业务处理逻辑。
 func stepStatusValue(step *domain.ReleaseOrderStep) string {
 	if step == nil {
 		return ""
@@ -567,6 +573,7 @@ func stepStatusValue(step *domain.ReleaseOrderStep) string {
 	return string(step.Status)
 }
 
+// findExecutionByStatus 封装当前模块的业务处理逻辑。
 func findExecutionByStatus(items []domain.ReleaseOrderExecution, status domain.ExecutionStatus) *domain.ReleaseOrderExecution {
 	for idx := range items {
 		if items[idx].Status == status {
@@ -576,6 +583,7 @@ func findExecutionByStatus(items []domain.ReleaseOrderExecution, status domain.E
 	return nil
 }
 
+// syncNextStepAfterExecution 同步外部或内部状态数据。
 func (uc *TrackReleaseExecution) syncNextStepAfterExecution(ctx context.Context, order domain.ReleaseOrder) (bool, error) {
 	executions, err := uc.manager.ListExecutions(ctx, order.ID)
 	if err != nil {
@@ -639,6 +647,7 @@ func (uc *TrackReleaseExecution) syncNextStepAfterExecution(ctx context.Context,
 	return updated || buildHookUpdated, err
 }
 
+// finalizeOrder 封装当前模块的业务处理逻辑。
 func (uc *TrackReleaseExecution) finalizeOrder(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -684,6 +693,7 @@ func (uc *TrackReleaseExecution) finalizeOrder(
 	return updated || stepUpdated, false, nil
 }
 
+// failRemainingExecutions 启动当前进程并完成依赖初始化。
 func (uc *TrackReleaseExecution) failRemainingExecutions(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -724,6 +734,7 @@ func (uc *TrackReleaseExecution) failRemainingExecutions(
 	return updated || true, nil
 }
 
+// syncCancelledOrder 同步外部或内部状态数据。
 func (uc *TrackReleaseExecution) syncCancelledOrder(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -780,6 +791,7 @@ func (uc *TrackReleaseExecution) syncCancelledOrder(
 	return updated, false, nil
 }
 
+// syncFailedOrder 同步外部或内部状态数据。
 func (uc *TrackReleaseExecution) syncFailedOrder(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -846,6 +858,7 @@ func (uc *TrackReleaseExecution) syncFailedOrder(
 	return updated || finalizeUpdated, skipped, nil
 }
 
+// finishStep 封装当前模块的业务处理逻辑。
 func (uc *TrackReleaseExecution) finishStep(
 	ctx context.Context,
 	orderID string,
@@ -893,6 +906,7 @@ func (uc *TrackReleaseExecution) finishStep(
 	return true, nil
 }
 
+// findStepByCode 封装当前模块的业务处理逻辑。
 func findStepByCode(steps []domain.ReleaseOrderStep, stepCode string) *domain.ReleaseOrderStep {
 	for index := range steps {
 		if steps[index].StepCode == stepCode {
@@ -902,6 +916,7 @@ func findStepByCode(steps []domain.ReleaseOrderStep, stepCode string) *domain.Re
 	return nil
 }
 
+// extractQueueURLFromSteps 封装当前模块的业务处理逻辑。
 func extractQueueURLFromSteps(steps []domain.ReleaseOrderStep) string {
 	for _, step := range steps {
 		if step.StepCode != "trigger_pipeline" {
@@ -919,6 +934,7 @@ func extractQueueURLFromSteps(steps []domain.ReleaseOrderStep) string {
 	return ""
 }
 
+// extractBuildURLFromSteps 组装业务执行所需的输入数据。
 func extractBuildURLFromSteps(steps []domain.ReleaseOrderStep) string {
 	for _, step := range steps {
 		if step.StepCode == "pipeline_running" || step.StepCode == "trigger_pipeline" {
@@ -935,6 +951,7 @@ func extractBuildURLFromSteps(steps []domain.ReleaseOrderStep) string {
 	return ""
 }
 
+// extractQueueURL 封装当前模块的业务处理逻辑。
 func extractQueueURL(message string) string {
 	matches := queueURLPattern.FindStringSubmatch(strings.TrimSpace(message))
 	if len(matches) < 2 {
@@ -945,6 +962,7 @@ func extractQueueURL(message string) string {
 	return queueURL
 }
 
+// extractBuildURL 组装业务执行所需的输入数据。
 func extractBuildURL(message string) string {
 	matches := buildURLPattern.FindStringSubmatch(strings.TrimSpace(message))
 	if len(matches) < 2 {
@@ -966,6 +984,7 @@ func extractBuildURL(message string) string {
 	return buildURL
 }
 
+// messageWithBuildURL 组装业务执行所需的输入数据。
 func messageWithBuildURL(message string, buildURL string) string {
 	message = strings.TrimSpace(message)
 	buildURL = strings.TrimSpace(buildURL)
@@ -982,6 +1001,7 @@ func messageWithBuildURL(message string, buildURL string) string {
 	return message + "，build: " + buildURL
 }
 
+// isResourceNotFoundError 封装当前模块的业务处理逻辑。
 func isResourceNotFoundError(err error) bool {
 	if err == nil {
 		return false

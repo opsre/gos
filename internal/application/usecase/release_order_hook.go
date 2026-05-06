@@ -29,6 +29,7 @@ var hookDispatchBatchIDPattern = regexp.MustCompile(`batch_id=([A-Za-z0-9-]+)`)
 var unresolvedNotificationCorePlaceholderPattern = regexp.MustCompile(`(?i)\{(?:release_stage_rich|release_status_rich)\}`)
 var templateWebhookHTTPTimeout = 10 * time.Second
 
+// syncHooksAfterRelease 同步外部或内部状态数据。
 func (uc *ReleaseOrderManager) syncHooksAfterRelease(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -71,6 +72,7 @@ func (uc *ReleaseOrderManager) syncHooksAfterRelease(
 	return updated, true, mainStatus, finalMessage, nil
 }
 
+// syncHooksAfterBuild 组装业务执行所需的输入数据。
 func (uc *ReleaseOrderManager) syncHooksAfterBuild(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -83,6 +85,7 @@ func (uc *ReleaseOrderManager) syncHooksAfterBuild(
 	return uc.syncHooksForStage(ctx, order, executions, domain.TemplateHookExecuteStageBuildComplete, domain.OrderStatusSuccess)
 }
 
+// evaluateMainReleaseStatus 启动当前进程并完成依赖初始化。
 func evaluateMainReleaseStatus(executions []domain.ReleaseOrderExecution) (domain.OrderStatus, string, bool) {
 	if len(executions) == 0 {
 		return domain.OrderStatusSuccess, "发布完成", true
@@ -107,6 +110,7 @@ func evaluateMainReleaseStatus(executions []domain.ReleaseOrderExecution) (domai
 	return orderStatus, message, true
 }
 
+// findExecutionByScope 封装当前模块的业务处理逻辑。
 func findExecutionByScope(items []domain.ReleaseOrderExecution, scope domain.PipelineScope) *domain.ReleaseOrderExecution {
 	for idx := range items {
 		if items[idx].PipelineScope == scope {
@@ -116,6 +120,7 @@ func findExecutionByScope(items []domain.ReleaseOrderExecution, scope domain.Pip
 	return nil
 }
 
+// ensureMainReleaseFinishStep 校验前置条件，不满足时写入对应错误响应。
 func (uc *ReleaseOrderManager) ensureMainReleaseFinishStep(
 	ctx context.Context,
 	orderID string,
@@ -130,6 +135,7 @@ func (uc *ReleaseOrderManager) ensureMainReleaseFinishStep(
 	return uc.markStepFinished(ctx, orderID, "global:release_finish", stepStatus, message)
 }
 
+// collectHookSteps 封装当前模块的业务处理逻辑。
 func collectHookSteps(steps []domain.ReleaseOrderStep) []domain.ReleaseOrderStep {
 	result := make([]domain.ReleaseOrderStep, 0)
 	for _, item := range steps {
@@ -147,6 +153,7 @@ func collectHookSteps(steps []domain.ReleaseOrderStep) []domain.ReleaseOrderStep
 	return result
 }
 
+// parseHookExecuteStage 解析输入内容并返回结构化结果。
 func parseHookExecuteStage(stepCode string) domain.TemplateHookExecuteStage {
 	parts := strings.Split(strings.TrimSpace(stepCode), ":")
 	if len(parts) >= 4 {
@@ -155,6 +162,7 @@ func parseHookExecuteStage(stepCode string) domain.TemplateHookExecuteStage {
 	return domain.TemplateHookExecuteStagePostRelease
 }
 
+// parseHookSortNo 解析输入内容并返回结构化结果。
 func parseHookSortNo(stepCode string) int {
 	parts := strings.Split(strings.TrimSpace(stepCode), ":")
 	if len(parts) < 3 {
@@ -164,6 +172,7 @@ func parseHookSortNo(stepCode string) int {
 	return value
 }
 
+// shouldTriggerTemplateHook 封装当前模块的业务处理逻辑。
 func shouldTriggerTemplateHook(condition domain.TemplateHookTriggerCondition, mainStatus domain.OrderStatus) bool {
 	switch condition {
 	case domain.TemplateHookTriggerOnFailed:
@@ -175,6 +184,7 @@ func shouldTriggerTemplateHook(condition domain.TemplateHookTriggerCondition, ma
 	}
 }
 
+// hookMatchesOrderEnv 封装当前模块的业务处理逻辑。
 func hookMatchesOrderEnv(envCodes []string, orderEnvCode string) bool {
 	if len(envCodes) == 0 {
 		return true
@@ -191,6 +201,7 @@ func hookMatchesOrderEnv(envCodes []string, orderEnvCode string) bool {
 	return false
 }
 
+// buildTemplateHookEnvSkipMessage 组装业务执行所需的输入数据。
 func buildTemplateHookEnvSkipMessage(envCodes []string, orderEnvCode string) string {
 	normalizedOrderEnv := strings.TrimSpace(orderEnvCode)
 	if normalizedOrderEnv == "" {
@@ -210,6 +221,7 @@ func buildTemplateHookEnvSkipMessage(envCodes []string, orderEnvCode string) str
 	return fmt.Sprintf("当前环境 %s 未命中 Hook 执行环境（%s），已跳过", normalizedOrderEnv, strings.Join(filtered, " / "))
 }
 
+// syncHooksForStage 同步外部或内部状态数据。
 func (uc *ReleaseOrderManager) syncHooksForStage(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -323,6 +335,7 @@ func (uc *ReleaseOrderManager) syncHooksForStage(
 	return updated, true, blockingHookFailed, nil
 }
 
+// loadTemplateHooksForOrder 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) loadTemplateHooksForOrder(ctx context.Context, order domain.ReleaseOrder) ([]domain.ReleaseTemplateHook, error) {
 	templateID := strings.TrimSpace(order.TemplateID)
 	if templateID == "" {
@@ -341,6 +354,7 @@ func (uc *ReleaseOrderManager) loadTemplateHooksForOrder(ctx context.Context, or
 	return hooks, nil
 }
 
+// dispatchTemplateHookStep 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) dispatchTemplateHookStep(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -360,6 +374,7 @@ func (uc *ReleaseOrderManager) dispatchTemplateHookStep(
 	}
 }
 
+// dispatchAgentTaskHookStep 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) dispatchAgentTaskHookStep(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -414,6 +429,7 @@ func (uc *ReleaseOrderManager) dispatchAgentTaskHookStep(
 	return true, uc.markStep(ctx, order.ID, step.StepCode, domain.StepStatusRunning, message, step.StartedAt, nil)
 }
 
+// mergeAgentTaskVariables 封装当前模块的业务处理逻辑。
 func mergeAgentTaskVariables(target map[string]string, taskVariables map[string]string) {
 	if len(taskVariables) == 0 {
 		return
@@ -427,6 +443,7 @@ func mergeAgentTaskVariables(target map[string]string, taskVariables map[string]
 	}
 }
 
+// dispatchWebhookHookStep 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) dispatchWebhookHookStep(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -475,6 +492,7 @@ func (uc *ReleaseOrderManager) dispatchWebhookHookStep(
 	return true, uc.markStepFinished(ctx, order.ID, step.StepCode, domain.StepStatusSuccess, message)
 }
 
+// dispatchNotificationHookStep 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) dispatchNotificationHookStep(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -551,6 +569,7 @@ func (uc *ReleaseOrderManager) dispatchNotificationHookStep(
 	return true, uc.markStepFinished(ctx, order.ID, step.StepCode, domain.StepStatusSuccess, message)
 }
 
+// buildNotificationHookRequest 组装业务执行所需的输入数据。
 func buildNotificationHookRequest(ctx context.Context, source notificationdomain.Source, title string, body string) (*http.Request, error) {
 	webhookURL := strings.TrimSpace(source.WebhookURL)
 	if webhookURL == "" {
@@ -597,6 +616,7 @@ func buildNotificationHookRequest(ctx context.Context, source notificationdomain
 	return req, nil
 }
 
+// buildDingTalkWebhookURL 组装业务执行所需的输入数据。
 func buildDingTalkWebhookURL(webhookURL string, verificationParam string) (string, error) {
 	secret := strings.TrimSpace(verificationParam)
 	if secret == "" {
@@ -618,11 +638,13 @@ func buildDingTalkWebhookURL(webhookURL string, verificationParam string) (strin
 	return parsedURL.String(), nil
 }
 
+// sendTemplateWebhook 封装当前模块的业务处理逻辑。
 func sendTemplateWebhook(req *http.Request) (*http.Response, error) {
 	webhookClient := &http.Client{Timeout: templateWebhookHTTPTimeout}
 	return webhookClient.Do(req)
 }
 
+// syncRunningHookStep 同步外部或内部状态数据。
 func (uc *ReleaseOrderManager) syncRunningHookStep(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -641,6 +663,7 @@ func (uc *ReleaseOrderManager) syncRunningHookStep(
 	}
 }
 
+// syncRunningAgentTaskHookStep 同步外部或内部状态数据。
 func (uc *ReleaseOrderManager) syncRunningAgentTaskHookStep(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -736,6 +759,7 @@ func (uc *ReleaseOrderManager) syncRunningAgentTaskHookStep(
 	}
 }
 
+// resolveHookTargetAgent 解析上下文数据，得到后续流程需要的结果。
 func (uc *ReleaseOrderManager) resolveHookTargetAgent(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -775,6 +799,7 @@ func (uc *ReleaseOrderManager) resolveHookTargetAgent(
 	return items[0], nil
 }
 
+// agentInstancePriority 封装当前模块的业务处理逻辑。
 func agentInstancePriority(item agentdomain.Instance, targetEnv string) int {
 	priority := 30
 	if strings.EqualFold(strings.TrimSpace(item.EnvironmentCode), targetEnv) {
@@ -789,6 +814,7 @@ func agentInstancePriority(item agentdomain.Instance, targetEnv string) int {
 	return priority
 }
 
+// buildHookTaskVariables 组装业务执行所需的输入数据。
 func (uc *ReleaseOrderManager) buildHookTaskVariables(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -853,6 +879,7 @@ func (uc *ReleaseOrderManager) buildHookTaskVariables(
 	return values, nil
 }
 
+// enforceNotificationCoreVariables 封装当前模块的业务处理逻辑。
 func enforceNotificationCoreVariables(
 	order domain.ReleaseOrder,
 	executions []domain.ReleaseOrderExecution,
@@ -881,10 +908,12 @@ func enforceNotificationCoreVariables(
 	}
 }
 
+// containsUnresolvedNotificationCorePlaceholder 解析上下文数据，得到后续流程需要的结果。
 func containsUnresolvedNotificationCorePlaceholder(text string) bool {
 	return unresolvedNotificationCorePlaceholderPattern.MatchString(strings.TrimSpace(text))
 }
 
+// normalizeHookExecuteStage 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeHookExecuteStage(stage domain.TemplateHookExecuteStage) domain.TemplateHookExecuteStage {
 	if stage == "" {
 		return domain.TemplateHookExecuteStagePostRelease
@@ -892,6 +921,7 @@ func normalizeHookExecuteStage(stage domain.TemplateHookExecuteStage) domain.Tem
 	return stage
 }
 
+// deriveHookReleaseStatus 封装当前模块的业务处理逻辑。
 func deriveHookReleaseStatus(
 	order domain.ReleaseOrder,
 	executions []domain.ReleaseOrderExecution,
@@ -925,6 +955,7 @@ func deriveHookReleaseStatus(
 	return strings.TrimSpace(string(domain.OrderStatusRunning))
 }
 
+// buildNotificationReleaseStageRichValue 组装业务执行所需的输入数据。
 func buildNotificationReleaseStageRichValue(stage string) string {
 	switch strings.ToLower(strings.TrimSpace(stage)) {
 	case string(domain.TemplateHookExecuteStageBuildComplete):
@@ -940,6 +971,7 @@ func buildNotificationReleaseStageRichValue(stage string) string {
 	}
 }
 
+// buildNotificationReleaseStatusRichValue 组装业务执行所需的输入数据。
 func buildNotificationReleaseStatusRichValue(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case string(domain.OrderStatusSuccess), string(domain.OrderStatusDeploySuccess):
@@ -977,6 +1009,7 @@ func buildNotificationReleaseStatusRichValue(status string) string {
 	}
 }
 
+// renderHookString 封装当前模块的业务处理逻辑。
 func renderHookString(values map[string]string, template string) string {
 	text := strings.TrimSpace(template)
 	if text == "" {
@@ -992,6 +1025,7 @@ func renderHookString(values map[string]string, template string) string {
 	return strings.NewReplacer(replacerArgs...).Replace(text)
 }
 
+// resolveHookTaskInitialStatus 解析上下文数据，得到后续流程需要的结果。
 func (uc *ReleaseOrderManager) resolveHookTaskInitialStatus(ctx context.Context, agentID string) (agentdomain.TaskStatus, error) {
 	if uc.agentRepo == nil || strings.TrimSpace(agentID) == "" {
 		return agentdomain.TaskStatusPending, nil
@@ -1011,6 +1045,7 @@ func (uc *ReleaseOrderManager) resolveHookTaskInitialStatus(ctx context.Context,
 	return agentdomain.TaskStatusPending, nil
 }
 
+// buildHookTaskProgressMessage 组装业务执行所需的输入数据。
 func buildHookTaskProgressMessage(hook domain.ReleaseTemplateHook, task agentdomain.Task, agentInstance agentdomain.Instance) string {
 	agentName := firstNonEmpty(strings.TrimSpace(agentInstance.Name), strings.TrimSpace(agentInstance.AgentCode), strings.TrimSpace(task.AgentCode), "未指定 Agent")
 	taskName := firstNonEmpty(strings.TrimSpace(hook.TargetName), strings.TrimSpace(task.Name), strings.TrimSpace(task.ScriptName), strings.TrimSpace(task.ID))
@@ -1026,12 +1061,14 @@ func buildHookTaskProgressMessage(hook domain.ReleaseTemplateHook, task agentdom
 	return fmt.Sprintf("任务：%s，目标 Agent：%s，当前状态：%s，task_id=%s", taskName, agentName, statusText, strings.TrimSpace(task.ID))
 }
 
+// buildHookTaskBatchProgressMessage 组装业务执行所需的输入数据。
 func buildHookTaskBatchProgressMessage(hook domain.ReleaseTemplateHook, sourceTask agentdomain.Task, tasks []agentdomain.Task, batchID string) string {
 	taskName := firstNonEmpty(strings.TrimSpace(hook.TargetName), strings.TrimSpace(sourceTask.Name), strings.TrimSpace(sourceTask.ScriptName), strings.TrimSpace(sourceTask.ID))
 	summary := buildTaskBatchSummary(fmt.Sprintf("任务：%s", taskName), tasks)
 	return fmt.Sprintf("%s，source_task_id=%s，batch_id=%s", summary, strings.TrimSpace(sourceTask.ID), strings.TrimSpace(batchID))
 }
 
+// buildHookTaskTerminalMessage 组装业务执行所需的输入数据。
 func buildHookTaskTerminalMessage(hook domain.ReleaseTemplateHook, task agentdomain.Task, prefix string) string {
 	taskName := firstNonEmpty(strings.TrimSpace(hook.TargetName), strings.TrimSpace(task.Name), strings.TrimSpace(task.ScriptName), strings.TrimSpace(task.ID))
 	summary := firstNonEmpty(strings.TrimSpace(task.LastRunSummary), strings.TrimSpace(task.FailureReason))
@@ -1041,6 +1078,7 @@ func buildHookTaskTerminalMessage(hook domain.ReleaseTemplateHook, task agentdom
 	return fmt.Sprintf("%s：%s，任务号：%s，摘要：%s", prefix, taskName, strings.TrimSpace(task.ID), summary)
 }
 
+// buildHookTaskBatchTerminalMessage 组装业务执行所需的输入数据。
 func buildHookTaskBatchTerminalMessage(hook domain.ReleaseTemplateHook, sourceTask agentdomain.Task, tasks []agentdomain.Task, batchID string, prefix string) string {
 	taskName := firstNonEmpty(strings.TrimSpace(hook.TargetName), strings.TrimSpace(sourceTask.Name), strings.TrimSpace(sourceTask.ScriptName), strings.TrimSpace(sourceTask.ID))
 	summary := buildTaskBatchSummary("", tasks)
@@ -1050,6 +1088,7 @@ func buildHookTaskBatchTerminalMessage(hook domain.ReleaseTemplateHook, sourceTa
 	return fmt.Sprintf("%s：%s，%s，source_task_id=%s，batch_id=%s", prefix, taskName, summary, strings.TrimSpace(sourceTask.ID), strings.TrimSpace(batchID))
 }
 
+// parseHookTaskID 解析输入内容并返回结构化结果。
 func parseHookTaskID(message string) string {
 	trimmed := strings.TrimSpace(message)
 	matches := hookTaskIDPattern.FindStringSubmatch(trimmed)
@@ -1063,6 +1102,7 @@ func parseHookTaskID(message string) string {
 	return ""
 }
 
+// parseHookTaskBatchIdentity 解析输入内容并返回结构化结果。
 func parseHookTaskBatchIdentity(message string) (string, string) {
 	sourceMatches := hookSourceTaskIDPattern.FindStringSubmatch(strings.TrimSpace(message))
 	batchMatches := hookDispatchBatchIDPattern.FindStringSubmatch(strings.TrimSpace(message))
@@ -1072,6 +1112,7 @@ func parseHookTaskBatchIdentity(message string) (string, string) {
 	return strings.TrimSpace(sourceMatches[1]), strings.TrimSpace(batchMatches[1])
 }
 
+// deriveAgentRuntimeState 封装当前模块的业务处理逻辑。
 func deriveAgentRuntimeState(item agentdomain.Instance) agentdomain.RuntimeState {
 	if item.Status == agentdomain.StatusDisabled {
 		return agentdomain.RuntimeStateDisabled

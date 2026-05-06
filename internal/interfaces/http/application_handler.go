@@ -31,6 +31,7 @@ type ApplicationUserReader interface {
 	GetUserByID(ctx context.Context, id string) (userdomain.User, error)
 }
 
+// NewApplicationHandler 创建并返回对应组件实例。
 func NewApplicationHandler(
 	creator *usecase.CreateApplication,
 	query *usecase.QueryApplication,
@@ -49,6 +50,7 @@ func NewApplicationHandler(
 	}
 }
 
+// RegisterRoutes 封装当前模块的业务处理逻辑。
 func (h *ApplicationHandler) RegisterRoutes(router gin.IRouter) {
 	router.POST("/applications", h.Create)
 	router.GET("/applications/options", h.ListOptions)
@@ -277,6 +279,18 @@ func (h *ApplicationHandler) List(c *gin.Context) {
 	})
 }
 
+// ListOptions 查询Options列表。
+// @Summary      查询Options列表
+// @Description  查询Options列表，并按统一响应结构返回处理结果。
+// @Tags         applications
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /applications/options [get]
 func (h *ApplicationHandler) ListOptions(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "application.manage", "system.permission.manage") {
 		return
@@ -321,6 +335,7 @@ func (h *ApplicationHandler) ListOptions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": resp})
 }
 
+// ensureApplicationVisible 校验前置条件，不满足时写入对应错误响应。
 func ensureApplicationVisible(c *gin.Context, authz RequestAuthorizer, applicationID string) bool {
 	user, ok := getCurrentUser(c)
 	if !ok {
@@ -365,6 +380,7 @@ func ensureApplicationVisible(c *gin.Context, authz RequestAuthorizer, applicati
 	return true
 }
 
+// resolveVisibleApplicationIDsForApplications 解析上下文数据，得到后续流程需要的结果。
 func resolveVisibleApplicationIDsForApplications(
 	c *gin.Context,
 	authz RequestAuthorizer,
@@ -423,6 +439,7 @@ func resolveVisibleApplicationIDsForApplications(
 	return false, result, true
 }
 
+// resolveApplicationFilterIDs 解析上下文数据，得到后续流程需要的结果。
 func resolveApplicationFilterIDs(applicationID string, allowAll bool, visibleApplicationIDs []string) []string {
 	applicationID = strings.TrimSpace(applicationID)
 	if allowAll {
@@ -520,6 +537,7 @@ func (h *ApplicationHandler) Delete(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// toResponse 将领域对象转换为接口响应结构。
 func toResponse(app domain.Application) ApplicationResponse {
 	return ApplicationResponse{
 		ID:                   app.ID,
@@ -542,6 +560,7 @@ func toResponse(app domain.Application) ApplicationResponse {
 	}
 }
 
+// resolveOwnerDisplayName 解析上下文数据，得到后续流程需要的结果。
 func (h *ApplicationHandler) resolveOwnerDisplayName(c *gin.Context, ownerUserID string) (string, error) {
 	if h.users == nil {
 		return "", errors.New("owner user resolver is not configured")
@@ -560,6 +579,7 @@ func (h *ApplicationHandler) resolveOwnerDisplayName(c *gin.Context, ownerUserID
 	return name, nil
 }
 
+// writeHTTPError 写入处理结果或错误信息。
 func writeHTTPError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrInvalidInput), errors.Is(err, usecase.ErrInvalidID), errors.Is(err, usecase.ErrInvalidStatus):
@@ -579,6 +599,7 @@ func writeHTTPError(c *gin.Context, err error) {
 	}
 }
 
+// parsePositiveIntQuery 解析输入内容并返回结构化结果。
 func parsePositiveIntQuery(c *gin.Context, name string) (int, error) {
 	raw := strings.TrimSpace(c.Query(name))
 	if raw == "" {
@@ -594,6 +615,7 @@ func parsePositiveIntQuery(c *gin.Context, name string) (int, error) {
 	return value, nil
 }
 
+// resolvePage 解析上下文数据，得到后续流程需要的结果。
 func resolvePage(page int) int {
 	if page > 0 {
 		return page
@@ -601,6 +623,7 @@ func resolvePage(page int) int {
 	return 1
 }
 
+// resolvePageSize 解析上下文数据，得到后续流程需要的结果。
 func resolvePageSize(pageSize int) int {
 	const (
 		defaultPageSize = 20

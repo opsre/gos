@@ -20,10 +20,12 @@ type RequestAuthorizer interface {
 	ListEffectivePermissions(ctx context.Context, user userdomain.User) ([]userdomain.UserPermission, error)
 }
 
+// setCurrentUser 封装当前模块的业务处理逻辑。
 func setCurrentUser(c *gin.Context, user userdomain.User) {
 	c.Set(currentUserContextKey, user)
 }
 
+// getCurrentUser 查询并返回指定资源数据。
 func getCurrentUser(c *gin.Context) (userdomain.User, bool) {
 	value, exists := c.Get(currentUserContextKey)
 	if !exists {
@@ -36,6 +38,7 @@ func getCurrentUser(c *gin.Context) (userdomain.User, bool) {
 	return user, true
 }
 
+// extractBearerToken 封装当前模块的业务处理逻辑。
 func extractBearerToken(value string) string {
 	text := strings.TrimSpace(value)
 	if text == "" {
@@ -48,6 +51,7 @@ func extractBearerToken(value string) string {
 	return strings.TrimSpace(text[len(prefix):])
 }
 
+// ensurePermission 校验前置条件，不满足时写入对应错误响应。
 func ensurePermission(
 	c *gin.Context,
 	authz RequestAuthorizer,
@@ -58,6 +62,7 @@ func ensurePermission(
 	return ensurePermissionWithMessage(c, authz, permissionCode, scopeType, scopeValue, "")
 }
 
+// ensurePermissionWithMessage 校验前置条件，不满足时写入对应错误响应。
 func ensurePermissionWithMessage(
 	c *gin.Context,
 	authz RequestAuthorizer,
@@ -91,6 +96,7 @@ func ensurePermissionWithMessage(
 	return true
 }
 
+// ensureAnyPermission 校验前置条件，不满足时写入对应错误响应。
 func ensureAnyPermission(
 	c *gin.Context,
 	authz RequestAuthorizer,
@@ -119,6 +125,7 @@ func ensureAnyPermission(
 	return false
 }
 
+// ensureAnyApplicationPermission 校验前置条件，不满足时写入对应错误响应。
 func ensureAnyApplicationPermission(
 	c *gin.Context,
 	authz RequestAuthorizer,
@@ -149,6 +156,7 @@ func ensureAnyApplicationPermission(
 	return false
 }
 
+// buildApplicationEnvScopeValue 组装业务执行所需的输入数据。
 func buildApplicationEnvScopeValue(applicationID string, envCode string) string {
 	appID := strings.TrimSpace(applicationID)
 	env := strings.TrimSpace(envCode)
@@ -158,6 +166,7 @@ func buildApplicationEnvScopeValue(applicationID string, envCode string) string 
 	return appID + applicationEnvScopeSeparator + env
 }
 
+// parseApplicationEnvScopeValue 解析输入内容并返回结构化结果。
 func parseApplicationEnvScopeValue(value string) (applicationID string, envCode string, ok bool) {
 	text := strings.TrimSpace(value)
 	if text == "" {
@@ -175,6 +184,7 @@ func parseApplicationEnvScopeValue(value string) (applicationID string, envCode 
 	return applicationID, envCode, true
 }
 
+// collectApplicationScopesFromPermissions 封装当前模块的业务处理逻辑。
 func collectApplicationScopesFromPermissions(
 	items []userdomain.UserPermission,
 	acceptedCodes map[string]struct{},

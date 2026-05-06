@@ -121,10 +121,12 @@ type SecurityConfig struct {
 	EncryptionKey string `json:"encryption_key"`
 }
 
+// LoadConfig 封装当前模块的业务处理逻辑。
 func LoadConfig() (Config, error) {
 	return LoadConfigFromPath("")
 }
 
+// LoadConfigFromPath 封装当前模块的业务处理逻辑。
 func LoadConfigFromPath(path string) (Config, error) {
 	cfg := defaultConfig()
 
@@ -141,6 +143,7 @@ func LoadConfigFromPath(path string) (Config, error) {
 	return cfg, nil
 }
 
+// ResolveConfigPath 解析上下文数据，得到后续流程需要的结果。
 func ResolveConfigPath(path string) string {
 	configPath := strings.TrimSpace(path)
 	if configPath == "" {
@@ -149,6 +152,7 @@ func ResolveConfigPath(path string) string {
 	return configPath
 }
 
+// defaultConfig 封装当前模块的业务处理逻辑。
 func defaultConfig() Config {
 	return Config{
 		Environment: "local",
@@ -227,6 +231,7 @@ func defaultConfig() Config {
 	}
 }
 
+// loadFromFile 封装当前模块的业务处理逻辑。
 func loadFromFile(path string, cfg *Config) error {
 	file, err := os.Open(path)
 	if err != nil {
@@ -245,6 +250,7 @@ func loadFromFile(path string, cfg *Config) error {
 	return nil
 }
 
+// applyConfigDefaults 封装当前模块的业务处理逻辑。
 func applyConfigDefaults(cfg *Config) {
 	cfg.Environment = strings.TrimSpace(cfg.Environment)
 	if cfg.Environment == "" {
@@ -401,6 +407,7 @@ func applyConfigDefaults(cfg *Config) {
 	}
 }
 
+// validateConfig 封装当前模块的业务处理逻辑。
 func validateConfig(cfg Config) error {
 	switch cfg.Database.Driver {
 	case "sqlite":
@@ -472,6 +479,7 @@ func validateConfig(cfg Config) error {
 	return nil
 }
 
+// normalizeStringList 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeStringList(values []string) []string {
 	if len(values) == 0 {
 		return nil

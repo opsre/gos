@@ -47,17 +47,38 @@ type Application struct {
 	RawMeta        string
 }
 
-func (a Application) GetName() string           { return a.Name }
-func (a Application) GetProject() string        { return a.Project }
-func (a Application) GetRepoURL() string        { return a.RepoURL }
-func (a Application) GetSourcePath() string     { return a.SourcePath }
+// GetName 查询并返回指定资源数据。
+func (a Application) GetName() string { return a.Name }
+
+// GetProject 查询并返回指定资源数据。
+func (a Application) GetProject() string { return a.Project }
+
+// GetRepoURL 查询并返回指定资源数据。
+func (a Application) GetRepoURL() string { return a.RepoURL }
+
+// GetSourcePath 查询并返回指定资源数据。
+func (a Application) GetSourcePath() string { return a.SourcePath }
+
+// GetTargetRevision 查询并返回指定资源数据。
 func (a Application) GetTargetRevision() string { return a.TargetRevision }
-func (a Application) GetDestServer() string     { return a.DestServer }
-func (a Application) GetDestNamespace() string  { return a.DestNamespace }
-func (a Application) GetSyncStatus() string     { return a.SyncStatus }
-func (a Application) GetHealthStatus() string   { return a.HealthStatus }
+
+// GetDestServer 查询并返回指定资源数据。
+func (a Application) GetDestServer() string { return a.DestServer }
+
+// GetDestNamespace 查询并返回指定资源数据。
+func (a Application) GetDestNamespace() string { return a.DestNamespace }
+
+// GetSyncStatus 查询并返回指定资源数据。
+func (a Application) GetSyncStatus() string { return a.SyncStatus }
+
+// GetHealthStatus 查询并返回指定资源数据。
+func (a Application) GetHealthStatus() string { return a.HealthStatus }
+
+// GetOperationPhase 查询并返回指定资源数据。
 func (a Application) GetOperationPhase() string { return a.OperationPhase }
-func (a Application) GetRawMeta() string        { return a.RawMeta }
+
+// GetRawMeta 查询并返回指定资源数据。
+func (a Application) GetRawMeta() string { return a.RawMeta }
 
 type sessionRequest struct {
 	Username string `json:"username"`
@@ -106,6 +127,7 @@ type applicationSourcePayload struct {
 	TargetRevision string `json:"targetRevision"`
 }
 
+// NewClient 创建并返回对应组件实例。
 func NewClient(cfg Config) *Client {
 	baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
 	timeout := cfg.TimeoutSec
@@ -129,15 +151,18 @@ func NewClient(cfg Config) *Client {
 	}
 }
 
+// Enabled 封装当前模块的业务处理逻辑。
 func (c *Client) Enabled() bool {
 	return c != nil && c.baseURL != ""
 }
 
+// Ping 封装当前模块的业务处理逻辑。
 func (c *Client) Ping(ctx context.Context) error {
 	_, err := c.ListApplications(ctx)
 	return err
 }
 
+// ListApplications 查询并返回列表数据。
 func (c *Client) ListApplications(ctx context.Context) ([]Application, error) {
 	if !c.Enabled() {
 		return nil, fmt.Errorf("argocd client is not configured")
@@ -157,6 +182,7 @@ func (c *Client) ListApplications(ctx context.Context) ([]Application, error) {
 	return items, nil
 }
 
+// GetApplication 查询并返回指定资源数据。
 func (c *Client) GetApplication(ctx context.Context, name string) (Application, error) {
 	if !c.Enabled() {
 		return Application{}, fmt.Errorf("argocd client is not configured")
@@ -172,10 +198,12 @@ func (c *Client) GetApplication(ctx context.Context, name string) (Application, 
 	return mapApplication(payload)
 }
 
+// SyncApplication 同步外部或内部状态数据。
 func (c *Client) SyncApplication(ctx context.Context, name string) error {
 	return c.SyncApplicationWithRevision(ctx, name, "")
 }
 
+// SyncApplicationWithRevision 同步外部或内部状态数据。
 func (c *Client) SyncApplicationWithRevision(ctx context.Context, name string, revision string) error {
 	if !c.Enabled() {
 		return fmt.Errorf("argocd client is not configured")
@@ -193,6 +221,7 @@ func (c *Client) SyncApplicationWithRevision(ctx context.Context, name string, r
 	return c.doJSON(ctx, http.MethodPost, "/api/v1/applications/"+url.PathEscape(name)+"/sync", body, nil)
 }
 
+// BuildApplicationURL 组装业务执行所需的输入数据。
 func (c *Client) BuildApplicationURL(name string) string {
 	if !c.Enabled() {
 		return ""
@@ -205,6 +234,7 @@ func (c *Client) BuildApplicationURL(name string) string {
 	return base.String()
 }
 
+// doJSON 封装当前模块的业务处理逻辑。
 func (c *Client) doJSON(ctx context.Context, method, apiPath string, body any, out any) error {
 	requestURL := c.baseURL + apiPath
 	var payload io.Reader
@@ -249,6 +279,7 @@ func (c *Client) doJSON(ctx context.Context, method, apiPath string, body any, o
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
+// resolveToken 解析上下文数据，得到后续流程需要的结果。
 func (c *Client) resolveToken(ctx context.Context) (string, error) {
 	if c == nil {
 		return "", fmt.Errorf("argocd client is not configured")
@@ -294,6 +325,7 @@ func (c *Client) resolveToken(ctx context.Context) (string, error) {
 	return strings.TrimSpace(result.Token), nil
 }
 
+// mapApplication 封装当前模块的业务处理逻辑。
 func mapApplication(item applicationResponse) (Application, error) {
 	raw, err := json.Marshal(item)
 	if err != nil {
@@ -323,6 +355,7 @@ func mapApplication(item applicationResponse) (Application, error) {
 	return mapped, nil
 }
 
+// readSmallBody 封装当前模块的业务处理逻辑。
 func readSmallBody(reader io.Reader) string {
 	data, _ := io.ReadAll(io.LimitReader(reader, 2048))
 	return strings.TrimSpace(string(data))

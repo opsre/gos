@@ -173,6 +173,7 @@ type UpdateNotificationHookInput struct {
 	UpdatedBy          string `json:"updated_by"`
 }
 
+// NewNotificationManager 创建并返回对应组件实例。
 func NewNotificationManager(repo notificationdomain.Repository, platformRepo platformparamdomain.Repository) *NotificationManager {
 	return &NotificationManager{
 		repo:         repo,
@@ -183,6 +184,7 @@ func NewNotificationManager(repo notificationdomain.Repository, platformRepo pla
 	}
 }
 
+// ListSources 查询并返回列表数据。
 func (uc *NotificationManager) ListSources(ctx context.Context, filter notificationdomain.SourceListFilter) (NotificationSourceListOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return NotificationSourceListOutput{}, fmt.Errorf("%w: notification manager is not configured", ErrInvalidInput)
@@ -201,6 +203,7 @@ func (uc *NotificationManager) ListSources(ctx context.Context, filter notificat
 	return NotificationSourceListOutput{Items: outputs, Total: total}, nil
 }
 
+// GetSource 查询并返回指定资源数据。
 func (uc *NotificationManager) GetSource(ctx context.Context, id string) (NotificationSourceOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return NotificationSourceOutput{}, fmt.Errorf("%w: notification manager is not configured", ErrInvalidInput)
@@ -212,6 +215,7 @@ func (uc *NotificationManager) GetSource(ctx context.Context, id string) (Notifi
 	return toNotificationSourceOutput(item), nil
 }
 
+// CreateSource 创建业务资源并返回处理结果。
 func (uc *NotificationManager) CreateSource(ctx context.Context, input CreateNotificationSourceInput) (NotificationSourceOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return NotificationSourceOutput{}, fmt.Errorf("%w: notification manager is not configured", ErrInvalidInput)
@@ -236,6 +240,7 @@ func (uc *NotificationManager) CreateSource(ctx context.Context, input CreateNot
 	return toNotificationSourceOutput(created), nil
 }
 
+// UpdateSource 更新业务资源并返回处理结果。
 func (uc *NotificationManager) UpdateSource(ctx context.Context, id string, input UpdateNotificationSourceInput) (NotificationSourceOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return NotificationSourceOutput{}, fmt.Errorf("%w: notification manager is not configured", ErrInvalidInput)
@@ -273,6 +278,7 @@ func (uc *NotificationManager) UpdateSource(ctx context.Context, id string, inpu
 	return toNotificationSourceOutput(updated), nil
 }
 
+// DeleteSource 删除业务资源并返回处理结果。
 func (uc *NotificationManager) DeleteSource(ctx context.Context, id string) error {
 	if uc == nil || uc.repo == nil {
 		return fmt.Errorf("%w: notification manager is not configured", ErrInvalidInput)
@@ -284,6 +290,7 @@ func (uc *NotificationManager) DeleteSource(ctx context.Context, id string) erro
 	return uc.repo.DeleteSource(ctx, id)
 }
 
+// ListMarkdownTemplates 查询并返回列表数据。
 func (uc *NotificationManager) ListMarkdownTemplates(ctx context.Context, filter notificationdomain.MarkdownTemplateListFilter) (NotificationMarkdownTemplateListOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return NotificationMarkdownTemplateListOutput{}, fmt.Errorf("%w: notification manager is not configured", ErrInvalidInput)
@@ -299,6 +306,7 @@ func (uc *NotificationManager) ListMarkdownTemplates(ctx context.Context, filter
 	return NotificationMarkdownTemplateListOutput{Items: outputs, Total: total}, nil
 }
 
+// GetMarkdownTemplate 查询并返回指定资源数据。
 func (uc *NotificationManager) GetMarkdownTemplate(ctx context.Context, id string) (NotificationMarkdownTemplateOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return NotificationMarkdownTemplateOutput{}, fmt.Errorf("%w: notification manager is not configured", ErrInvalidInput)
@@ -310,6 +318,7 @@ func (uc *NotificationManager) GetMarkdownTemplate(ctx context.Context, id strin
 	return toNotificationMarkdownTemplateOutput(item), nil
 }
 
+// CreateMarkdownTemplate 创建业务资源并返回处理结果。
 func (uc *NotificationManager) CreateMarkdownTemplate(ctx context.Context, input CreateNotificationMarkdownTemplateInput) (NotificationMarkdownTemplateOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return NotificationMarkdownTemplateOutput{}, fmt.Errorf("%w: notification manager is not configured", ErrInvalidInput)
@@ -331,6 +340,7 @@ func (uc *NotificationManager) CreateMarkdownTemplate(ctx context.Context, input
 	return toNotificationMarkdownTemplateOutput(created), nil
 }
 
+// UpdateMarkdownTemplate 更新业务资源并返回处理结果。
 func (uc *NotificationManager) UpdateMarkdownTemplate(ctx context.Context, id string, input UpdateNotificationMarkdownTemplateInput) (NotificationMarkdownTemplateOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return NotificationMarkdownTemplateOutput{}, fmt.Errorf("%w: notification manager is not configured", ErrInvalidInput)
@@ -359,6 +369,7 @@ func (uc *NotificationManager) UpdateMarkdownTemplate(ctx context.Context, id st
 	return toNotificationMarkdownTemplateOutput(updated), nil
 }
 
+// DeleteMarkdownTemplate 删除业务资源并返回处理结果。
 func (uc *NotificationManager) DeleteMarkdownTemplate(ctx context.Context, id string) error {
 	if uc == nil || uc.repo == nil {
 		return fmt.Errorf("%w: notification manager is not configured", ErrInvalidInput)
@@ -370,6 +381,7 @@ func (uc *NotificationManager) DeleteMarkdownTemplate(ctx context.Context, id st
 	return uc.repo.DeleteMarkdownTemplate(ctx, id)
 }
 
+// ListHooks 查询并返回列表数据。
 func (uc *NotificationManager) ListHooks(ctx context.Context, filter notificationdomain.HookListFilter) (NotificationHookListOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return NotificationHookListOutput{}, fmt.Errorf("%w: notification manager is not configured", ErrInvalidInput)
@@ -385,6 +397,7 @@ func (uc *NotificationManager) ListHooks(ctx context.Context, filter notificatio
 	return NotificationHookListOutput{Items: outputs, Total: total}, nil
 }
 
+// GetHook 查询并返回指定资源数据。
 func (uc *NotificationManager) GetHook(ctx context.Context, id string) (NotificationHookOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return NotificationHookOutput{}, fmt.Errorf("%w: notification manager is not configured", ErrInvalidInput)
@@ -396,6 +409,7 @@ func (uc *NotificationManager) GetHook(ctx context.Context, id string) (Notifica
 	return toNotificationHookOutput(item), nil
 }
 
+// CreateHook 创建业务资源并返回处理结果。
 func (uc *NotificationManager) CreateHook(ctx context.Context, input CreateNotificationHookInput) (NotificationHookOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return NotificationHookOutput{}, fmt.Errorf("%w: notification manager is not configured", ErrInvalidInput)
@@ -417,6 +431,7 @@ func (uc *NotificationManager) CreateHook(ctx context.Context, input CreateNotif
 	return toNotificationHookOutput(created), nil
 }
 
+// UpdateHook 更新业务资源并返回处理结果。
 func (uc *NotificationManager) UpdateHook(ctx context.Context, id string, input UpdateNotificationHookInput) (NotificationHookOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return NotificationHookOutput{}, fmt.Errorf("%w: notification manager is not configured", ErrInvalidInput)
@@ -445,6 +460,7 @@ func (uc *NotificationManager) UpdateHook(ctx context.Context, id string, input 
 	return toNotificationHookOutput(updated), nil
 }
 
+// DeleteHook 删除业务资源并返回处理结果。
 func (uc *NotificationManager) DeleteHook(ctx context.Context, id string) error {
 	if uc == nil || uc.repo == nil {
 		return fmt.Errorf("%w: notification manager is not configured", ErrInvalidInput)
@@ -456,6 +472,7 @@ func (uc *NotificationManager) DeleteHook(ctx context.Context, id string) error 
 	return uc.repo.DeleteHook(ctx, id)
 }
 
+// normalizeSourceInput 标准化输入值，保证后续逻辑使用统一格式。
 func (uc *NotificationManager) normalizeSourceInput(name, sourceType, webhookURL, verificationParam string, enabled bool, remark string) (notificationdomain.Source, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -483,6 +500,7 @@ func (uc *NotificationManager) normalizeSourceInput(name, sourceType, webhookURL
 	}, nil
 }
 
+// normalizeMarkdownTemplateInput 标准化输入值，保证后续逻辑使用统一格式。
 func (uc *NotificationManager) normalizeMarkdownTemplateInput(
 	ctx context.Context,
 	name, titleTemplate, bodyTemplate string,
@@ -544,6 +562,7 @@ func (uc *NotificationManager) normalizeMarkdownTemplateInput(
 	}, nil
 }
 
+// normalizeHookInput 标准化输入值，保证后续逻辑使用统一格式。
 func (uc *NotificationManager) normalizeHookInput(ctx context.Context, name, sourceID, markdownTemplateID string, enabled bool, remark string) (notificationdomain.Hook, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -577,6 +596,7 @@ func (uc *NotificationManager) normalizeHookInput(ctx context.Context, name, sou
 	}, nil
 }
 
+// allowedMarkdownVariableKeys 封装当前模块的业务处理逻辑。
 func (uc *NotificationManager) allowedMarkdownVariableKeys(ctx context.Context) (map[string]struct{}, error) {
 	result := make(map[string]struct{}, len(notificationBuiltinKeys)+16)
 	for key := range notificationBuiltinKeys {
@@ -598,6 +618,7 @@ func (uc *NotificationManager) allowedMarkdownVariableKeys(ctx context.Context) 
 	return result, nil
 }
 
+// validateNotificationMarkdownPlaceholders 封装当前模块的业务处理逻辑。
 func validateNotificationMarkdownPlaceholders(allowedKeys map[string]struct{}, templates ...string) error {
 	for _, tpl := range templates {
 		matches := notificationTemplatePlaceholderPattern.FindAllStringSubmatch(tpl, -1)
@@ -617,6 +638,7 @@ func validateNotificationMarkdownPlaceholders(allowedKeys map[string]struct{}, t
 	return nil
 }
 
+// renderNotificationMarkdownTemplate 封装当前模块的业务处理逻辑。
 func renderNotificationMarkdownTemplate(values map[string]string, item notificationdomain.MarkdownTemplate) (string, string) {
 	normalizedValues := normalizeNotificationVariables(values)
 	title := renderHookString(normalizedValues, item.TitleTemplate)
@@ -645,6 +667,7 @@ func renderNotificationMarkdownTemplate(values map[string]string, item notificat
 	return strings.TrimSpace(title), strings.TrimSpace(strings.Join(blocks, "\n\n"))
 }
 
+// normalizeNotificationVariables 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeNotificationVariables(values map[string]string) map[string]string {
 	if len(values) == 0 {
 		return map[string]string{}
@@ -670,6 +693,7 @@ func normalizeNotificationVariables(values map[string]string) map[string]string 
 	return normalized
 }
 
+// notificationConditionMatched 封装当前模块的业务处理逻辑。
 func notificationConditionMatched(actual string, operator notificationdomain.ConditionOperator, expected string) bool {
 	actual = strings.TrimSpace(actual)
 	expected = strings.TrimSpace(expected)
@@ -697,6 +721,7 @@ func notificationConditionMatched(actual string, operator notificationdomain.Con
 	}
 }
 
+// toNotificationSourceOutput 将领域对象转换为接口响应结构。
 func toNotificationSourceOutput(item notificationdomain.Source) NotificationSourceOutput {
 	return NotificationSourceOutput{
 		ID:                   item.ID,
@@ -713,6 +738,7 @@ func toNotificationSourceOutput(item notificationdomain.Source) NotificationSour
 	}
 }
 
+// toNotificationMarkdownTemplateOutput 将领域对象转换为接口响应结构。
 func toNotificationMarkdownTemplateOutput(item notificationdomain.MarkdownTemplate) NotificationMarkdownTemplateOutput {
 	conditions := make([]NotificationMarkdownTemplateConditionOutput, 0, len(item.Conditions))
 	for _, cond := range item.Conditions {
@@ -739,6 +765,7 @@ func toNotificationMarkdownTemplateOutput(item notificationdomain.MarkdownTempla
 	}
 }
 
+// toNotificationHookOutput 将领域对象转换为接口响应结构。
 func toNotificationHookOutput(item notificationdomain.Hook) NotificationHookOutput {
 	return NotificationHookOutput{
 		ID:                   item.ID,

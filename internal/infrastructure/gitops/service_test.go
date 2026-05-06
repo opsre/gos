@@ -2,6 +2,7 @@ package gitops
 
 import "testing"
 
+// TestBuildCommitMessageUsesConfiguredTemplate 组装业务执行所需的输入数据。
 func TestBuildCommitMessageUsesConfiguredTemplate(t *testing.T) {
 	service := NewService(Config{
 		Enabled:               true,
@@ -26,6 +27,7 @@ func TestBuildCommitMessageUsesConfiguredTemplate(t *testing.T) {
 	}
 }
 
+// TestBuildCommitMessageFallsBackToDefaultTemplate 组装业务执行所需的输入数据。
 func TestBuildCommitMessageFallsBackToDefaultTemplate(t *testing.T) {
 	service := NewService(Config{
 		Enabled:   true,
@@ -50,6 +52,7 @@ func TestBuildCommitMessageFallsBackToDefaultTemplate(t *testing.T) {
 	}
 }
 
+// TestBuildCommitMessageSupportsDynamicPlatformKeys 组装业务执行所需的输入数据。
 func TestBuildCommitMessageSupportsDynamicPlatformKeys(t *testing.T) {
 	service := NewService(Config{
 		Enabled:               true,
@@ -69,6 +72,7 @@ func TestBuildCommitMessageSupportsDynamicPlatformKeys(t *testing.T) {
 	}
 }
 
+// TestNormalizeHoistedHelmValuesFilePathTemplate 标准化输入值，保证后续逻辑使用统一格式。
 func TestNormalizeHoistedHelmValuesFilePathTemplate(t *testing.T) {
 	got := normalizeHoistedHelmValuesFilePathTemplate("apps/java-nantong-test/helm/platform.values-{env}.yaml")
 	want := "apps/helm/platform.values-{env}.yaml"
@@ -77,6 +81,7 @@ func TestNormalizeHoistedHelmValuesFilePathTemplate(t *testing.T) {
 	}
 }
 
+// TestNormalizeHoistedHelmValuesFilePathTemplateKeepsSharedPath 标准化输入值，保证后续逻辑使用统一格式。
 func TestNormalizeHoistedHelmValuesFilePathTemplateKeepsSharedPath(t *testing.T) {
 	got := normalizeHoistedHelmValuesFilePathTemplate("apps/helm/platform.values-{env}.yaml")
 	want := "apps/helm/platform.values-{env}.yaml"

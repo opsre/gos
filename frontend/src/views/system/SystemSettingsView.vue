@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { ExclamationCircleOutlined } from '@ant-design/icons-vue'
+import { ExclamationCircleOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { onMounted, reactive, ref } from 'vue'
 import { getReleaseSettings, updateReleaseSettings } from '../../api/system'
 import { extractHTTPErrorMessage } from '../../utils/http-error'
+import AnnouncementManage from './AnnouncementManage.vue'
 
+const activeTab = ref('release')
+const announcementRef = ref<InstanceType<typeof AnnouncementManage> | null>(null)
 const loading = ref(false)
 const saving = ref(false)
 const envOptions = ref<string[]>([])
@@ -100,11 +103,26 @@ onMounted(() => {
         <h2 class="page-title">设置</h2>
       </div>
       <div class="page-header-actions">
-        <a-button class="settings-toolbar-action-btn settings-toolbar-action-btn--primary" :loading="saving" @click="saveSettings">保存</a-button>
+        <a-button
+          v-if="activeTab === 'release'"
+          class="settings-toolbar-action-btn settings-toolbar-action-btn--primary"
+          :loading="saving"
+          @click="saveSettings"
+        >保存</a-button>
+        <a-button
+          v-if="activeTab === 'announcement'"
+          class="settings-toolbar-action-btn settings-toolbar-action-btn--primary"
+          @click="announcementRef?.openCreate()"
+        >
+          <template #icon><PlusOutlined /></template>
+          新增公告
+        </a-button>
       </div>
     </div>
 
-    <a-card :loading="loading" :bordered="false" class="settings-card">
+    <a-tabs v-model:activeKey="activeTab" class="settings-tabs">
+      <a-tab-pane key="release" tab="发布设置">
+        <a-card :loading="loading" :bordered="false" class="settings-card">
       <template #title>
         发布环境
         <a-popover
@@ -226,6 +244,11 @@ onMounted(() => {
         </a-form-item>
       </a-form>
     </a-card>
+        </a-tab-pane>
+        <a-tab-pane key="announcement" tab="公告管理">
+          <AnnouncementManage ref="announcementRef" />
+        </a-tab-pane>
+      </a-tabs>
   </div>
 </template>
 

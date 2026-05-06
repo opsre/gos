@@ -60,6 +60,7 @@ type UpdateArgoCDEnvBindingItem struct {
 	Status           domain.Status
 }
 
+// NewArgoCDInstanceManager 创建并返回对应组件实例。
 func NewArgoCDInstanceManager(
 	repo domain.Repository,
 	gitopsRepo gitopsdomain.Repository,
@@ -68,6 +69,7 @@ func NewArgoCDInstanceManager(
 	return &ArgoCDInstanceManager{repo: repo, gitopsRepo: gitopsRepo, factory: factory, now: func() time.Time { return time.Now().UTC() }}
 }
 
+// List 查询并返回列表数据。
 func (uc *ArgoCDInstanceManager) List(ctx context.Context, filter domain.InstanceListFilter) ([]domain.Instance, int64, error) {
 	if uc == nil || uc.repo == nil {
 		return nil, 0, fmt.Errorf("%w: argocd instance manager is not configured", ErrInvalidInput)
@@ -87,6 +89,7 @@ func (uc *ArgoCDInstanceManager) List(ctx context.Context, filter domain.Instanc
 	return uc.repo.ListInstances(ctx, filter)
 }
 
+// Create 创建业务资源并返回处理结果。
 func (uc *ArgoCDInstanceManager) Create(ctx context.Context, input CreateArgoCDInstanceInput) (domain.Instance, error) {
 	if uc == nil || uc.repo == nil {
 		return domain.Instance{}, fmt.Errorf("%w: argocd instance manager is not configured", ErrInvalidInput)
@@ -125,6 +128,7 @@ func (uc *ArgoCDInstanceManager) Create(ctx context.Context, input CreateArgoCDI
 	return created, nil
 }
 
+// Update 更新业务资源并返回处理结果。
 func (uc *ArgoCDInstanceManager) Update(ctx context.Context, id string, input UpdateArgoCDInstanceInput) (domain.Instance, error) {
 	if uc == nil || uc.repo == nil {
 		return domain.Instance{}, fmt.Errorf("%w: argocd instance manager is not configured", ErrInvalidInput)
@@ -174,6 +178,7 @@ func (uc *ArgoCDInstanceManager) Update(ctx context.Context, id string, input Up
 	return updated, nil
 }
 
+// Check 检查业务状态并返回校验结果。
 func (uc *ArgoCDInstanceManager) Check(ctx context.Context, id string) (domain.Instance, error) {
 	if uc == nil || uc.repo == nil || uc.factory == nil {
 		return domain.Instance{}, fmt.Errorf("%w: argocd instance manager is not configured", ErrInvalidInput)
@@ -235,6 +240,7 @@ func (uc *ArgoCDInstanceManager) Check(ctx context.Context, id string) (domain.I
 	return checked, nil
 }
 
+// ListEnvBindings 查询并返回列表数据。
 func (uc *ArgoCDInstanceManager) ListEnvBindings(ctx context.Context) ([]domain.EnvBinding, error) {
 	if uc == nil || uc.repo == nil {
 		return nil, fmt.Errorf("%w: argocd instance manager is not configured", ErrInvalidInput)
@@ -242,6 +248,7 @@ func (uc *ArgoCDInstanceManager) ListEnvBindings(ctx context.Context) ([]domain.
 	return uc.repo.ListEnvBindings(ctx)
 }
 
+// UpdateEnvBindings 更新业务资源并返回处理结果。
 func (uc *ArgoCDInstanceManager) UpdateEnvBindings(ctx context.Context, items []UpdateArgoCDEnvBindingItem) ([]domain.EnvBinding, error) {
 	if uc == nil || uc.repo == nil {
 		return nil, fmt.Errorf("%w: argocd instance manager is not configured", ErrInvalidInput)
@@ -313,6 +320,7 @@ func (uc *ArgoCDInstanceManager) UpdateEnvBindings(ctx context.Context, items []
 	return bindings, nil
 }
 
+// normalizeCreateInput 标准化输入值，保证后续逻辑使用统一格式。
 func (uc *ArgoCDInstanceManager) normalizeCreateInput(ctx context.Context, input CreateArgoCDInstanceInput) (domain.Instance, error) {
 	code, err := normalizeArgoCDInstanceCode(input.InstanceCode)
 	if err != nil {
@@ -371,6 +379,7 @@ func (uc *ArgoCDInstanceManager) normalizeCreateInput(ctx context.Context, input
 	}, nil
 }
 
+// normalizeUpdateInput 标准化输入值，保证后续逻辑使用统一格式。
 func (uc *ArgoCDInstanceManager) normalizeUpdateInput(ctx context.Context, current domain.Instance, input UpdateArgoCDInstanceInput) (domain.Instance, error) {
 	code, err := normalizeArgoCDInstanceCode(input.InstanceCode)
 	if err != nil {
@@ -444,6 +453,7 @@ func (uc *ArgoCDInstanceManager) normalizeUpdateInput(ctx context.Context, curre
 	}, nil
 }
 
+// normalizeArgoCDInstanceCode 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeArgoCDInstanceCode(value string) (string, error) {
 	value = strings.TrimSpace(strings.ToLower(value))
 	if value == "" {
@@ -455,6 +465,7 @@ func normalizeArgoCDInstanceCode(value string) (string, error) {
 	return value, nil
 }
 
+// normalizeArgoCDBaseURL 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeArgoCDBaseURL(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -467,6 +478,7 @@ func normalizeArgoCDBaseURL(value string) (string, error) {
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
+// normalizeArgoCDAuthMode 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeArgoCDAuthMode(value string) string {
 	value = strings.TrimSpace(strings.ToLower(value))
 	switch value {
@@ -477,6 +489,7 @@ func normalizeArgoCDAuthMode(value string) string {
 	}
 }
 
+// validateArgoCDCredentials 封装当前模块的业务处理逻辑。
 func validateArgoCDCredentials(authMode, token, username, password string) error {
 	switch normalizeArgoCDAuthMode(authMode) {
 	case "token":

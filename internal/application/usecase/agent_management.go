@@ -125,10 +125,12 @@ type AgentInstallConfigOutput struct {
 	PollInterval      string `json:"poll_interval"`
 }
 
+// NewAgentManager 创建并返回对应组件实例。
 func NewAgentManager(repo agentdomain.Repository) *AgentManager {
 	return &AgentManager{repo: repo, now: func() time.Time { return time.Now().UTC() }, offlineAfter: defaultAgentOfflineAfter}
 }
 
+// List 查询并返回列表数据。
 func (uc *AgentManager) List(ctx context.Context, filter agentdomain.ListFilter) (AgentListOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentListOutput{}, fmt.Errorf("%w: agent manager is not configured", ErrInvalidInput)
@@ -179,6 +181,7 @@ func (uc *AgentManager) List(ctx context.Context, filter agentdomain.ListFilter)
 	return AgentListOutput{Items: outputs[start:end], Total: total}, nil
 }
 
+// Get 查询并返回指定资源数据。
 func (uc *AgentManager) Get(ctx context.Context, id string) (AgentOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentOutput{}, fmt.Errorf("%w: agent manager is not configured", ErrInvalidInput)
@@ -193,6 +196,7 @@ func (uc *AgentManager) Get(ctx context.Context, id string) (AgentOutput, error)
 	return output, nil
 }
 
+// Create 创建业务资源并返回处理结果。
 func (uc *AgentManager) Create(ctx context.Context, input CreateAgentInput) (AgentOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentOutput{}, fmt.Errorf("%w: agent manager is not configured", ErrInvalidInput)
@@ -212,6 +216,7 @@ func (uc *AgentManager) Create(ctx context.Context, input CreateAgentInput) (Age
 	return uc.toOutput(created, true), nil
 }
 
+// Update 更新业务资源并返回处理结果。
 func (uc *AgentManager) Update(ctx context.Context, id string, input UpdateAgentInput) (AgentOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentOutput{}, fmt.Errorf("%w: agent manager is not configured", ErrInvalidInput)
@@ -254,6 +259,7 @@ func (uc *AgentManager) Update(ctx context.Context, id string, input UpdateAgent
 	return uc.toOutput(updated, true), nil
 }
 
+// ResetToken 封装当前模块的业务处理逻辑。
 func (uc *AgentManager) ResetToken(ctx context.Context, id string) (AgentOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentOutput{}, fmt.Errorf("%w: agent manager is not configured", ErrInvalidInput)
@@ -275,6 +281,7 @@ func (uc *AgentManager) ResetToken(ctx context.Context, id string) (AgentOutput,
 	return uc.toOutput(updated, true), nil
 }
 
+// Delete 删除业务资源并返回处理结果。
 func (uc *AgentManager) Delete(ctx context.Context, id string) error {
 	if uc == nil || uc.repo == nil {
 		return fmt.Errorf("%w: agent manager is not configured", ErrInvalidInput)
@@ -348,6 +355,7 @@ func (uc *AgentManager) Delete(ctx context.Context, id string) error {
 	return uc.repo.DeleteInstance(ctx, current.ID)
 }
 
+// BuildInstallConfig 组装业务执行所需的输入数据。
 func (uc *AgentManager) BuildInstallConfig(ctx context.Context, id string, baseURL string) (AgentInstallConfigOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentInstallConfigOutput{}, fmt.Errorf("%w: agent manager is not configured", ErrInvalidInput)
@@ -363,6 +371,7 @@ func (uc *AgentManager) BuildInstallConfig(ctx context.Context, id string, baseU
 	return uc.buildInstallConfigOutput(ctx, baseURL, item)
 }
 
+// listAllTasksForAgentDelete 查询并返回列表数据。
 func (uc *AgentManager) listAllTasksForAgentDelete(ctx context.Context) ([]agentdomain.Task, error) {
 	page := 1
 	pageSize := 500
@@ -384,6 +393,7 @@ func (uc *AgentManager) listAllTasksForAgentDelete(ctx context.Context) ([]agent
 	return result, nil
 }
 
+// removeAgentIDFromTaskTargets 查询并返回指定资源数据。
 func removeAgentIDFromTaskTargets(items []string, agentID string) []string {
 	agentID = strings.TrimSpace(agentID)
 	if agentID == "" || len(items) == 0 {
@@ -405,6 +415,7 @@ func removeAgentIDFromTaskTargets(items []string, agentID string) []string {
 	return result
 }
 
+// BuildBootstrapConfig 组装业务执行所需的输入数据。
 func (uc *AgentManager) BuildBootstrapConfig(ctx context.Context, baseURL string) (AgentInstallConfigOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentInstallConfigOutput{}, fmt.Errorf("%w: agent manager is not configured", ErrInvalidInput)
@@ -417,6 +428,7 @@ func (uc *AgentManager) BuildBootstrapConfig(ctx context.Context, baseURL string
 	})
 }
 
+// ResetBootstrapToken 封装当前模块的业务处理逻辑。
 func (uc *AgentManager) ResetBootstrapToken(ctx context.Context, baseURL string) (AgentInstallConfigOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentInstallConfigOutput{}, fmt.Errorf("%w: agent manager is not configured", ErrInvalidInput)
@@ -427,6 +439,7 @@ func (uc *AgentManager) ResetBootstrapToken(ctx context.Context, baseURL string)
 	return uc.BuildBootstrapConfig(ctx, baseURL)
 }
 
+// Register 封装当前模块的业务处理逻辑。
 func (uc *AgentManager) Register(ctx context.Context, input AgentRegisterInput) (AgentRegisterOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentRegisterOutput{}, fmt.Errorf("%w: agent manager is not configured", ErrInvalidInput)
@@ -514,6 +527,7 @@ func (uc *AgentManager) Register(ctx context.Context, input AgentRegisterInput) 
 	}, nil
 }
 
+// buildInstallConfigOutput 组装业务执行所需的输入数据。
 func (uc *AgentManager) buildInstallConfigOutput(ctx context.Context, baseURL string, item agentdomain.Instance) (AgentInstallConfigOutput, error) {
 	bootstrapToken, err := uc.repo.GetBootstrapToken(ctx)
 	if err != nil {
@@ -563,6 +577,7 @@ func (uc *AgentManager) buildInstallConfigOutput(ctx context.Context, baseURL st
 	}, nil
 }
 
+// generateAutoAgentCode 封装当前模块的业务处理逻辑。
 func (uc *AgentManager) generateAutoAgentCode(input AgentRegisterInput) string {
 	base := firstNonEmptyAgentString(strings.TrimSpace(input.Name), strings.TrimSpace(input.Hostname), "agent")
 	base = normalizeAgentCodeSegment(base)
@@ -584,6 +599,7 @@ func (uc *AgentManager) generateAutoAgentCode(input AgentRegisterInput) string {
 	return code
 }
 
+// UpdateStatus 更新业务资源并返回处理结果。
 func (uc *AgentManager) UpdateStatus(ctx context.Context, id string, status agentdomain.Status) (AgentOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentOutput{}, fmt.Errorf("%w: agent manager is not configured", ErrInvalidInput)
@@ -604,6 +620,7 @@ func (uc *AgentManager) UpdateStatus(ctx context.Context, id string, status agen
 	return uc.toOutput(updated, false), nil
 }
 
+// Heartbeat 封装当前模块的业务处理逻辑。
 func (uc *AgentManager) Heartbeat(ctx context.Context, input AgentHeartbeatInput) (AgentOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentOutput{}, fmt.Errorf("%w: agent manager is not configured", ErrInvalidInput)
@@ -645,6 +662,7 @@ func (uc *AgentManager) Heartbeat(ctx context.Context, input AgentHeartbeatInput
 	return uc.toOutput(updated, false), nil
 }
 
+// normalizeInput 标准化输入值，保证后续逻辑使用统一格式。
 func (uc *AgentManager) normalizeInput(id string, input CreateAgentInput, now time.Time) (agentdomain.Instance, error) {
 	agentCode := strings.ToLower(strings.TrimSpace(input.AgentCode))
 	if agentCode == "" {
@@ -681,6 +699,7 @@ func (uc *AgentManager) normalizeInput(id string, input CreateAgentInput, now ti
 	}, nil
 }
 
+// toOutput 将领域对象转换为接口响应结构。
 func (uc *AgentManager) toOutput(item agentdomain.Instance, includeToken bool) AgentOutput {
 	now := uc.now()
 	runtimeState := resolveAgentRuntimeState(item, now, uc.offlineAfter)
@@ -733,6 +752,7 @@ func (uc *AgentManager) toOutput(item agentdomain.Instance, includeToken bool) A
 	return output
 }
 
+// enrichCurrentTask 封装当前模块的业务处理逻辑。
 func (uc *AgentManager) enrichCurrentTask(ctx context.Context, output *AgentOutput) {
 	if uc == nil || uc.repo == nil || output == nil {
 		return
@@ -755,6 +775,7 @@ func (uc *AgentManager) enrichCurrentTask(ctx context.Context, output *AgentOutp
 	}
 }
 
+// enrichCurrentResidentTask 封装当前模块的业务处理逻辑。
 func (uc *AgentManager) enrichCurrentResidentTask(ctx context.Context, output *AgentOutput) {
 	if uc == nil || uc.repo == nil || output == nil || strings.TrimSpace(output.ID) == "" {
 		return
@@ -776,6 +797,7 @@ func (uc *AgentManager) enrichCurrentResidentTask(ctx context.Context, output *A
 	output.CurrentResidentTaskStatus = current.Status
 }
 
+// selectCurrentResidentTask 封装当前模块的业务处理逻辑。
 func selectCurrentResidentTask(items []agentdomain.Task) (agentdomain.Task, bool) {
 	bestIndex := -1
 	bestScore := -1
@@ -799,6 +821,7 @@ func selectCurrentResidentTask(items []agentdomain.Task) (agentdomain.Task, bool
 	return items[bestIndex], true
 }
 
+// residentTaskPriority 封装当前模块的业务处理逻辑。
 func residentTaskPriority(status agentdomain.TaskStatus) int {
 	switch status {
 	case agentdomain.TaskStatusRunning:
@@ -814,6 +837,7 @@ func residentTaskPriority(status agentdomain.TaskStatus) int {
 	}
 }
 
+// resolveAgentRuntimeState 解析上下文数据，得到后续流程需要的结果。
 func resolveAgentRuntimeState(item agentdomain.Instance, now time.Time, offlineAfter time.Duration) agentdomain.RuntimeState {
 	switch item.Status {
 	case agentdomain.StatusDisabled:
@@ -830,6 +854,7 @@ func resolveAgentRuntimeState(item agentdomain.Instance, now time.Time, offlineA
 	return agentdomain.RuntimeStateOnline
 }
 
+// normalizeAgentTags 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeAgentTags(items []string) []string {
 	set := make(map[string]struct{})
 	result := make([]string, 0, len(items))
@@ -848,6 +873,7 @@ func normalizeAgentTags(items []string) []string {
 	return result
 }
 
+// normalizeAgentCodeSegment 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeAgentCodeSegment(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	if value == "" {
@@ -870,6 +896,7 @@ func normalizeAgentCodeSegment(value string) string {
 	return result
 }
 
+// normalizeLastTaskStatus 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeLastTaskStatus(value agentdomain.LastTaskStatus, fallback agentdomain.LastTaskStatus) agentdomain.LastTaskStatus {
 	if value.Valid() {
 		if value == "" {
@@ -886,6 +913,7 @@ func normalizeLastTaskStatus(value agentdomain.LastTaskStatus, fallback agentdom
 	return agentdomain.LastTaskStatusUnknown
 }
 
+// firstNonEmptyAgentString 封装当前模块的业务处理逻辑。
 func firstNonEmptyAgentString(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
@@ -895,6 +923,7 @@ func firstNonEmptyAgentString(values ...string) string {
 	return ""
 }
 
+// generateAgentToken 封装当前模块的业务处理逻辑。
 func generateAgentToken() string {
 	buf := make([]byte, 16)
 	if _, err := rand.Read(buf); err != nil {
@@ -903,6 +932,7 @@ func generateAgentToken() string {
 	return hex.EncodeToString(buf)
 }
 
+// subtleConstantTimeCompare 封装当前模块的业务处理逻辑。
 func subtleConstantTimeCompare(left string, right string) bool {
 	if len(left) != len(right) {
 		return false
@@ -914,6 +944,7 @@ func subtleConstantTimeCompare(left string, right string) bool {
 	return diff == 0
 }
 
+// normalizeAgentBaseURL 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeAgentBaseURL(baseURL string) string {
 	value := strings.TrimSpace(baseURL)
 	if value == "" {

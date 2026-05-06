@@ -9,6 +9,7 @@ const (
 	StatusInactive Status = "inactive"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s Status) Valid() bool {
 	switch s {
 	case StatusActive, StatusInactive:

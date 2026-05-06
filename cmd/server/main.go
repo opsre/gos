@@ -105,6 +105,10 @@ func main() {
 	if err := bootstrap.InitSchema(notificationRepo); err != nil {
 		log.Fatalf("init notification schema: %v", err)
 	}
+	announcementRepo := sqlrepo.NewAnnouncementRepository(db, cfg.Database.Driver)
+	if err := bootstrap.InitSchema(announcementRepo); err != nil {
+		log.Fatalf("init announcement schema: %v", err)
+	}
 	releaseStoreFallback := configstore.NewReleaseStore(resolvedConfigPath)
 	releaseStore := configstore.NewDatabaseReleaseStore(db, cfg.Database.Driver, releaseStoreFallback)
 	if err := bootstrap.InitSchema(releaseStore); err != nil {
@@ -198,6 +202,10 @@ func main() {
 	)
 	notificationHandler := httpapi.NewNotificationHandler(
 		usecase.NewNotificationManager(notificationRepo, platformParamRepo),
+		authSessionManager,
+	)
+	announcementHandler := httpapi.NewAnnouncementHandler(
+		usecase.NewAnnouncementManager(announcementRepo),
 		authSessionManager,
 	)
 	executorParamHandler := httpapi.NewExecutorParamHandler(
@@ -318,6 +326,26 @@ func main() {
 	})
 	defer releaseTrackTask.Stop()
 
+	releaseScheduleTask := bootstrap.StartReleaseScheduleTask(10, func(ctx context.Context) error {
+		result, err := releaseOrderManager.RunDueSchedules(ctx, 50)
+		if err != nil {
+			return err
+		}
+		if result.Scanned > 0 {
+			log.Printf(
+				"release schedule dispatch completed: scanned=%d expired=%d dispatched=%d blocked=%d failed=%d skipped=%d",
+				result.Scanned,
+				result.Expired,
+				result.Dispatched,
+				result.Blocked,
+				result.Failed,
+				result.Skipped,
+			)
+		}
+		return nil
+	})
+	defer releaseScheduleTask.Stop()
+
 	router := httpapi.NewRouter(
 		authHandler,
 		agentHandler,
@@ -334,6 +362,7 @@ func main() {
 		executorParamHandler,
 		releaseOrderHandler,
 		releaseTemplateHandler,
+		announcementHandler,
 	)
 
 	server := &http.Server{
@@ -382,6 +411,7 @@ func main() {
 	}
 }
 
+// contextWithTimeout 封装当前模块的业务处理逻辑。
 func contextWithTimeout(timeout time.Duration) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	return ctx, cancel
@@ -391,6 +421,7 @@ type argoCDClientFactory struct{}
 
 type gitOpsServiceFactory struct{}
 
+// Build 组装业务执行所需的输入数据。
 func (argoCDClientFactory) Build(instance argocddomain.Instance) usecase.ArgoCDApplicationClient {
 	client := argocdinfra.NewClient(argocdinfra.Config{
 		BaseURL:            strings.TrimSpace(instance.BaseURL),
@@ -404,6 +435,7 @@ func (argoCDClientFactory) Build(instance argocddomain.Instance) usecase.ArgoCDA
 	return argoCDUsecaseClient{client: client}
 }
 
+// Build 组装业务执行所需的输入数据。
 func (gitOpsServiceFactory) Build(instance gitopsdomain.Instance) *gitopsinfra.Service {
 	return gitopsinfra.NewService(gitopsinfra.Config{
 		Enabled:               instance.Status == gitopsdomain.StatusActive && strings.TrimSpace(instance.LocalRoot) != "",
@@ -419,6 +451,7 @@ func (gitOpsServiceFactory) Build(instance gitopsdomain.Instance) *gitopsinfra.S
 	})
 }
 
+// ensureDefaultGitOpsInstance 校验前置条件，不满足时写入对应错误响应。
 func ensureDefaultGitOpsInstance(ctx context.Context, repo gitopsdomain.Repository, cfg bootstrap.Config) error {
 	if repo == nil || !cfg.GitOps.Enabled || strings.TrimSpace(cfg.GitOps.LocalRoot) == "" {
 		return nil
@@ -445,6 +478,7 @@ func ensureDefaultGitOpsInstance(ctx context.Context, repo gitopsdomain.Reposito
 	return err
 }
 
+// ensureDefaultArgoCDInstance 校验前置条件，不满足时写入对应错误响应。
 func ensureDefaultArgoCDInstance(ctx context.Context, repo argocddomain.Repository, cfg bootstrap.Config) error {
 	if repo == nil || !cfg.ArgoCD.Enabled || strings.TrimSpace(cfg.ArgoCD.BaseURL) == "" {
 		return nil
@@ -472,6 +506,7 @@ func ensureDefaultArgoCDInstance(ctx context.Context, repo argocddomain.Reposito
 	return err
 }
 
+// defaultGitOpsInstanceID 封装当前模块的业务处理逻辑。
 func defaultGitOpsInstanceID(cfg bootstrap.Config) string {
 	if cfg.GitOps.Enabled && strings.TrimSpace(cfg.GitOps.LocalRoot) != "" {
 		return "gitops-instance-default"
@@ -483,6 +518,7 @@ type argoCDUsecaseClient struct {
 	client *argocdinfra.Client
 }
 
+// Ping 封装当前模块的业务处理逻辑。
 func (c argoCDUsecaseClient) Ping(ctx context.Context) error {
 	if c.client == nil {
 		return errors.New("argocd client is not configured")
@@ -490,6 +526,7 @@ func (c argoCDUsecaseClient) Ping(ctx context.Context) error {
 	return c.client.Ping(ctx)
 }
 
+// ListApplications 查询并返回列表数据。
 func (c argoCDUsecaseClient) ListApplications(ctx context.Context) ([]usecase.ArgoCDApplicationSnapshot, error) {
 	if c.client == nil {
 		return nil, errors.New("argocd client is not configured")
@@ -505,6 +542,7 @@ func (c argoCDUsecaseClient) ListApplications(ctx context.Context) ([]usecase.Ar
 	return result, nil
 }
 
+// GetApplication 查询并返回指定资源数据。
 func (c argoCDUsecaseClient) GetApplication(ctx context.Context, name string) (usecase.ArgoCDApplicationSnapshot, error) {
 	if c.client == nil {
 		return nil, errors.New("argocd client is not configured")
@@ -512,6 +550,7 @@ func (c argoCDUsecaseClient) GetApplication(ctx context.Context, name string) (u
 	return c.client.GetApplication(ctx, name)
 }
 
+// SyncApplication 同步外部或内部状态数据。
 func (c argoCDUsecaseClient) SyncApplication(ctx context.Context, name string) error {
 	if c.client == nil {
 		return errors.New("argocd client is not configured")
@@ -519,6 +558,7 @@ func (c argoCDUsecaseClient) SyncApplication(ctx context.Context, name string) e
 	return c.client.SyncApplication(ctx, name)
 }
 
+// SyncApplicationWithRevision 同步外部或内部状态数据。
 func (c argoCDUsecaseClient) SyncApplicationWithRevision(ctx context.Context, name string, revision string) error {
 	if c.client == nil {
 		return errors.New("argocd client is not configured")
@@ -526,6 +566,7 @@ func (c argoCDUsecaseClient) SyncApplicationWithRevision(ctx context.Context, na
 	return c.client.SyncApplicationWithRevision(ctx, name, revision)
 }
 
+// BuildApplicationURL 组装业务执行所需的输入数据。
 func (c argoCDUsecaseClient) BuildApplicationURL(name string) string {
 	if c.client == nil {
 		return ""

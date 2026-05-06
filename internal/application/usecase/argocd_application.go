@@ -60,6 +60,7 @@ type ArgoCDApplicationOriginalLinkOutput struct {
 	OriginalLink string             `json:"original_link"`
 }
 
+// NewSyncArgoCDApplications 创建并返回对应组件实例。
 func NewSyncArgoCDApplications(repo domain.Repository, factory ArgoCDClientFactory) *SyncArgoCDApplications {
 	return &SyncArgoCDApplications{
 		repo:    repo,
@@ -70,10 +71,12 @@ func NewSyncArgoCDApplications(repo domain.Repository, factory ArgoCDClientFacto
 	}
 }
 
+// NewQueryArgoCDApplications 创建并返回对应组件实例。
 func NewQueryArgoCDApplications(repo domain.Repository) *QueryArgoCDApplications {
 	return &QueryArgoCDApplications{repo: repo}
 }
 
+// Execute 封装当前模块的业务处理逻辑。
 func (uc *SyncArgoCDApplications) Execute(ctx context.Context) (SyncArgoCDApplicationsOutput, error) {
 	if uc == nil || uc.repo == nil || uc.factory == nil {
 		return SyncArgoCDApplicationsOutput{}, fmt.Errorf("%w: argocd syncer is not configured", ErrInvalidInput)
@@ -163,6 +166,7 @@ func (uc *SyncArgoCDApplications) Execute(ctx context.Context) (SyncArgoCDApplic
 	return result, firstErr
 }
 
+// List 查询并返回列表数据。
 func (uc *QueryArgoCDApplications) List(ctx context.Context, filter domain.ListFilter) ([]domain.Application, int64, error) {
 	if uc == nil || uc.repo == nil {
 		return nil, 0, fmt.Errorf("%w: argocd query service is not configured", ErrInvalidInput)
@@ -187,6 +191,7 @@ func (uc *QueryArgoCDApplications) List(ctx context.Context, filter domain.ListF
 	return uc.repo.ListApplications(ctx, filter)
 }
 
+// GetByID 查询并返回指定资源数据。
 func (uc *QueryArgoCDApplications) GetByID(ctx context.Context, id string) (domain.Application, error) {
 	if uc == nil || uc.repo == nil {
 		return domain.Application{}, fmt.Errorf("%w: argocd query service is not configured", ErrInvalidInput)
@@ -197,6 +202,7 @@ func (uc *QueryArgoCDApplications) GetByID(ctx context.Context, id string) (doma
 	return uc.repo.GetApplicationByID(ctx, id)
 }
 
+// GetOriginalLink 查询并返回指定资源数据。
 func (uc *QueryArgoCDApplications) GetOriginalLink(ctx context.Context, id string) (ArgoCDApplicationOriginalLinkOutput, error) {
 	item, err := uc.GetByID(ctx, id)
 	if err != nil {
@@ -226,18 +232,40 @@ type argoCDApplicationSnapshotAdapter struct {
 	RawMeta        string
 }
 
-func (a argoCDApplicationSnapshotAdapter) GetName() string           { return a.Name }
-func (a argoCDApplicationSnapshotAdapter) GetProject() string        { return a.Project }
-func (a argoCDApplicationSnapshotAdapter) GetRepoURL() string        { return a.RepoURL }
-func (a argoCDApplicationSnapshotAdapter) GetSourcePath() string     { return a.SourcePath }
-func (a argoCDApplicationSnapshotAdapter) GetTargetRevision() string { return a.TargetRevision }
-func (a argoCDApplicationSnapshotAdapter) GetDestServer() string     { return a.DestServer }
-func (a argoCDApplicationSnapshotAdapter) GetDestNamespace() string  { return a.DestNamespace }
-func (a argoCDApplicationSnapshotAdapter) GetSyncStatus() string     { return a.SyncStatus }
-func (a argoCDApplicationSnapshotAdapter) GetHealthStatus() string   { return a.HealthStatus }
-func (a argoCDApplicationSnapshotAdapter) GetOperationPhase() string { return a.OperationPhase }
-func (a argoCDApplicationSnapshotAdapter) GetRawMeta() string        { return a.RawMeta }
+// GetName 查询并返回指定资源数据。
+func (a argoCDApplicationSnapshotAdapter) GetName() string { return a.Name }
 
+// GetProject 查询并返回指定资源数据。
+func (a argoCDApplicationSnapshotAdapter) GetProject() string { return a.Project }
+
+// GetRepoURL 查询并返回指定资源数据。
+func (a argoCDApplicationSnapshotAdapter) GetRepoURL() string { return a.RepoURL }
+
+// GetSourcePath 查询并返回指定资源数据。
+func (a argoCDApplicationSnapshotAdapter) GetSourcePath() string { return a.SourcePath }
+
+// GetTargetRevision 查询并返回指定资源数据。
+func (a argoCDApplicationSnapshotAdapter) GetTargetRevision() string { return a.TargetRevision }
+
+// GetDestServer 查询并返回指定资源数据。
+func (a argoCDApplicationSnapshotAdapter) GetDestServer() string { return a.DestServer }
+
+// GetDestNamespace 查询并返回指定资源数据。
+func (a argoCDApplicationSnapshotAdapter) GetDestNamespace() string { return a.DestNamespace }
+
+// GetSyncStatus 查询并返回指定资源数据。
+func (a argoCDApplicationSnapshotAdapter) GetSyncStatus() string { return a.SyncStatus }
+
+// GetHealthStatus 查询并返回指定资源数据。
+func (a argoCDApplicationSnapshotAdapter) GetHealthStatus() string { return a.HealthStatus }
+
+// GetOperationPhase 查询并返回指定资源数据。
+func (a argoCDApplicationSnapshotAdapter) GetOperationPhase() string { return a.OperationPhase }
+
+// GetRawMeta 查询并返回指定资源数据。
+func (a argoCDApplicationSnapshotAdapter) GetRawMeta() string { return a.RawMeta }
+
+// argocdApplicationID 封装当前模块的业务处理逻辑。
 func argocdApplicationID(instanceID string, name string) string {
 	hash := sha1.Sum([]byte(strings.TrimSpace(instanceID) + ":" + strings.TrimSpace(name)))
 	return "argocd-app-" + hex.EncodeToString(hash[:])[:24]

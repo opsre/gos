@@ -67,6 +67,9 @@ const activeMenuKey = computed(() => {
   if (route.path.startsWith('/releases')) {
     return ['release-orders']
   }
+  if (route.path.startsWith('/release-schedules')) {
+    return ['release-order-schedules']
+  }
   if (route.path.startsWith('/release-approvals')) {
     return ['release-approval-workbench']
   }
@@ -94,6 +97,9 @@ const openMenuKeys = computed(() => {
     return ['component-management']
   }
   if (route.path.startsWith('/releases')) {
+    return ['release-management']
+  }
+  if (route.path.startsWith('/release-schedules')) {
     return ['release-management']
   }
   if (route.path.startsWith('/release-approvals')) {
@@ -239,6 +245,10 @@ function goToReleaseOrders() {
   void router.push('/releases')
 }
 
+function goToReleaseSchedules() {
+  void router.push('/release-schedules')
+}
+
 function goToReleaseTemplates() {
   void router.push('/release-templates')
 }
@@ -338,6 +348,7 @@ onUnmounted(() => {
           <template #title>发布管理</template>
 
           <a-menu-item key="release-orders" @click="goToReleaseOrders">发布单</a-menu-item>
+          <a-menu-item key="release-order-schedules" @click="goToReleaseSchedules">预约发布</a-menu-item>
           <a-menu-item key="release-approval-workbench" @click="goToReleaseApprovalWorkbench">
             审批工作台
           </a-menu-item>

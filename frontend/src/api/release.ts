@@ -11,6 +11,13 @@ import type {
   ReleaseOrderApprovalRecordListResponse,
   ReleaseOrderApprovalRecordSummaryListParams,
   ReleaseOrderApprovalRecordSummaryListResponse,
+  ReleaseOrderScheduleApprovalActionPayload,
+  ReleaseOrderScheduleApprovalRecordListResponse,
+  ReleaseOrderScheduleDataResponse,
+  ReleaseOrderScheduleListParams,
+  ReleaseOrderScheduleListResponse,
+  ReleaseOrderScheduleMode,
+  ReleaseOrderSchedulePayload,
   ReleaseOrderBatchDeleteResponse,
   ReleaseOrderBatchExecuteResponse,
   ReleaseOrderConcurrentBatchProgressResponse,
@@ -41,8 +48,23 @@ export async function listReleaseOrders(
 ): Promise<ReleaseOrderListResponse> {
   const response = await http.get<ReleaseOrderListResponse>("/release-orders", {
     params,
+    timeout: 30_000,
     ...config,
   });
+  return response.data;
+}
+
+export async function listSchedulableReleaseOrdersForSchedule(
+  params: ReleaseOrderListParams & { schedule_mode?: ReleaseOrderScheduleMode | "" },
+  config?: AxiosRequestConfig,
+): Promise<ReleaseOrderListResponse> {
+  const response = await http.get<ReleaseOrderListResponse>(
+    "/release-order-schedules/schedulable-release-orders",
+    {
+      params,
+      ...config,
+    },
+  );
   return response.data;
 }
 
@@ -180,6 +202,102 @@ export async function getReleaseOrderByID(
 ): Promise<ReleaseOrderDataResponse> {
   const response = await http.get<ReleaseOrderDataResponse>(
     `/release-orders/${id}`,
+  );
+  return response.data;
+}
+
+export async function listReleaseOrderSchedules(
+  params: ReleaseOrderScheduleListParams,
+  config?: AxiosRequestConfig,
+): Promise<ReleaseOrderScheduleListResponse> {
+  const response = await http.get<ReleaseOrderScheduleListResponse>(
+    "/release-order-schedules",
+    {
+      params,
+      ...config,
+    },
+  );
+  return response.data;
+}
+
+export async function getReleaseOrderSchedule(
+  releaseOrderID: string,
+): Promise<ReleaseOrderScheduleDataResponse> {
+  const response = await http.get<ReleaseOrderScheduleDataResponse>(
+    `/release-orders/${encodeURIComponent(String(releaseOrderID || "").trim())}/schedule`,
+  );
+  return response.data;
+}
+
+export async function createReleaseOrderSchedule(
+  releaseOrderID: string,
+  payload: ReleaseOrderSchedulePayload,
+): Promise<ReleaseOrderScheduleDataResponse> {
+  const response = await http.post<ReleaseOrderScheduleDataResponse>(
+    `/release-orders/${encodeURIComponent(String(releaseOrderID || "").trim())}/schedule`,
+    payload,
+  );
+  return response.data;
+}
+
+export async function updateReleaseOrderSchedule(
+  id: string,
+  payload: ReleaseOrderSchedulePayload,
+): Promise<ReleaseOrderScheduleDataResponse> {
+  const response = await http.put<ReleaseOrderScheduleDataResponse>(
+    `/release-order-schedules/${encodeURIComponent(String(id || "").trim())}`,
+    payload,
+  );
+  return response.data;
+}
+
+export async function cancelReleaseOrderSchedule(
+  id: string,
+): Promise<ReleaseOrderScheduleDataResponse> {
+  const response = await http.post<ReleaseOrderScheduleDataResponse>(
+    `/release-order-schedules/${encodeURIComponent(String(id || "").trim())}/cancel`,
+  );
+  return response.data;
+}
+
+export async function submitReleaseOrderScheduleApproval(
+  id: string,
+  payload: ReleaseOrderScheduleApprovalActionPayload = {},
+): Promise<ReleaseOrderScheduleDataResponse> {
+  const response = await http.post<ReleaseOrderScheduleDataResponse>(
+    `/release-order-schedules/${encodeURIComponent(String(id || "").trim())}/submit-approval`,
+    payload,
+  );
+  return response.data;
+}
+
+export async function approveReleaseOrderSchedule(
+  id: string,
+  payload: ReleaseOrderScheduleApprovalActionPayload = {},
+): Promise<ReleaseOrderScheduleDataResponse> {
+  const response = await http.post<ReleaseOrderScheduleDataResponse>(
+    `/release-order-schedules/${encodeURIComponent(String(id || "").trim())}/approve`,
+    payload,
+  );
+  return response.data;
+}
+
+export async function rejectReleaseOrderSchedule(
+  id: string,
+  payload: ReleaseOrderScheduleApprovalActionPayload,
+): Promise<ReleaseOrderScheduleDataResponse> {
+  const response = await http.post<ReleaseOrderScheduleDataResponse>(
+    `/release-order-schedules/${encodeURIComponent(String(id || "").trim())}/reject`,
+    payload,
+  );
+  return response.data;
+}
+
+export async function listReleaseOrderScheduleApprovalRecords(
+  id: string,
+): Promise<ReleaseOrderScheduleApprovalRecordListResponse> {
+  const response = await http.get<ReleaseOrderScheduleApprovalRecordListResponse>(
+    `/release-order-schedules/${encodeURIComponent(String(id || "").trim())}/approval-records`,
   );
   return response.data;
 }

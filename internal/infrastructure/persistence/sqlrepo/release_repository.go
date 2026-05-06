@@ -16,6 +16,7 @@ type ReleaseRepository struct {
 	dbDriver string
 }
 
+// NewReleaseRepository 创建并返回对应组件实例。
 func NewReleaseRepository(db *sql.DB, dbDriver string) *ReleaseRepository {
 	return &ReleaseRepository{
 		db:       db,
@@ -23,6 +24,7 @@ func NewReleaseRepository(db *sql.DB, dbDriver string) *ReleaseRepository {
 	}
 }
 
+// InitSchema 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) InitSchema(ctx context.Context) error {
 	statements, err := releaseSchemaStatements(r.dbDriver)
 	if err != nil {
@@ -33,9 +35,13 @@ func (r *ReleaseRepository) InitSchema(ctx context.Context) error {
 			return execErr
 		}
 	}
-	return r.migrateSchema(ctx)
+	if err := r.migrateSchema(ctx); err != nil {
+		return err
+	}
+	return r.initScheduleSchema(ctx)
 }
 
+// releaseSchemaStatements 封装当前模块的业务处理逻辑。
 func releaseSchemaStatements(dbDriver string) ([]string, error) {
 	switch dbDriver {
 	case "mysql":
@@ -43,12 +49,14 @@ func releaseSchemaStatements(dbDriver string) ([]string, error) {
 			`CREATE TABLE IF NOT EXISTS release_order (
 	id VARCHAR(64) PRIMARY KEY,
 	order_no VARCHAR(64) NOT NULL,
+	release_name VARCHAR(128) NOT NULL DEFAULT '',
 	previous_order_no VARCHAR(64) NOT NULL DEFAULT '',
 	operation_type VARCHAR(32) NOT NULL DEFAULT 'deploy',
 	source_order_id VARCHAR(64) NOT NULL DEFAULT '',
 	source_order_no VARCHAR(64) NOT NULL DEFAULT '',
 	is_concurrent TINYINT(1) NOT NULL DEFAULT 0,
 	concurrent_batch_no VARCHAR(64) NOT NULL DEFAULT '',
+	concurrent_batch_name VARCHAR(128) NOT NULL DEFAULT '',
 	concurrent_batch_seq INT NOT NULL DEFAULT 0,
 	application_id VARCHAR(64) NOT NULL,
 	application_name VARCHAR(100) NOT NULL DEFAULT '',
@@ -84,6 +92,7 @@ func releaseSchemaStatements(dbDriver string) ([]string, error) {
 	KEY idx_release_order_application (application_id),
 	KEY idx_release_order_binding (binding_id),
 	KEY idx_release_order_batch (concurrent_batch_no),
+	KEY idx_release_order_batch_name (concurrent_batch_name),
 	KEY idx_release_order_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
 			`CREATE TABLE IF NOT EXISTS release_order_execution (
@@ -300,12 +309,14 @@ func releaseSchemaStatements(dbDriver string) ([]string, error) {
 			`CREATE TABLE IF NOT EXISTS release_order (
 	id TEXT PRIMARY KEY,
 	order_no TEXT NOT NULL UNIQUE,
+	release_name TEXT NOT NULL DEFAULT '',
 	previous_order_no TEXT NOT NULL DEFAULT '',
 	operation_type TEXT NOT NULL DEFAULT 'deploy',
 	source_order_id TEXT NOT NULL DEFAULT '',
 	source_order_no TEXT NOT NULL DEFAULT '',
 	is_concurrent INTEGER NOT NULL DEFAULT 0,
 	concurrent_batch_no TEXT NOT NULL DEFAULT '',
+	concurrent_batch_name TEXT NOT NULL DEFAULT '',
 	concurrent_batch_seq INTEGER NOT NULL DEFAULT 0,
 	application_id TEXT NOT NULL,
 	application_name TEXT NOT NULL DEFAULT '',
@@ -341,6 +352,7 @@ func releaseSchemaStatements(dbDriver string) ([]string, error) {
 			`CREATE INDEX IF NOT EXISTS idx_release_order_application ON release_order (application_id);`,
 			`CREATE INDEX IF NOT EXISTS idx_release_order_binding ON release_order (binding_id);`,
 			`CREATE INDEX IF NOT EXISTS idx_release_order_batch ON release_order (concurrent_batch_no);`,
+			`CREATE INDEX IF NOT EXISTS idx_release_order_batch_name ON release_order (concurrent_batch_name);`,
 			`CREATE INDEX IF NOT EXISTS idx_release_order_created_at ON release_order (created_at);`,
 			`CREATE TABLE IF NOT EXISTS release_order_execution (
 	id TEXT PRIMARY KEY,
@@ -555,6 +567,7 @@ func releaseSchemaStatements(dbDriver string) ([]string, error) {
 	}
 }
 
+// migrateSchema 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) migrateSchema(ctx context.Context) error {
 	switch r.dbDriver {
 	case "mysql":
@@ -615,6 +628,18 @@ func (r *ReleaseRepository) migrateSchema(ctx context.Context) error {
 				return err
 			}
 		}
+		exists, err = r.mysqlColumnExists(ctx, "release_order", "release_name")
+		if err != nil {
+			return err
+		}
+		if !exists {
+			if _, err = r.db.ExecContext(
+				ctx,
+				`ALTER TABLE release_order ADD COLUMN release_name VARCHAR(128) NOT NULL DEFAULT '' AFTER order_no;`,
+			); err != nil {
+				return err
+			}
+		}
 		for _, columnStmt := range []struct {
 			table  string
 			column string
@@ -625,7 +650,8 @@ func (r *ReleaseRepository) migrateSchema(ctx context.Context) error {
 			{"release_order", "source_order_no", `ALTER TABLE release_order ADD COLUMN source_order_no VARCHAR(64) NOT NULL DEFAULT '' AFTER source_order_id;`},
 			{"release_order", "is_concurrent", `ALTER TABLE release_order ADD COLUMN is_concurrent TINYINT(1) NOT NULL DEFAULT 0 AFTER source_order_no;`},
 			{"release_order", "concurrent_batch_no", `ALTER TABLE release_order ADD COLUMN concurrent_batch_no VARCHAR(64) NOT NULL DEFAULT '' AFTER is_concurrent;`},
-			{"release_order", "concurrent_batch_seq", `ALTER TABLE release_order ADD COLUMN concurrent_batch_seq INT NOT NULL DEFAULT 0 AFTER concurrent_batch_no;`},
+			{"release_order", "concurrent_batch_name", `ALTER TABLE release_order ADD COLUMN concurrent_batch_name VARCHAR(128) NOT NULL DEFAULT '' AFTER concurrent_batch_no;`},
+			{"release_order", "concurrent_batch_seq", `ALTER TABLE release_order ADD COLUMN concurrent_batch_seq INT NOT NULL DEFAULT 0 AFTER concurrent_batch_name;`},
 		} {
 			exists, err = r.mysqlColumnExists(ctx, columnStmt.table, columnStmt.column)
 			if err != nil {
@@ -826,6 +852,10 @@ WHERE (ro.creator_user_id IS NULL OR TRIM(ro.creator_user_id) = '')
 		if err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate key name") {
 			return err
 		}
+		_, err = r.db.ExecContext(ctx, `CREATE INDEX idx_release_order_batch_name ON release_order (concurrent_batch_name);`)
+		if err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate key name") {
+			return err
+		}
 		_, err = r.db.ExecContext(
 			ctx,
 			`CREATE TABLE IF NOT EXISTS release_order_approval_record (
@@ -915,6 +945,14 @@ WHERE (ro.creator_user_id IS NULL OR TRIM(ro.creator_user_id) = '')
 				return err
 			}
 		}
+		if _, ok := columns["release_name"]; !ok {
+			if _, err = r.db.ExecContext(
+				ctx,
+				`ALTER TABLE release_order ADD COLUMN release_name TEXT NOT NULL DEFAULT '';`,
+			); err != nil {
+				return err
+			}
+		}
 		for _, stmt := range []struct {
 			column string
 			sql    string
@@ -924,6 +962,7 @@ WHERE (ro.creator_user_id IS NULL OR TRIM(ro.creator_user_id) = '')
 			{"source_order_no", `ALTER TABLE release_order ADD COLUMN source_order_no TEXT NOT NULL DEFAULT '';`},
 			{"is_concurrent", `ALTER TABLE release_order ADD COLUMN is_concurrent INTEGER NOT NULL DEFAULT 0;`},
 			{"concurrent_batch_no", `ALTER TABLE release_order ADD COLUMN concurrent_batch_no TEXT NOT NULL DEFAULT '';`},
+			{"concurrent_batch_name", `ALTER TABLE release_order ADD COLUMN concurrent_batch_name TEXT NOT NULL DEFAULT '';`},
 			{"concurrent_batch_seq", `ALTER TABLE release_order ADD COLUMN concurrent_batch_seq INTEGER NOT NULL DEFAULT 0;`},
 		} {
 			tableColumns, tableErr := r.sqliteTableColumns(ctx, "release_order")
@@ -1007,6 +1046,9 @@ WHERE status IS NULL OR TRIM(status) = '' OR LOWER(TRIM(status)) = 'pengding';`,
 			return err
 		}
 		if _, err = r.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_release_order_batch ON release_order (concurrent_batch_no);`); err != nil {
+			return err
+		}
+		if _, err = r.db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_release_order_batch_name ON release_order (concurrent_batch_name);`); err != nil {
 			return err
 		}
 		_, err = r.db.ExecContext(
@@ -1155,6 +1197,7 @@ WHERE (creator_user_id IS NULL OR TRIM(creator_user_id) = '')
 	}
 }
 
+// mysqlColumnExists 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) mysqlColumnExists(ctx context.Context, table, column string) (bool, error) {
 	const q = `
 SELECT COUNT(1)
@@ -1168,6 +1211,7 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?;`
 	return count > 0, nil
 }
 
+// sqliteTableColumns 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) sqliteTableColumns(ctx context.Context, table string) (map[string]struct{}, error) {
 	q := fmt.Sprintf("PRAGMA table_info(%q);", table)
 	rows, err := r.db.QueryContext(ctx, q)
@@ -1197,6 +1241,7 @@ func (r *ReleaseRepository) sqliteTableColumns(ctx context.Context, table string
 	return columns, nil
 }
 
+// Create 创建业务资源并返回处理结果。
 func (r *ReleaseRepository) Create(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -1216,21 +1261,23 @@ func (r *ReleaseRepository) Create(
 
 	const insertOrder = `
 INSERT INTO release_order (
-	id, order_no, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_seq, application_id, application_name, template_id, template_name, binding_id, pipeline_id, env_code,
+	id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, binding_id, pipeline_id, env_code,
 	son_service, git_ref, image_tag, trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
 
 	_, err = tx.ExecContext(
 		ctx,
 		insertOrder,
 		order.ID,
 		order.OrderNo,
+		order.ReleaseName,
 		order.PreviousOrderNo,
 		string(order.OperationType),
 		order.SourceOrderID,
 		order.SourceOrderNo,
 		boolToDBValue(r.dbDriver, order.IsConcurrent),
 		order.ConcurrentBatchNo,
+		order.ConcurrentBatchName,
 		order.ConcurrentBatchSeq,
 		order.ApplicationID,
 		order.ApplicationName,
@@ -1352,6 +1399,7 @@ INSERT INTO release_order_step (
 	return nil
 }
 
+// UpdateEditable 更新业务资源并返回处理结果。
 func (r *ReleaseRepository) UpdateEditable(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -1371,19 +1419,21 @@ func (r *ReleaseRepository) UpdateEditable(
 
 	const updateOrder = `
 UPDATE release_order
-SET previous_order_no = ?, operation_type = ?, source_order_id = ?, source_order_no = ?, is_concurrent = ?, concurrent_batch_no = ?, concurrent_batch_seq = ?, application_id = ?, application_name = ?, template_id = ?, template_name = ?, binding_id = ?, pipeline_id = ?, env_code = ?,
+SET release_name = ?, previous_order_no = ?, operation_type = ?, source_order_id = ?, source_order_no = ?, is_concurrent = ?, concurrent_batch_no = ?, concurrent_batch_name = ?, concurrent_batch_seq = ?, application_id = ?, application_name = ?, template_id = ?, template_name = ?, binding_id = ?, pipeline_id = ?, env_code = ?,
 	son_service = ?, git_ref = ?, image_tag = ?, trigger_type = ?, status = ?, approval_required = ?, approval_mode = ?, approval_approver_ids_json = ?, approval_approver_names_json = ?, approved_at = ?, approved_by = ?, rejected_at = ?, rejected_by = ?, rejected_reason = ?, remark = ?, creator_user_id = ?, triggered_by = ?, executor_user_id = ?, executor_name = ?, started_at = ?, finished_at = ?, created_at = ?, updated_at = ?
 WHERE id = ?;`
 
 	res, err := tx.ExecContext(
 		ctx,
 		updateOrder,
+		order.ReleaseName,
 		order.PreviousOrderNo,
 		string(order.OperationType),
 		order.SourceOrderID,
 		order.SourceOrderNo,
 		boolToDBValue(r.dbDriver, order.IsConcurrent),
 		order.ConcurrentBatchNo,
+		order.ConcurrentBatchName,
 		order.ConcurrentBatchSeq,
 		order.ApplicationID,
 		order.ApplicationName,
@@ -1526,9 +1576,10 @@ INSERT INTO release_order_step (
 	return nil
 }
 
+// GetByID 查询并返回指定资源数据。
 func (r *ReleaseRepository) GetByID(ctx context.Context, id string) (domain.ReleaseOrder, error) {
 	const q = `
-SELECT id, order_no, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_seq, application_id, application_name, template_id, template_name, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
+SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
 	trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
 FROM release_order
 WHERE id = ?;`
@@ -1544,6 +1595,7 @@ WHERE id = ?;`
 	return item, nil
 }
 
+// List 查询并返回列表数据。
 func (r *ReleaseRepository) List(ctx context.Context, filter domain.ListFilter) ([]domain.ReleaseOrder, int64, error) {
 	where := make([]string, 0, 10)
 	args := make([]any, 0, 16)
@@ -1554,8 +1606,16 @@ func (r *ReleaseRepository) List(ctx context.Context, filter domain.ListFilter) 
 	}
 	if value := strings.TrimSpace(filter.Keyword); value != "" {
 		pattern := "%" + value + "%"
-		where = append(where, "(order_no LIKE ? OR source_order_no LIKE ? OR application_name LIKE ?)")
-		args = append(args, pattern, pattern, pattern)
+		where = append(where, "(order_no LIKE ? OR release_name LIKE ? OR source_order_no LIKE ? OR application_name LIKE ? OR concurrent_batch_no LIKE ? OR concurrent_batch_name LIKE ?)")
+		args = append(args, pattern, pattern, pattern, pattern, pattern, pattern)
+	}
+	if value := strings.TrimSpace(filter.ConcurrentBatchNo); value != "" {
+		where = append(where, "concurrent_batch_no LIKE ?")
+		args = append(args, "%"+value+"%")
+	}
+	if value := strings.TrimSpace(filter.ConcurrentBatchName); value != "" {
+		where = append(where, "concurrent_batch_name LIKE ?")
+		args = append(args, "%"+value+"%")
 	}
 	if value := strings.TrimSpace(filter.TriggeredBy); value != "" {
 		where = append(where, "triggered_by LIKE ?")
@@ -1628,7 +1688,7 @@ func (r *ReleaseRepository) List(ctx context.Context, filter domain.ListFilter) 
 	}
 
 	listQuery := `
-SELECT id, order_no, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_seq, application_id, application_name, template_id, template_name, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
+SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
 	trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
 FROM release_order`
 	if len(where) > 0 {
@@ -1657,6 +1717,7 @@ FROM release_order`
 	return items, total, nil
 }
 
+// ListStats 查询并返回列表数据。
 func (r *ReleaseRepository) ListStats(ctx context.Context, filter domain.ListFilter) (domain.ReleaseOrderStats, error) {
 	where := make([]string, 0, 10)
 	args := make([]any, 0, 16)
@@ -1667,8 +1728,16 @@ func (r *ReleaseRepository) ListStats(ctx context.Context, filter domain.ListFil
 	}
 	if value := strings.TrimSpace(filter.Keyword); value != "" {
 		pattern := "%" + value + "%"
-		where = append(where, "(order_no LIKE ? OR source_order_no LIKE ? OR application_name LIKE ?)")
-		args = append(args, pattern, pattern, pattern)
+		where = append(where, "(order_no LIKE ? OR release_name LIKE ? OR source_order_no LIKE ? OR application_name LIKE ? OR concurrent_batch_no LIKE ? OR concurrent_batch_name LIKE ?)")
+		args = append(args, pattern, pattern, pattern, pattern, pattern, pattern)
+	}
+	if value := strings.TrimSpace(filter.ConcurrentBatchNo); value != "" {
+		where = append(where, "concurrent_batch_no LIKE ?")
+		args = append(args, "%"+value+"%")
+	}
+	if value := strings.TrimSpace(filter.ConcurrentBatchName); value != "" {
+		where = append(where, "concurrent_batch_name LIKE ?")
+		args = append(args, "%"+value+"%")
 	}
 	if value := strings.TrimSpace(filter.TriggeredBy); value != "" {
 		where = append(where, "triggered_by LIKE ?")
@@ -1776,6 +1845,7 @@ FROM release_order`
 	return stats, nil
 }
 
+// ListTrackableOrders 查询并返回列表数据。
 func (r *ReleaseRepository) ListTrackableOrders(
 	ctx context.Context,
 	page int,
@@ -1823,7 +1893,7 @@ WHERE (
 	}
 
 	const listQuery = `
-SELECT DISTINCT ro.id, ro.order_no, ro.previous_order_no, ro.operation_type, ro.source_order_id, ro.source_order_no, ro.is_concurrent, ro.concurrent_batch_no, ro.concurrent_batch_seq, ro.application_id, ro.application_name, ro.template_id, ro.template_name, ro.binding_id, ro.pipeline_id, ro.env_code, ro.son_service, ro.git_ref, ro.image_tag,
+SELECT DISTINCT ro.id, ro.order_no, ro.release_name, ro.previous_order_no, ro.operation_type, ro.source_order_id, ro.source_order_no, ro.is_concurrent, ro.concurrent_batch_no, ro.concurrent_batch_name, ro.concurrent_batch_seq, ro.application_id, ro.application_name, ro.template_id, ro.template_name, ro.binding_id, ro.pipeline_id, ro.env_code, ro.son_service, ro.git_ref, ro.image_tag,
 	ro.trigger_type, ro.status, ro.approval_required, ro.approval_mode, ro.approval_approver_ids_json, ro.approval_approver_names_json, ro.approved_at, ro.approved_by, ro.rejected_at, ro.rejected_by, ro.rejected_reason, ro.remark, ro.creator_user_id, ro.triggered_by, ro.executor_user_id, ro.executor_name, ro.started_at, ro.finished_at, ro.created_at, ro.updated_at
 FROM release_order ro
 WHERE (
@@ -1877,6 +1947,7 @@ LIMIT ? OFFSET ?;`
 	return items, total, nil
 }
 
+// UpdateStatus 更新业务资源并返回处理结果。
 func (r *ReleaseRepository) UpdateStatus(
 	ctx context.Context,
 	id string,
@@ -1912,6 +1983,7 @@ WHERE id = ?;`
 	return r.GetByID(ctx, id)
 }
 
+// UpdateExecutor 更新业务资源并返回处理结果。
 func (r *ReleaseRepository) UpdateExecutor(
 	ctx context.Context,
 	id string,
@@ -1945,6 +2017,7 @@ WHERE id = ?;`
 	return r.GetByID(ctx, id)
 }
 
+// UpdateApprovalStatus 更新业务资源并返回处理结果。
 func (r *ReleaseRepository) UpdateApprovalStatus(
 	ctx context.Context,
 	id string,
@@ -1986,6 +2059,7 @@ WHERE id = ?;`
 	return r.GetByID(ctx, id)
 }
 
+// CreateDeploySnapshot 创建业务资源并返回处理结果。
 func (r *ReleaseRepository) CreateDeploySnapshot(ctx context.Context, snapshot domain.DeploySnapshot) error {
 	const q = `
 INSERT INTO release_order_deploy_snapshot (
@@ -2039,6 +2113,7 @@ WHERE release_order_id = ?;`
 	return err
 }
 
+// GetDeploySnapshotByOrderID 查询并返回指定资源数据。
 func (r *ReleaseRepository) GetDeploySnapshotByOrderID(ctx context.Context, releaseOrderID string) (domain.DeploySnapshot, error) {
 	const q = `
 SELECT id, release_order_id, provider, gitops_type, argocd_instance_id, gitops_instance_id, argocd_app_name, repo_url, branch, source_path, env_code, snapshot_payload_json, created_at
@@ -2076,6 +2151,7 @@ WHERE release_order_id = ?;`
 	return item, nil
 }
 
+// UpsertAppReleaseState 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) UpsertAppReleaseState(ctx context.Context, state domain.AppReleaseState) error {
 	const insertQ = `
 INSERT INTO app_release_state (
@@ -2153,6 +2229,7 @@ WHERE release_order_id = ?;`
 	return err
 }
 
+// GetAppReleaseStateByOrderID 查询并返回指定资源数据。
 func (r *ReleaseRepository) GetAppReleaseStateByOrderID(ctx context.Context, releaseOrderID string) (domain.AppReleaseState, error) {
 	const q = `
 SELECT id, release_order_id, release_order_no, application_id, application_name, env_code, operation_type, template_id, template_name,
@@ -2164,6 +2241,7 @@ WHERE release_order_id = ?;`
 	return r.getSingleAppReleaseState(ctx, q, strings.TrimSpace(releaseOrderID))
 }
 
+// GetAppReleaseStateByID 查询并返回指定资源数据。
 func (r *ReleaseRepository) GetAppReleaseStateByID(ctx context.Context, id string) (domain.AppReleaseState, error) {
 	const q = `
 SELECT id, release_order_id, release_order_no, application_id, application_name, env_code, operation_type, template_id, template_name,
@@ -2175,6 +2253,7 @@ WHERE id = ?;`
 	return r.getSingleAppReleaseState(ctx, q, strings.TrimSpace(id))
 }
 
+// GetCurrentAppReleaseState 查询并返回指定资源数据。
 func (r *ReleaseRepository) GetCurrentAppReleaseState(ctx context.Context, applicationID string, envCode string) (domain.AppReleaseState, error) {
 	const q = `
 SELECT id, release_order_id, release_order_no, application_id, application_name, env_code, operation_type, template_id, template_name,
@@ -2188,6 +2267,7 @@ LIMIT 1;`
 	return r.getSingleAppReleaseState(ctx, q, strings.TrimSpace(applicationID), strings.TrimSpace(envCode), boolToDBValue(r.dbDriver, true))
 }
 
+// IsLatestOrderByApplicationEnv 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) IsLatestOrderByApplicationEnv(
 	ctx context.Context,
 	applicationID string,
@@ -2216,6 +2296,7 @@ LIMIT 1;`
 	return strings.TrimSpace(latestID) == strings.TrimSpace(releaseOrderID), nil
 }
 
+// ConfirmAppReleaseState 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) ConfirmAppReleaseState(
 	ctx context.Context,
 	releaseOrderID string,
@@ -2318,6 +2399,7 @@ WHERE id = ?;`,
 	return r.GetAppReleaseStateByOrderID(ctx, releaseOrderID)
 }
 
+// ListCurrentAppReleaseStateSummaries 查询并返回列表数据。
 func (r *ReleaseRepository) ListCurrentAppReleaseStateSummaries(ctx context.Context, applicationIDs []string) ([]domain.AppReleaseStateSummary, error) {
 	baseQuery := `
 SELECT
@@ -2403,16 +2485,19 @@ WHERE curr.is_current_live = ?`
 	return items, nil
 }
 
+// getSingleAppReleaseState 查询并返回指定资源数据。
 func (r *ReleaseRepository) getSingleAppReleaseState(ctx context.Context, q string, args ...any) (domain.AppReleaseState, error) {
 	row := r.db.QueryRowContext(ctx, q, args...)
 	return scanAppReleaseStateRow(row)
 }
 
+// getSingleAppReleaseStateTx 查询并返回指定资源数据。
 func (r *ReleaseRepository) getSingleAppReleaseStateTx(ctx context.Context, tx *sql.Tx, q string, args ...any) (domain.AppReleaseState, error) {
 	row := tx.QueryRowContext(ctx, q, args...)
 	return scanAppReleaseStateRow(row)
 }
 
+// scanAppReleaseStateRow 封装当前模块的业务处理逻辑。
 func scanAppReleaseStateRow(scanner interface{ Scan(dest ...any) error }) (domain.AppReleaseState, error) {
 	var (
 		item           domain.AppReleaseState
@@ -2474,13 +2559,16 @@ func scanAppReleaseStateRow(scanner interface{ Scan(dest ...any) error }) (domai
 	return item, nil
 }
 
+// UpdateConcurrentBatch 更新业务资源并返回处理结果。
 func (r *ReleaseRepository) UpdateConcurrentBatch(
 	ctx context.Context,
 	orderIDs []string,
 	batchNo string,
+	batchName string,
 	isConcurrent bool,
 ) error {
 	batchNo = strings.TrimSpace(batchNo)
+	batchName = strings.TrimSpace(batchName)
 	if len(orderIDs) == 0 {
 		return nil
 	}
@@ -2492,7 +2580,7 @@ func (r *ReleaseRepository) UpdateConcurrentBatch(
 
 	const q = `
 UPDATE release_order
-SET is_concurrent = ?, concurrent_batch_no = ?, concurrent_batch_seq = ?, updated_at = ?
+SET is_concurrent = ?, concurrent_batch_no = ?, concurrent_batch_name = ?, concurrent_batch_seq = ?, updated_at = ?
 WHERE id = ?;`
 
 	now := time.Now().UTC().UnixNano()
@@ -2506,6 +2594,7 @@ WHERE id = ?;`
 			q,
 			boolToDBValue(r.dbDriver, isConcurrent),
 			batchNo,
+			batchName,
 			idx+1,
 			now+int64(idx),
 			orderID,
@@ -2516,13 +2605,14 @@ WHERE id = ?;`
 	return tx.Commit()
 }
 
+// ListByConcurrentBatchNo 查询并返回列表数据。
 func (r *ReleaseRepository) ListByConcurrentBatchNo(ctx context.Context, batchNo string) ([]domain.ReleaseOrder, error) {
 	batchNo = strings.TrimSpace(batchNo)
 	if batchNo == "" {
 		return []domain.ReleaseOrder{}, nil
 	}
 	const q = `
-SELECT id, order_no, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_seq, application_id, application_name, template_id, template_name, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
+SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
 	trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
 FROM release_order
 WHERE concurrent_batch_no = ?
@@ -2548,6 +2638,7 @@ ORDER BY concurrent_batch_seq ASC, created_at ASC;`
 	return items, nil
 }
 
+// FindActiveOrderByApplicationEnv 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) FindActiveOrderByApplicationEnv(
 	ctx context.Context,
 	applicationID string,
@@ -2562,7 +2653,7 @@ func (r *ReleaseRepository) FindActiveOrderByApplicationEnv(
 	}
 
 	const q = `
-SELECT id, order_no, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_seq, application_id, application_name, template_id, template_name, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
+SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
 	trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
 FROM release_order
 WHERE application_id = ?
@@ -2600,6 +2691,7 @@ LIMIT 1;`
 	return item, nil
 }
 
+// CountActiveOrdersByApplicationEnv 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) CountActiveOrdersByApplicationEnv(
 	ctx context.Context,
 	applicationID string,
@@ -2637,6 +2729,7 @@ WHERE application_id = ?
 	return count, nil
 }
 
+// FindActiveExecutionLock 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) FindActiveExecutionLock(
 	ctx context.Context,
 	lockKey string,
@@ -2677,6 +2770,7 @@ LIMIT 1;`
 	return item, nil
 }
 
+// AcquireExecutionLock 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) AcquireExecutionLock(
 	ctx context.Context,
 	lock domain.ReleaseExecutionLock,
@@ -2762,6 +2856,7 @@ INSERT INTO release_execution_lock (
 	return lock, true, nil
 }
 
+// TouchExecutionLocksByOrderID 将领域对象转换为接口响应结构。
 func (r *ReleaseRepository) TouchExecutionLocksByOrderID(ctx context.Context, releaseOrderID string, expiredAt time.Time) error {
 	const q = `
 UPDATE release_execution_lock
@@ -2779,6 +2874,7 @@ WHERE release_order_id = ?
 	return err
 }
 
+// ReleaseExecutionLocksByOrderID 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) ReleaseExecutionLocksByOrderID(
 	ctx context.Context,
 	releaseOrderID string,
@@ -2803,6 +2899,7 @@ WHERE release_order_id = ?
 	return err
 }
 
+// releaseTerminalOrderExecutionLocks 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) releaseTerminalOrderExecutionLocks(ctx context.Context, releasedAt time.Time) error {
 	const q = `
 UPDATE release_execution_lock l
@@ -2824,6 +2921,7 @@ WHERE l.released_at IS NULL
 	return err
 }
 
+// releaseTerminalOrderExecutionLocksTx 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) releaseTerminalOrderExecutionLocksTx(ctx context.Context, tx *sql.Tx, releasedAt time.Time) error {
 	const q = `
 UPDATE release_execution_lock l
@@ -2845,6 +2943,7 @@ WHERE l.released_at IS NULL
 	return err
 }
 
+// ListParams 查询并返回列表数据。
 func (r *ReleaseRepository) ListParams(ctx context.Context, releaseOrderID string) ([]domain.ReleaseOrderParam, error) {
 	const q = `
 SELECT id, release_order_id, pipeline_scope, binding_id, param_key, executor_param_name, param_value, value_source, created_at
@@ -2872,6 +2971,7 @@ ORDER BY pipeline_scope ASC, created_at ASC, id ASC;`
 	return items, nil
 }
 
+// ListSteps 查询并返回列表数据。
 func (r *ReleaseRepository) ListSteps(ctx context.Context, releaseOrderID string) ([]domain.ReleaseOrderStep, error) {
 	const q = `
 SELECT id, release_order_id, step_scope, execution_id, step_code, step_name, status, message, sort_no, started_at, finished_at, created_at
@@ -2899,6 +2999,7 @@ ORDER BY sort_no ASC, created_at ASC;`
 	return items, nil
 }
 
+// ListExecutions 查询并返回列表数据。
 func (r *ReleaseRepository) ListExecutions(ctx context.Context, releaseOrderID string) ([]domain.ReleaseOrderExecution, error) {
 	const q = `
 SELECT id, release_order_id, pipeline_scope, binding_id, binding_name, provider, pipeline_id, status, queue_url, build_url, external_run_id, started_at, finished_at, created_at, updated_at
@@ -2926,6 +3027,7 @@ ORDER BY pipeline_scope ASC, created_at ASC;`
 	return items, nil
 }
 
+// GetExecutionByScope 查询并返回指定资源数据。
 func (r *ReleaseRepository) GetExecutionByScope(
 	ctx context.Context,
 	releaseOrderID string,
@@ -2947,6 +3049,7 @@ WHERE release_order_id = ? AND pipeline_scope = ?;`
 	return item, nil
 }
 
+// ClaimExecutionByScope 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) ClaimExecutionByScope(
 	ctx context.Context,
 	releaseOrderID string,
@@ -2983,6 +3086,7 @@ WHERE release_order_id = ? AND pipeline_scope = ? AND status = ?;`
 	return item, affected > 0, nil
 }
 
+// UpdateExecutionByScope 更新业务资源并返回处理结果。
 func (r *ReleaseRepository) UpdateExecutionByScope(
 	ctx context.Context,
 	releaseOrderID string,
@@ -3020,6 +3124,7 @@ WHERE release_order_id = ? AND pipeline_scope = ?;`
 	return r.GetExecutionByScope(ctx, releaseOrderID, scope)
 }
 
+// ReplacePipelineStages 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) ReplacePipelineStages(
 	ctx context.Context,
 	releaseOrderID string,
@@ -3074,6 +3179,7 @@ INSERT INTO release_order_pipeline_stage (
 	return nil
 }
 
+// ListPipelineStages 查询并返回列表数据。
 func (r *ReleaseRepository) ListPipelineStages(
 	ctx context.Context,
 	releaseOrderID string,
@@ -3104,6 +3210,7 @@ ORDER BY pipeline_scope ASC, sort_no ASC, created_at ASC;`
 	return items, nil
 }
 
+// GetPipelineStageByID 查询并返回指定资源数据。
 func (r *ReleaseRepository) GetPipelineStageByID(
 	ctx context.Context,
 	releaseOrderID string,
@@ -3125,6 +3232,7 @@ WHERE release_order_id = ? AND id = ?;`
 	return item, nil
 }
 
+// ReplaceSteps 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) ReplaceSteps(
 	ctx context.Context,
 	releaseOrderID string,
@@ -3176,6 +3284,7 @@ INSERT INTO release_order_step (
 	return nil
 }
 
+// GetStepByCode 查询并返回指定资源数据。
 func (r *ReleaseRepository) GetStepByCode(
 	ctx context.Context,
 	releaseOrderID string,
@@ -3197,6 +3306,7 @@ WHERE release_order_id = ? AND step_code = ?;`
 	return item, nil
 }
 
+// UpdateStep 更新业务资源并返回处理结果。
 func (r *ReleaseRepository) UpdateStep(
 	ctx context.Context,
 	releaseOrderID string,
@@ -3231,6 +3341,7 @@ WHERE release_order_id = ? AND step_code = ?;`
 	return r.GetStepByCode(ctx, releaseOrderID, stepCode)
 }
 
+// CreateTemplate 创建业务资源并返回处理结果。
 func (r *ReleaseRepository) CreateTemplate(
 	ctx context.Context,
 	template domain.ReleaseTemplate,
@@ -3300,6 +3411,7 @@ INSERT INTO release_template (
 	return nil
 }
 
+// GetTemplateByID 查询并返回指定资源数据。
 func (r *ReleaseRepository) GetTemplateByID(
 	ctx context.Context,
 	id string,
@@ -3337,6 +3449,7 @@ WHERE id = ?;`
 	return item, bindings, params, gitopsRules, hooks, nil
 }
 
+// ListTemplates 查询并返回列表数据。
 func (r *ReleaseRepository) ListTemplates(
 	ctx context.Context,
 	filter domain.TemplateListFilter,
@@ -3416,6 +3529,7 @@ LEFT JOIN (
 	return items, total, nil
 }
 
+// UpdateTemplate 更新业务资源并返回处理结果。
 func (r *ReleaseRepository) UpdateTemplate(
 	ctx context.Context,
 	template domain.ReleaseTemplate,
@@ -3501,6 +3615,7 @@ WHERE id = ?;`
 	return nil
 }
 
+// DeleteTemplate 删除业务资源并返回处理结果。
 func (r *ReleaseRepository) DeleteTemplate(ctx context.Context, id string) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -3543,6 +3658,7 @@ func (r *ReleaseRepository) DeleteTemplate(ctx context.Context, id string) error
 	return nil
 }
 
+// DeleteOrders 删除业务资源并返回处理结果。
 func (r *ReleaseRepository) DeleteOrders(ctx context.Context, orderIDs []string) error {
 	normalized := normalizeReleaseOrderIDs(orderIDs)
 	if len(normalized) == 0 {
@@ -3602,6 +3718,7 @@ func (r *ReleaseRepository) DeleteOrders(ctx context.Context, orderIDs []string)
 	return nil
 }
 
+// normalizeReleaseOrderIDs 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeReleaseOrderIDs(values []string) []string {
 	result := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
@@ -3619,6 +3736,7 @@ func normalizeReleaseOrderIDs(values []string) []string {
 	return result
 }
 
+// CreateApprovalRecord 创建业务资源并返回处理结果。
 func (r *ReleaseRepository) CreateApprovalRecord(ctx context.Context, item domain.ReleaseOrderApprovalRecord) error {
 	const q = `
 INSERT INTO release_order_approval_record (
@@ -3639,6 +3757,7 @@ INSERT INTO release_order_approval_record (
 	return err
 }
 
+// ListApprovalRecords 查询并返回列表数据。
 func (r *ReleaseRepository) ListApprovalRecords(ctx context.Context, releaseOrderID string) ([]domain.ReleaseOrderApprovalRecord, error) {
 	const q = `
 SELECT id, release_order_id, action, operator_user_id, operator_name, comment, created_at
@@ -3666,6 +3785,7 @@ ORDER BY created_at ASC, id ASC;`
 	return items, nil
 }
 
+// ListApprovalRecordSummaries 查询并返回列表数据。
 func (r *ReleaseRepository) ListApprovalRecordSummaries(ctx context.Context, filter domain.ApprovalRecordListFilter) ([]domain.ReleaseOrderApprovalRecordSummary, int64, error) {
 	if filter.Page <= 0 {
 		filter.Page = 1
@@ -3753,6 +3873,7 @@ INNER JOIN release_order ro ON ro.id = ar.release_order_id`
 	return items, total, nil
 }
 
+// buildReleaseOrderVisibilityClause 组装业务执行所需的输入数据。
 func buildReleaseOrderVisibilityClause(
 	applicationIDs []string,
 	applicationEnvScopes []domain.ApplicationEnvScope,
@@ -3761,6 +3882,7 @@ func buildReleaseOrderVisibilityClause(
 	return buildReleaseOrderVisibilityClauseWithAlias("", applicationIDs, applicationEnvScopes, viewerUserID)
 }
 
+// buildReleaseOrderVisibilityClauseWithAlias 组装业务执行所需的输入数据。
 func buildReleaseOrderVisibilityClauseWithAlias(
 	alias string,
 	applicationIDs []string,
@@ -3813,6 +3935,7 @@ func buildReleaseOrderVisibilityClauseWithAlias(
 	return "(" + strings.Join(parts, " OR ") + ")", args
 }
 
+// insertTemplateBindings 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) insertTemplateBindings(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -3845,6 +3968,7 @@ INSERT INTO release_template_binding (
 	return nil
 }
 
+// insertTemplateParams 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) insertTemplateParams(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -3883,6 +4007,7 @@ INSERT INTO release_template_param (
 	return nil
 }
 
+// insertTemplateGitOpsRules 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) insertTemplateGitOpsRules(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -3920,6 +4045,7 @@ INSERT INTO release_template_gitops_rule (
 	return nil
 }
 
+// insertTemplateHooks 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) insertTemplateHooks(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -3959,6 +4085,7 @@ INSERT INTO release_template_hook (
 	return nil
 }
 
+// listTemplateBindings 查询并返回列表数据。
 func (r *ReleaseRepository) listTemplateBindings(
 	ctx context.Context,
 	templateID string,
@@ -3989,6 +4116,7 @@ ORDER BY sort_no ASC, created_at ASC;`
 	return items, nil
 }
 
+// listTemplateParams 查询并返回列表数据。
 func (r *ReleaseRepository) listTemplateParams(
 	ctx context.Context,
 	templateID string,
@@ -4019,6 +4147,7 @@ ORDER BY pipeline_scope ASC, sort_no ASC, created_at ASC;`
 	return items, nil
 }
 
+// listTemplateGitOpsRules 查询并返回列表数据。
 func (r *ReleaseRepository) listTemplateGitOpsRules(
 	ctx context.Context,
 	templateID string,
@@ -4049,6 +4178,7 @@ ORDER BY sort_no ASC, created_at ASC;`
 	return items, nil
 }
 
+// listTemplateHooks 查询并返回列表数据。
 func (r *ReleaseRepository) listTemplateHooks(
 	ctx context.Context,
 	templateID string,
@@ -4079,6 +4209,7 @@ ORDER BY sort_no ASC, created_at ASC;`
 	return items, nil
 }
 
+// scanReleaseOrder 封装当前模块的业务处理逻辑。
 func scanReleaseOrder(s scanner) (domain.ReleaseOrder, error) {
 	var (
 		item              domain.ReleaseOrder
@@ -4100,12 +4231,14 @@ func scanReleaseOrder(s scanner) (domain.ReleaseOrder, error) {
 	if err := s.Scan(
 		&item.ID,
 		&item.OrderNo,
+		&item.ReleaseName,
 		&item.PreviousOrderNo,
 		&operationType,
 		&item.SourceOrderID,
 		&item.SourceOrderNo,
 		&isConcurrentValue,
 		&item.ConcurrentBatchNo,
+		&item.ConcurrentBatchName,
 		&item.ConcurrentBatchSeq,
 		&item.ApplicationID,
 		&item.ApplicationName,
@@ -4170,6 +4303,7 @@ func scanReleaseOrder(s scanner) (domain.ReleaseOrder, error) {
 	return item, nil
 }
 
+// scanReleaseOrderParam 封装当前模块的业务处理逻辑。
 func scanReleaseOrderParam(s scanner) (domain.ReleaseOrderParam, error) {
 	var (
 		item          domain.ReleaseOrderParam
@@ -4196,6 +4330,7 @@ func scanReleaseOrderParam(s scanner) (domain.ReleaseOrderParam, error) {
 	return item, nil
 }
 
+// scanReleaseOrderExecution 封装当前模块的业务处理逻辑。
 func scanReleaseOrderExecution(s scanner) (domain.ReleaseOrderExecution, error) {
 	var (
 		item          domain.ReleaseOrderExecution
@@ -4240,6 +4375,7 @@ func scanReleaseOrderExecution(s scanner) (domain.ReleaseOrderExecution, error) 
 	return item, nil
 }
 
+// scanReleaseOrderStep 封装当前模块的业务处理逻辑。
 func scanReleaseOrderStep(s scanner) (domain.ReleaseOrderStep, error) {
 	var (
 		item       domain.ReleaseOrderStep
@@ -4279,6 +4415,7 @@ func scanReleaseOrderStep(s scanner) (domain.ReleaseOrderStep, error) {
 	return item, nil
 }
 
+// scanReleaseOrderPipelineStage 封装当前模块的业务处理逻辑。
 func scanReleaseOrderPipelineStage(s scanner) (domain.ReleaseOrderPipelineStage, error) {
 	var (
 		item          domain.ReleaseOrderPipelineStage
@@ -4323,6 +4460,7 @@ func scanReleaseOrderPipelineStage(s scanner) (domain.ReleaseOrderPipelineStage,
 	return item, nil
 }
 
+// scanReleaseTemplateBinding 封装当前模块的业务处理逻辑。
 func scanReleaseTemplateBinding(s scanner) (domain.ReleaseTemplateBinding, error) {
 	var (
 		item          domain.ReleaseTemplateBinding
@@ -4353,6 +4491,7 @@ func scanReleaseTemplateBinding(s scanner) (domain.ReleaseTemplateBinding, error
 	return item, nil
 }
 
+// scanReleaseTemplate 封装当前模块的业务处理逻辑。
 func scanReleaseTemplate(s scanner) (domain.ReleaseTemplate, error) {
 	var (
 		item              domain.ReleaseTemplate
@@ -4396,6 +4535,7 @@ func scanReleaseTemplate(s scanner) (domain.ReleaseTemplate, error) {
 	return item, nil
 }
 
+// scanReleaseTemplateWithCount 封装当前模块的业务处理逻辑。
 func scanReleaseTemplateWithCount(s scanner) (domain.ReleaseTemplate, error) {
 	var (
 		item              domain.ReleaseTemplate
@@ -4440,6 +4580,7 @@ func scanReleaseTemplateWithCount(s scanner) (domain.ReleaseTemplate, error) {
 	return item, nil
 }
 
+// scanReleaseTemplateParam 封装当前模块的业务处理逻辑。
 func scanReleaseTemplateParam(s scanner) (domain.ReleaseTemplateParam, error) {
 	var (
 		item          domain.ReleaseTemplateParam
@@ -4478,6 +4619,7 @@ func scanReleaseTemplateParam(s scanner) (domain.ReleaseTemplateParam, error) {
 	return item, nil
 }
 
+// scanReleaseTemplateGitOpsRule 封装当前模块的业务处理逻辑。
 func scanReleaseTemplateGitOpsRule(s scanner) (domain.ReleaseTemplateGitOpsRule, error) {
 	var (
 		item          domain.ReleaseTemplateGitOpsRule
@@ -4513,6 +4655,7 @@ func scanReleaseTemplateGitOpsRule(s scanner) (domain.ReleaseTemplateGitOpsRule,
 	return item, nil
 }
 
+// scanReleaseTemplateHook 封装当前模块的业务处理逻辑。
 func scanReleaseTemplateHook(s scanner) (domain.ReleaseTemplateHook, error) {
 	var (
 		item             domain.ReleaseTemplateHook
@@ -4559,6 +4702,7 @@ func scanReleaseTemplateHook(s scanner) (domain.ReleaseTemplateHook, error) {
 	return item, nil
 }
 
+// marshalTemplateHookExecuteStages 封装当前模块的业务处理逻辑。
 func marshalTemplateHookExecuteStages(values []domain.TemplateHookExecuteStage, legacy domain.TemplateHookExecuteStage) string {
 	normalized := domain.NormalizeTemplateHookExecuteStages(values, legacy)
 	items := make([]string, 0, len(normalized))
@@ -4568,6 +4712,7 @@ func marshalTemplateHookExecuteStages(values []domain.TemplateHookExecuteStage, 
 	return marshalStringSlice(items)
 }
 
+// unmarshalTemplateHookExecuteStages 封装当前模块的业务处理逻辑。
 func unmarshalTemplateHookExecuteStages(raw string, legacy domain.TemplateHookExecuteStage) []domain.TemplateHookExecuteStage {
 	values := unmarshalStringSlice(raw)
 	stages := make([]domain.TemplateHookExecuteStage, 0, len(values))
@@ -4581,6 +4726,7 @@ func unmarshalTemplateHookExecuteStages(raw string, legacy domain.TemplateHookEx
 	return domain.NormalizeTemplateHookExecuteStages(stages, legacy)
 }
 
+// scanReleaseOrderApprovalRecord 封装当前模块的业务处理逻辑。
 func scanReleaseOrderApprovalRecord(s scanner) (domain.ReleaseOrderApprovalRecord, error) {
 	var (
 		item      domain.ReleaseOrderApprovalRecord
@@ -4603,6 +4749,7 @@ func scanReleaseOrderApprovalRecord(s scanner) (domain.ReleaseOrderApprovalRecor
 	return item, nil
 }
 
+// scanReleaseOrderApprovalRecordSummary 封装当前模块的业务处理逻辑。
 func scanReleaseOrderApprovalRecordSummary(s scanner) (domain.ReleaseOrderApprovalRecordSummary, error) {
 	var (
 		item             domain.ReleaseOrderApprovalRecordSummary
@@ -4636,6 +4783,7 @@ func scanReleaseOrderApprovalRecordSummary(s scanner) (domain.ReleaseOrderApprov
 	return item, nil
 }
 
+// scanExecutionLock 封装当前模块的业务处理逻辑。
 func scanExecutionLock(s scanner) (domain.ReleaseExecutionLock, error) {
 	var (
 		item       domain.ReleaseExecutionLock
@@ -4678,6 +4826,7 @@ func scanExecutionLock(s scanner) (domain.ReleaseExecutionLock, error) {
 	return item, nil
 }
 
+// expireExecutionLocks 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) expireExecutionLocks(ctx context.Context, now time.Time) error {
 	_, err := r.db.ExecContext(
 		ctx,
@@ -4695,6 +4844,7 @@ WHERE status = ?
 	return err
 }
 
+// expireExecutionLocksTx 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) expireExecutionLocksTx(ctx context.Context, tx *sql.Tx, now time.Time) error {
 	_, err := tx.ExecContext(
 		ctx,
@@ -4712,6 +4862,7 @@ WHERE status = ?
 	return err
 }
 
+// nullableUnixNano 封装当前模块的业务处理逻辑。
 func nullableUnixNano(t *time.Time) any {
 	if t == nil {
 		return nil
@@ -4719,6 +4870,7 @@ func nullableUnixNano(t *time.Time) any {
 	return t.UTC().UnixNano()
 }
 
+// boolToDBValue 封装当前模块的业务处理逻辑。
 func boolToDBValue(driver string, value bool) any {
 	switch strings.ToLower(strings.TrimSpace(driver)) {
 	case "sqlite":
@@ -4731,6 +4883,7 @@ func boolToDBValue(driver string, value bool) any {
 	}
 }
 
+// scanBoolValue 封装当前模块的业务处理逻辑。
 func scanBoolValue(raw any) bool {
 	switch value := raw.(type) {
 	case bool:
@@ -4748,6 +4901,7 @@ func scanBoolValue(raw any) bool {
 	}
 }
 
+// timePtrToUnixNano 封装当前模块的业务处理逻辑。
 func timePtrToUnixNano(t *time.Time) any {
 	if t == nil {
 		return nil

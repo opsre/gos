@@ -43,6 +43,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function login(username: string, password: string) {
     const response = await loginAPI({ username, password })
     setToken(response.data.access_token)
+    try { localStorage.removeItem('gos-seen-announcement-ids') } catch { /* ignore */ }
     await loadMe(true)
   }
 

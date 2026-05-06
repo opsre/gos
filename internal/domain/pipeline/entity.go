@@ -9,6 +9,7 @@ const (
 	ProviderArgoCD  Provider = "argocd"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (p Provider) Valid() bool {
 	switch p {
 	case ProviderJenkins, ProviderArgoCD:
@@ -25,6 +26,7 @@ const (
 	StatusInactive Status = "inactive"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s Status) Valid() bool {
 	switch s {
 	case StatusActive, StatusInactive:
@@ -41,6 +43,7 @@ const (
 	TriggerWebhook TriggerMode = "webhook"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (m TriggerMode) Valid() bool {
 	switch m {
 	case TriggerManual, TriggerWebhook:
@@ -57,6 +60,7 @@ const (
 	BindingTypeCD BindingType = "cd"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (t BindingType) Valid() bool {
 	switch t {
 	case BindingTypeCI, BindingTypeCD:

@@ -52,6 +52,7 @@ type ReleaseOrderLogStreamer struct {
 	now          func() time.Time
 }
 
+// NewReleaseOrderLogStreamer 创建并返回对应组件实例。
 func NewReleaseOrderLogStreamer(
 	releaseRepo releasedomain.Repository,
 	pipelineRepo pipelinedomain.Repository,
@@ -67,6 +68,7 @@ func NewReleaseOrderLogStreamer(
 	}
 }
 
+// Stream 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderLogStreamer) Stream(
 	ctx context.Context,
 	input StreamReleaseOrderLogInput,
@@ -305,6 +307,7 @@ func (uc *ReleaseOrderLogStreamer) Stream(
 	}
 }
 
+// resolveLogStreamExecution 解析上下文数据，得到后续流程需要的结果。
 func (uc *ReleaseOrderLogStreamer) resolveLogStreamExecution(
 	ctx context.Context,
 	order releasedomain.ReleaseOrder,
@@ -341,6 +344,7 @@ func (uc *ReleaseOrderLogStreamer) resolveLogStreamExecution(
 	return releasedomain.ReleaseOrderExecution{}, fmt.Errorf("%w: only jenkins binding supports log stream", ErrInvalidInput)
 }
 
+// flushTailLogs 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderLogStreamer) flushTailLogs(
 	ctx context.Context,
 	emit func(event ReleaseOrderLogEvent) error,
@@ -389,6 +393,7 @@ func (uc *ReleaseOrderLogStreamer) flushTailLogs(
 	return offset, nil
 }
 
+// emitDone 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderLogStreamer) emitDone(
 	emit func(event ReleaseOrderLogEvent) error,
 	order releasedomain.ReleaseOrder,
@@ -413,6 +418,7 @@ func (uc *ReleaseOrderLogStreamer) emitDone(
 	})
 }
 
+// emitStatusOnce 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderLogStreamer) emitStatusOnce(
 	emit func(event ReleaseOrderLogEvent) error,
 	lastMessage *string,
@@ -441,6 +447,7 @@ func (uc *ReleaseOrderLogStreamer) emitStatusOnce(
 	})
 }
 
+// sleepWithContext 封装当前模块的业务处理逻辑。
 func sleepWithContext(ctx context.Context, d time.Duration) error {
 	timer := time.NewTimer(d)
 	defer timer.Stop()
@@ -453,6 +460,7 @@ func sleepWithContext(ctx context.Context, d time.Duration) error {
 	}
 }
 
+// orderResultFromStatus 封装当前模块的业务处理逻辑。
 func orderResultFromStatus(status releasedomain.OrderStatus) string {
 	switch status {
 	case releasedomain.OrderStatusSuccess:
@@ -474,6 +482,7 @@ func orderResultFromStatus(status releasedomain.OrderStatus) string {
 	}
 }
 
+// isRetryableJenkinsLogError 封装当前模块的业务处理逻辑。
 func isRetryableJenkinsLogError(err error) bool {
 	if err == nil {
 		return false

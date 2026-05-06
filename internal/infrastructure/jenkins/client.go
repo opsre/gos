@@ -35,6 +35,7 @@ type Client struct {
 	client   *http.Client
 }
 
+// NewClient 创建并返回对应组件实例。
 func NewClient(cfg Config) *Client {
 	timeout := cfg.TimeoutSec
 	if timeout <= 0 {
@@ -50,6 +51,7 @@ func NewClient(cfg Config) *Client {
 	}
 }
 
+// ListJobs 查询并返回列表数据。
 func (c *Client) ListJobs(ctx context.Context) ([]domain.JenkinsJob, error) {
 	endpoint := c.baseURL + "/api/json?tree=jobs[name,url,jobs[name,url,jobs[name,url,jobs[name,url,jobs[name,url]]]]]"
 	body, err := c.get(ctx, endpoint)
@@ -69,6 +71,7 @@ func (c *Client) ListJobs(ctx context.Context) ([]domain.JenkinsJob, error) {
 	return result, nil
 }
 
+// GetJob 查询并返回指定资源数据。
 func (c *Client) GetJob(ctx context.Context, fullName string) (domain.JenkinsJob, error) {
 	fullName = strings.Trim(strings.TrimSpace(fullName), "/")
 	if fullName == "" {
@@ -94,6 +97,7 @@ func (c *Client) GetJob(ctx context.Context, fullName string) (domain.JenkinsJob
 	}, nil
 }
 
+// BuildJobURL 组装业务执行所需的输入数据。
 func (c *Client) BuildJobURL(fullName string) string {
 	fullName = strings.Trim(strings.TrimSpace(fullName), "/")
 	if fullName == "" {
@@ -102,6 +106,7 @@ func (c *Client) BuildJobURL(fullName string) string {
 	return c.baseURL + buildJenkinsJobPath(fullName) + "/"
 }
 
+// GetPipelineScript 查询并返回指定资源数据。
 func (c *Client) GetPipelineScript(ctx context.Context, fullName string) (domain.JenkinsPipelineScript, error) {
 	fullName = strings.Trim(strings.TrimSpace(fullName), "/")
 	if fullName == "" {
@@ -143,6 +148,7 @@ func (c *Client) GetPipelineScript(ctx context.Context, fullName string) (domain
 	}, nil
 }
 
+// GetPipelineConfigXML 查询并返回指定资源数据。
 func (c *Client) GetPipelineConfigXML(ctx context.Context, fullName string) (string, error) {
 	fullName = strings.Trim(strings.TrimSpace(fullName), "/")
 	if fullName == "" {
@@ -158,6 +164,7 @@ func (c *Client) GetPipelineConfigXML(ctx context.Context, fullName string) (str
 	return string(body), nil
 }
 
+// CreateRawPipeline 创建业务资源并返回处理结果。
 func (c *Client) CreateRawPipeline(ctx context.Context, fullName string, cfg domain.JenkinsRawPipelineConfig) error {
 	fullName = strings.Trim(strings.TrimSpace(fullName), "/")
 	if fullName == "" {
@@ -171,6 +178,7 @@ func (c *Client) CreateRawPipeline(ctx context.Context, fullName string, cfg dom
 	return c.postXML(ctx, endpoint, buildRawPipelineConfigXML(cfg))
 }
 
+// UpdateRawPipeline 更新业务资源并返回处理结果。
 func (c *Client) UpdateRawPipeline(ctx context.Context, fullName string, cfg domain.JenkinsRawPipelineConfig) error {
 	fullName = strings.Trim(strings.TrimSpace(fullName), "/")
 	if fullName == "" {
@@ -180,6 +188,7 @@ func (c *Client) UpdateRawPipeline(ctx context.Context, fullName string, cfg dom
 	return c.postXML(ctx, endpoint, buildRawPipelineConfigXML(cfg))
 }
 
+// DeletePipeline 删除业务资源并返回处理结果。
 func (c *Client) DeletePipeline(ctx context.Context, fullName string) error {
 	fullName = strings.Trim(strings.TrimSpace(fullName), "/")
 	if fullName == "" {
@@ -192,6 +201,7 @@ func (c *Client) DeletePipeline(ctx context.Context, fullName string) error {
 	return c.postAction(ctx, endpoint)
 }
 
+// RenderRawPipelineConfigXML 封装当前模块的业务处理逻辑。
 func (c *Client) RenderRawPipelineConfigXML(cfg domain.JenkinsRawPipelineConfig) (string, error) {
 	if strings.TrimSpace(cfg.Script) == "" {
 		return "", fmt.Errorf("raw pipeline script is required")
@@ -199,6 +209,7 @@ func (c *Client) RenderRawPipelineConfigXML(cfg domain.JenkinsRawPipelineConfig)
 	return buildRawPipelineConfigXML(cfg), nil
 }
 
+// TriggerBuild 组装业务执行所需的输入数据。
 func (c *Client) TriggerBuild(ctx context.Context, fullName string, params map[string]string) (string, error) {
 	fullName = strings.Trim(strings.TrimSpace(fullName), "/")
 	if fullName == "" {
@@ -264,6 +275,7 @@ func (c *Client) TriggerBuild(ctx context.Context, fullName string, params map[s
 	return "", lastErr
 }
 
+// postTriggerBuild 组装业务执行所需的输入数据。
 func (c *Client) postTriggerBuild(ctx context.Context, endpoint string, encodedForm string, crumb crumbHeader) (string, int, error) {
 	queueURL, statusCode, _, err := c.doPost(ctx, endpoint, encodedForm, crumb, false)
 	if err != nil {
@@ -275,6 +287,7 @@ func (c *Client) postTriggerBuild(ctx context.Context, endpoint string, encodedF
 	return strings.TrimSpace(queueURL), statusCode, nil
 }
 
+// GetQueueItem 查询并返回指定资源数据。
 func (c *Client) GetQueueItem(
 	ctx context.Context,
 	queueURL string,
@@ -308,6 +321,7 @@ func (c *Client) GetQueueItem(
 	return buildURL, payload.Cancelled, strings.TrimSpace(payload.Why), nil
 }
 
+// GetBuildStatus 组装业务执行所需的输入数据。
 func (c *Client) GetBuildStatus(ctx context.Context, buildURL string) (building bool, result string, err error) {
 	endpoint := buildJenkinsAPIEndpoint(c.baseURL, buildURL, "building,result")
 	if endpoint == "" {
@@ -329,6 +343,7 @@ func (c *Client) GetBuildStatus(ctx context.Context, buildURL string) (building 
 	return payload.Building, strings.TrimSpace(payload.Result), nil
 }
 
+// GetBuildStages 组装业务执行所需的输入数据。
 func (c *Client) GetBuildStages(
 	ctx context.Context,
 	buildURL string,
@@ -382,6 +397,7 @@ func (c *Client) GetBuildStages(
 	return result, nil
 }
 
+// GetBuildStageLog 组装业务执行所需的输入数据。
 func (c *Client) GetBuildStageLog(
 	ctx context.Context,
 	buildURL string,
@@ -449,6 +465,7 @@ func (c *Client) GetBuildStageLog(
 	return log, nil
 }
 
+// GetBuildConsoleText 组装业务执行所需的输入数据。
 func (c *Client) GetBuildConsoleText(
 	ctx context.Context,
 	buildURL string,
@@ -495,6 +512,7 @@ func (c *Client) GetBuildConsoleText(
 	return string(body), nextStart, moreData, nil
 }
 
+// AbortQueueItem 封装当前模块的业务处理逻辑。
 func (c *Client) AbortQueueItem(ctx context.Context, queueURL string) error {
 	endpoint := buildJenkinsActionEndpoint(c.baseURL, queueURL, "cancelQueue")
 	if endpoint == "" {
@@ -503,6 +521,7 @@ func (c *Client) AbortQueueItem(ctx context.Context, queueURL string) error {
 	return c.postAction(ctx, endpoint)
 }
 
+// AbortBuild 组装业务执行所需的输入数据。
 func (c *Client) AbortBuild(ctx context.Context, buildURL string) error {
 	endpoint := buildJenkinsActionEndpoint(c.baseURL, buildURL, "stop")
 	if endpoint == "" {
@@ -511,6 +530,7 @@ func (c *Client) AbortBuild(ctx context.Context, buildURL string) error {
 	return c.postAction(ctx, endpoint)
 }
 
+// ListJobParamSets 查询并返回列表数据。
 func (c *Client) ListJobParamSets(ctx context.Context) ([]pipelineparamdomain.JenkinsJobParamSet, error) {
 	jobs, err := c.ListJobs(ctx)
 	if err != nil {
@@ -592,6 +612,7 @@ func (c *Client) ListJobParamSets(ctx context.Context) ([]pipelineparamdomain.Je
 	return items, nil
 }
 
+// getJobParamSet 查询并返回指定资源数据。
 func (c *Client) getJobParamSet(ctx context.Context, fullName string) (pipelineparamdomain.JenkinsJobParamSet, error) {
 	fullName = strings.Trim(strings.TrimSpace(fullName), "/")
 	if fullName == "" {
@@ -667,6 +688,7 @@ func (c *Client) getJobParamSet(ctx context.Context, fullName string) (pipelinep
 	}, nil
 }
 
+// loadScriptParamFallback 封装当前模块的业务处理逻辑。
 func (c *Client) loadScriptParamFallback(ctx context.Context, fullName string) ([]pipelineparamdomain.JenkinsParamSnapshot, error) {
 	script, err := c.GetPipelineScript(ctx, fullName)
 	if err != nil {
@@ -675,6 +697,7 @@ func (c *Client) loadScriptParamFallback(ctx context.Context, fullName string) (
 	return parsePipelineScriptParamSnapshots(script.Script), nil
 }
 
+// appendParsedJenkinsParams 解析输入内容并返回结构化结果。
 func appendParsedJenkinsParams(
 	rawItems []json.RawMessage,
 	target *[]pipelineparamdomain.JenkinsParamSnapshot,
@@ -697,6 +720,7 @@ func appendParsedJenkinsParams(
 	return nil
 }
 
+// parseJenkinsParamDefinition 解析输入内容并返回结构化结果。
 func parseJenkinsParamDefinition(raw json.RawMessage, sortNo int) (pipelineparamdomain.JenkinsParamSnapshot, bool, error) {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &fields); err != nil {
@@ -747,6 +771,7 @@ func parseJenkinsParamDefinition(raw json.RawMessage, sortNo int) (pipelineparam
 	}, true, nil
 }
 
+// parsePipelineScriptParamSnapshots 解析输入内容并返回结构化结果。
 func parsePipelineScriptParamSnapshots(script string) []pipelineparamdomain.JenkinsParamSnapshot {
 	block, ok := extractGroovyNamedBlock(script, "parameters")
 	if !ok {
@@ -770,6 +795,7 @@ type groovyTopLevelCall struct {
 	args string
 }
 
+// extractGroovyNamedBlock 封装当前模块的业务处理逻辑。
 func extractGroovyNamedBlock(script string, keyword string) (string, bool) {
 	source := script
 	for idx := 0; idx < len(source); idx++ {
@@ -797,6 +823,7 @@ func extractGroovyNamedBlock(script string, keyword string) (string, bool) {
 	return "", false
 }
 
+// extractGroovyTopLevelCalls 封装当前模块的业务处理逻辑。
 func extractGroovyTopLevelCalls(block string) []groovyTopLevelCall {
 	result := make([]groovyTopLevelCall, 0)
 	for idx := 0; idx < len(block); {
@@ -842,6 +869,7 @@ func extractGroovyTopLevelCalls(block string) []groovyTopLevelCall {
 	return result
 }
 
+// parsePipelineScriptParamCall 解析输入内容并返回结构化结果。
 func parsePipelineScriptParamCall(name string, args string, sortNo int) (pipelineparamdomain.JenkinsParamSnapshot, bool) {
 	argsMap := parseGroovyNamedArgs(args)
 	paramName := strings.TrimSpace(parseGroovyStringLike(argsMap["name"]))
@@ -949,6 +977,7 @@ func parsePipelineScriptParamCall(name string, args string, sortNo int) (pipelin
 	}
 }
 
+// buildScriptParamSnapshot 组装业务执行所需的输入数据。
 func buildScriptParamSnapshot(
 	name string,
 	description string,
@@ -982,6 +1011,7 @@ func buildScriptParamSnapshot(
 	}
 }
 
+// parseGroovyNamedArgs 解析输入内容并返回结构化结果。
 func parseGroovyNamedArgs(args string) map[string]string {
 	result := make(map[string]string)
 	for _, part := range splitGroovyTopLevel(args, ',') {
@@ -994,6 +1024,7 @@ func parseGroovyNamedArgs(args string) map[string]string {
 	return result
 }
 
+// splitGroovyNamedArg 封装当前模块的业务处理逻辑。
 func splitGroovyNamedArg(part string) (string, string, bool) {
 	text := strings.TrimSpace(part)
 	if text == "" {
@@ -1011,6 +1042,7 @@ func splitGroovyNamedArg(part string) (string, string, bool) {
 	return "", "", false
 }
 
+// splitGroovyTopLevel 封装当前模块的业务处理逻辑。
 func splitGroovyTopLevel(text string, sep byte) []string {
 	result := make([]string, 0)
 	start := 0
@@ -1102,6 +1134,7 @@ func splitGroovyTopLevel(text string, sep byte) []string {
 	return result
 }
 
+// parseGroovyChoices 解析输入内容并返回结构化结果。
 func parseGroovyChoices(raw string, delimiter string) []string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -1125,6 +1158,7 @@ func parseGroovyChoices(raw string, delimiter string) []string {
 	return splitChoiceValueByDelimiter(parseGroovyStringLike(raw), delimiter)
 }
 
+// parseGroovyStringLike 解析输入内容并返回结构化结果。
 func parseGroovyStringLike(raw string) string {
 	text := strings.TrimSpace(raw)
 	if text == "" {
@@ -1142,11 +1176,13 @@ func parseGroovyStringLike(raw string) string {
 	return strings.TrimSpace(text)
 }
 
+// looksLikeGroovyMultiSelect 封装当前模块的业务处理逻辑。
 func looksLikeGroovyMultiSelect(typeName string) bool {
 	lower := strings.ToLower(strings.TrimSpace(typeName))
 	return strings.Contains(lower, "checkbox") || strings.Contains(lower, "multi")
 }
 
+// skipGroovyNoise 封装当前模块的业务处理逻辑。
 func skipGroovyNoise(text string, idx int) int {
 	for idx < len(text) {
 		switch {
@@ -1172,6 +1208,7 @@ func skipGroovyNoise(text string, idx int) int {
 	return idx
 }
 
+// skipGroovySpaces 封装当前模块的业务处理逻辑。
 func skipGroovySpaces(text string, idx int) int {
 	for idx < len(text) && (text[idx] == ' ' || text[idx] == '\t' || text[idx] == '\n' || text[idx] == '\r') {
 		idx++
@@ -1179,6 +1216,7 @@ func skipGroovySpaces(text string, idx int) int {
 	return idx
 }
 
+// findGroovyStatementEnd 封装当前模块的业务处理逻辑。
 func findGroovyStatementEnd(text string, start int) int {
 	var (
 		parenDepth   int
@@ -1267,6 +1305,7 @@ func findGroovyStatementEnd(text string, start int) int {
 	return len(text)
 }
 
+// findGroovyMatching 封装当前模块的业务处理逻辑。
 func findGroovyMatching(text string, start int, open byte, close byte) (int, bool) {
 	var (
 		depth      int
@@ -1337,14 +1376,17 @@ func findGroovyMatching(text string, start int, open byte, close byte) (int, boo
 	return 0, false
 }
 
+// isGroovyIdentStart 封装当前模块的业务处理逻辑。
 func isGroovyIdentStart(ch byte) bool {
 	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_'
 }
 
+// isGroovyIdentByte 封装当前模块的业务处理逻辑。
 func isGroovyIdentByte(ch byte) bool {
 	return isGroovyIdentStart(ch) || (ch >= '0' && ch <= '9')
 }
 
+// hasGroovyOpeners 封装当前模块的业务处理逻辑。
 func hasGroovyOpeners(text string) bool {
 	var (
 		parenDepth   int
@@ -1403,6 +1445,7 @@ func hasGroovyOpeners(text string) bool {
 	return parenDepth > 0 || bracketDepth > 0 || braceDepth > 0
 }
 
+// hasGroovyQuotes 封装当前模块的业务处理逻辑。
 func hasGroovyQuotes(text string) bool {
 	var (
 		inSingle bool
@@ -1441,6 +1484,7 @@ func hasGroovyQuotes(text string) bool {
 	return inSingle || inDouble
 }
 
+// defaultGroovyString 封装当前模块的业务处理逻辑。
 func defaultGroovyString(value string, fallback string) string {
 	value = strings.TrimSpace(value)
 	if value != "" {
@@ -1449,6 +1493,7 @@ func defaultGroovyString(value string, fallback string) string {
 	return fallback
 }
 
+// readJSONString 封装当前模块的业务处理逻辑。
 func readJSONString(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
@@ -1460,6 +1505,7 @@ func readJSONString(raw json.RawMessage) string {
 	return ""
 }
 
+// parseDefaultValue 解析输入内容并返回结构化结果。
 func parseDefaultValue(raw json.RawMessage) (any, string, error) {
 	if len(raw) == 0 {
 		return nil, "", nil
@@ -1471,6 +1517,7 @@ func parseDefaultValue(raw json.RawMessage) (any, string, error) {
 	return value, stringifyDefaultValue(value), nil
 }
 
+// parseChoiceValues 解析输入内容并返回结构化结果。
 func parseChoiceValues(raw json.RawMessage) []string {
 	if len(raw) == 0 {
 		return nil
@@ -1510,6 +1557,7 @@ func parseChoiceValues(raw json.RawMessage) []string {
 	return nil
 }
 
+// splitChoiceText 封装当前模块的业务处理逻辑。
 func splitChoiceText(value string) []string {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -1526,6 +1574,7 @@ func splitChoiceText(value string) []string {
 	return []string{value}
 }
 
+// normalizeChoiceValues 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeChoiceValues(values []string) []string {
 	result := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
@@ -1553,6 +1602,7 @@ type extendedChoiceFallback struct {
 	defaultValue string
 }
 
+// loadGitParameterChoicesIntoParams 封装当前模块的业务处理逻辑。
 func (c *Client) loadGitParameterChoicesIntoParams(
 	ctx context.Context,
 	fullName string,
@@ -1585,6 +1635,7 @@ func (c *Client) loadGitParameterChoicesIntoParams(
 	return nil
 }
 
+// isGitParameterRawMeta 封装当前模块的业务处理逻辑。
 func isGitParameterRawMeta(rawMeta string) bool {
 	trimmed := strings.TrimSpace(rawMeta)
 	if trimmed == "" {
@@ -1599,6 +1650,7 @@ func isGitParameterRawMeta(rawMeta string) bool {
 	return strings.Contains(className, "gitparameterdefinition") || strings.Contains(typeName, "gitparameterdefinition")
 }
 
+// loadGitParameterChoices 封装当前模块的业务处理逻辑。
 func (c *Client) loadGitParameterChoices(ctx context.Context, fullName string, paramName string) ([]string, error) {
 	escapedParam := url.QueryEscape(strings.TrimSpace(paramName))
 	endpoint := c.baseURL + buildJenkinsJobPath(fullName) +
@@ -1619,6 +1671,7 @@ func (c *Client) loadGitParameterChoices(ctx context.Context, fullName string, p
 	return parseGitParameterChoiceValues(response.Values), nil
 }
 
+// parseGitParameterChoiceValues 解析输入内容并返回结构化结果。
 func parseGitParameterChoiceValues(raw json.RawMessage) []string {
 	if len(raw) == 0 {
 		return nil
@@ -1671,6 +1724,7 @@ func parseGitParameterChoiceValues(raw json.RawMessage) []string {
 	return nil
 }
 
+// loadExtendedChoiceFallback 封装当前模块的业务处理逻辑。
 func (c *Client) loadExtendedChoiceFallback(ctx context.Context, fullName string) (map[string]extendedChoiceFallback, error) {
 	endpoint := c.baseURL + buildJenkinsJobConfigPath(fullName)
 	body, err := c.get(ctx, endpoint)
@@ -1712,6 +1766,7 @@ func (c *Client) loadExtendedChoiceFallback(ctx context.Context, fullName string
 	return result, nil
 }
 
+// normalizeXMLVersion 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeXMLVersion(body []byte) []byte {
 	trimmed := bytes.TrimSpace(body)
 	if !bytes.HasPrefix(trimmed, []byte("<?xml")) {
@@ -1722,6 +1777,7 @@ func normalizeXMLVersion(body []byte) []byte {
 	return normalized
 }
 
+// splitChoiceValueByDelimiter 封装当前模块的业务处理逻辑。
 func splitChoiceValueByDelimiter(value string, delimiter string) []string {
 	text := strings.TrimSpace(value)
 	if text == "" {
@@ -1738,6 +1794,7 @@ func splitChoiceValueByDelimiter(value string, delimiter string) []string {
 	return normalizeChoiceValues(splitChoiceText(text))
 }
 
+// mergeChoiceValuesIntoRawMeta 封装当前模块的业务处理逻辑。
 func mergeChoiceValuesIntoRawMeta(rawMeta string, fallback extendedChoiceFallback) string {
 	meta := make(map[string]any)
 	trimmed := strings.TrimSpace(rawMeta)
@@ -1770,6 +1827,7 @@ func mergeChoiceValuesIntoRawMeta(rawMeta string, fallback extendedChoiceFallbac
 	return string(bytes)
 }
 
+// inferPipelineSingleSelect 封装当前模块的业务处理逻辑。
 func inferPipelineSingleSelect(
 	paramName string,
 	className string,
@@ -1806,6 +1864,7 @@ func inferPipelineSingleSelect(
 	return false
 }
 
+// inferPipelineSingleSelectFromRawMeta 封装当前模块的业务处理逻辑。
 func inferPipelineSingleSelectFromRawMeta(rawMeta string, fallback bool) bool {
 	trimmed := strings.TrimSpace(rawMeta)
 	if trimmed == "" {
@@ -1846,6 +1905,7 @@ func inferPipelineSingleSelectFromRawMeta(rawMeta string, fallback bool) bool {
 	return fallback
 }
 
+// readJSONBool 封装当前模块的业务处理逻辑。
 func readJSONBool(raw json.RawMessage) bool {
 	if len(raw) == 0 {
 		return false
@@ -1864,6 +1924,7 @@ func readJSONBool(raw json.RawMessage) bool {
 	return false
 }
 
+// inferExecutorParamType 封装当前模块的业务处理逻辑。
 func inferExecutorParamType(class string, choices []string, defaultValue any, defaultValueStr string) pipelineparamdomain.ParamType {
 	lowerClass := strings.ToLower(strings.TrimSpace(class))
 	switch {
@@ -1896,6 +1957,7 @@ func inferExecutorParamType(class string, choices []string, defaultValue any, de
 	return pipelineparamdomain.ParamTypeString
 }
 
+// stringifyDefaultValue 封装当前模块的业务处理逻辑。
 func stringifyDefaultValue(value any) string {
 	switch typed := value.(type) {
 	case nil:
@@ -1936,6 +1998,7 @@ type jenkinsJobNode struct {
 	Jobs []jenkinsJobNode `json:"jobs"`
 }
 
+// flattenJenkinsJobs 封装当前模块的业务处理逻辑。
 func flattenJenkinsJobs(baseURL string, prefix string, jobs []jenkinsJobNode, result *[]domain.JenkinsJob) {
 	for _, job := range jobs {
 		fullName := job.Name
@@ -1954,6 +2017,7 @@ func flattenJenkinsJobs(baseURL string, prefix string, jobs []jenkinsJobNode, re
 	}
 }
 
+// buildJenkinsOriginalURL 组装业务执行所需的输入数据。
 func buildJenkinsOriginalURL(baseURL string, fullName string, fallback string) string {
 	fullName = strings.Trim(strings.TrimSpace(fullName), "/")
 	if fullName != "" {
@@ -1962,10 +2026,12 @@ func buildJenkinsOriginalURL(baseURL string, fullName string, fallback string) s
 	return strings.TrimSpace(resolveJenkinsResourcePrefix(baseURL, fallback))
 }
 
+// buildJenkinsJobAPIPath 组装业务执行所需的输入数据。
 func buildJenkinsJobAPIPath(fullName string) string {
 	return buildJenkinsJobPath(fullName) + "/api/json"
 }
 
+// buildJenkinsAPIEndpoint 组装业务执行所需的输入数据。
 func buildJenkinsAPIEndpoint(baseURL string, resourceURL string, tree string) string {
 	prefix := resolveJenkinsResourcePrefix(baseURL, resourceURL)
 	if prefix == "" {
@@ -1977,6 +2043,7 @@ func buildJenkinsAPIEndpoint(baseURL string, resourceURL string, tree string) st
 	return prefix + "/api/json?tree=" + tree
 }
 
+// buildJenkinsWFAPIEndpoint 组装业务执行所需的输入数据。
 func buildJenkinsWFAPIEndpoint(baseURL string, resourceURL string, suffix string) string {
 	prefix := resolveJenkinsResourcePrefix(baseURL, resourceURL)
 	if prefix == "" {
@@ -1989,6 +2056,7 @@ func buildJenkinsWFAPIEndpoint(baseURL string, resourceURL string, suffix string
 	return prefix + "/wfapi/" + suffix
 }
 
+// buildJenkinsProgressiveTextEndpoint 组装业务执行所需的输入数据。
 func buildJenkinsProgressiveTextEndpoint(baseURL string, buildURL string, start int64) string {
 	prefix := resolveJenkinsResourcePrefix(baseURL, buildURL)
 	if prefix == "" {
@@ -2000,6 +2068,7 @@ func buildJenkinsProgressiveTextEndpoint(baseURL string, buildURL string, start 
 	return fmt.Sprintf("%s/logText/progressiveText?start=%d", prefix, start)
 }
 
+// getBuildStageDetail 组装业务执行所需的输入数据。
 func (c *Client) getBuildStageDetail(
 	ctx context.Context,
 	buildURL string,
@@ -2038,6 +2107,7 @@ func (c *Client) getBuildStageDetail(
 	return payload, nil
 }
 
+// getBuildNodeLog 组装业务执行所需的输入数据。
 func (c *Client) getBuildNodeLog(
 	ctx context.Context,
 	buildURL string,
@@ -2067,6 +2137,7 @@ func (c *Client) getBuildNodeLog(
 	return normalizeJenkinsLogContent(payload.Text), payload.HasMore, nil
 }
 
+// buildJenkinsActionEndpoint 组装业务执行所需的输入数据。
 func buildJenkinsActionEndpoint(baseURL string, resourceURL string, action string) string {
 	prefix := resolveJenkinsResourcePrefix(baseURL, resourceURL)
 	if prefix == "" {
@@ -2080,6 +2151,7 @@ func buildJenkinsActionEndpoint(baseURL string, resourceURL string, action strin
 	return prefix + "/" + action
 }
 
+// resolveJenkinsResourcePrefix 解析上下文数据，得到后续流程需要的结果。
 func resolveJenkinsResourcePrefix(baseURL string, resourceURL string) string {
 	trimmed := strings.TrimSpace(resourceURL)
 	if trimmed == "" {
@@ -2105,6 +2177,7 @@ func resolveJenkinsResourcePrefix(baseURL string, resourceURL string) string {
 	return base + "/" + strings.Trim(trimmed, "/")
 }
 
+// jenkinsMillisToTime 查询并返回列表数据。
 func jenkinsMillisToTime(value int64) *time.Time {
 	if value <= 0 {
 		return nil
@@ -2113,6 +2186,7 @@ func jenkinsMillisToTime(value int64) *time.Time {
 	return &t
 }
 
+// deriveStageFinishedAt 封装当前模块的业务处理逻辑。
 func deriveStageFinishedAt(startedAt *time.Time, durationMillis int64, rawStatus string) *time.Time {
 	if startedAt == nil || durationMillis <= 0 {
 		return nil
@@ -2127,6 +2201,7 @@ func deriveStageFinishedAt(startedAt *time.Time, durationMillis int64, rawStatus
 	}
 }
 
+// maxInt64 封装当前模块的业务处理逻辑。
 func maxInt64(value int64, minimum int64) int64 {
 	if value < minimum {
 		return minimum
@@ -2134,6 +2209,7 @@ func maxInt64(value int64, minimum int64) int64 {
 	return value
 }
 
+// mapJenkinsStageStatus 封装当前模块的业务处理逻辑。
 func mapJenkinsStageStatus(raw string) releasedomain.PipelineStageStatus {
 	switch strings.ToUpper(strings.TrimSpace(raw)) {
 	case "SUCCESS":
@@ -2153,10 +2229,12 @@ func mapJenkinsStageStatus(raw string) releasedomain.PipelineStageStatus {
 	}
 }
 
+// buildJenkinsJobConfigPath 组装业务执行所需的输入数据。
 func buildJenkinsJobConfigPath(fullName string) string {
 	return buildJenkinsJobPath(fullName) + "/config.xml"
 }
 
+// buildJenkinsCreateItemPath 组装业务执行所需的输入数据。
 func buildJenkinsCreateItemPath(parentFullName string) string {
 	parentFullName = strings.Trim(strings.TrimSpace(parentFullName), "/")
 	if parentFullName == "" {
@@ -2165,6 +2243,7 @@ func buildJenkinsCreateItemPath(parentFullName string) string {
 	return buildJenkinsJobPath(parentFullName) + "/createItem"
 }
 
+// buildJenkinsJobPath 组装业务执行所需的输入数据。
 func buildJenkinsJobPath(fullName string) string {
 	parts := strings.Split(strings.Trim(fullName, "/"), "/")
 	var builder strings.Builder
@@ -2178,6 +2257,7 @@ func buildJenkinsJobPath(fullName string) string {
 	return builder.String()
 }
 
+// splitJenkinsJobFullName 封装当前模块的业务处理逻辑。
 func splitJenkinsJobFullName(fullName string) (jobName string, parentPath string) {
 	fullName = strings.Trim(strings.TrimSpace(fullName), "/")
 	if fullName == "" {
@@ -2196,6 +2276,7 @@ type crumbHeader struct {
 	value string
 }
 
+// getCrumb 查询并返回指定资源数据。
 func (c *Client) getCrumb(ctx context.Context) (string, string, error) {
 	endpoint := c.baseURL + "/crumbIssuer/api/json"
 	body, err := c.get(ctx, endpoint)
@@ -2218,11 +2299,13 @@ func (c *Client) getCrumb(ctx context.Context) (string, string, error) {
 	return field, value, nil
 }
 
+// post 封装当前模块的业务处理逻辑。
 func (c *Client) post(ctx context.Context, endpoint string, encodedForm string, crumb crumbHeader) (string, int, error) {
 	queueURL, statusCode, _, err := c.doPost(ctx, endpoint, encodedForm, crumb, true)
 	return queueURL, statusCode, err
 }
 
+// doPost 封装当前模块的业务处理逻辑。
 func (c *Client) doPost(
 	ctx context.Context,
 	endpoint string,
@@ -2273,6 +2356,7 @@ func (c *Client) doPost(
 	return queueURL, resp.StatusCode, responseBody, nil
 }
 
+// postXML 封装当前模块的业务处理逻辑。
 func (c *Client) postXML(ctx context.Context, endpoint string, payload string) error {
 	statusCode, err := c.postXMLOnce(ctx, endpoint, payload, crumbHeader{})
 	if err == nil {
@@ -2291,6 +2375,7 @@ func (c *Client) postXML(ctx context.Context, endpoint string, payload string) e
 	return err
 }
 
+// postXMLOnce 封装当前模块的业务处理逻辑。
 func (c *Client) postXMLOnce(ctx context.Context, endpoint string, payload string, crumb crumbHeader) (int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(payload))
 	if err != nil {
@@ -2320,6 +2405,7 @@ func (c *Client) postXMLOnce(ctx context.Context, endpoint string, payload strin
 	return resp.StatusCode, buildJenkinsHTTPError(resp.StatusCode, body)
 }
 
+// buildRawPipelineConfigXML 组装业务执行所需的输入数据。
 func buildRawPipelineConfigXML(cfg domain.JenkinsRawPipelineConfig) string {
 	sandbox := "false"
 	if cfg.Sandbox {
@@ -2349,6 +2435,7 @@ func buildRawPipelineConfigXML(cfg domain.JenkinsRawPipelineConfig) string {
 </flow-definition>`, descriptionBuilder.String(), scriptBuilder.String(), sandbox)
 }
 
+// postAction 封装当前模块的业务处理逻辑。
 func (c *Client) postAction(ctx context.Context, endpoint string) error {
 	statusCode, err := c.postActionOnce(ctx, endpoint, crumbHeader{})
 	if err == nil {
@@ -2370,6 +2457,7 @@ func (c *Client) postAction(ctx context.Context, endpoint string) error {
 	return err
 }
 
+// postActionOnce 封装当前模块的业务处理逻辑。
 func (c *Client) postActionOnce(ctx context.Context, endpoint string, crumb crumbHeader) (int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
 	if err != nil {
@@ -2399,6 +2487,7 @@ func (c *Client) postActionOnce(ctx context.Context, endpoint string, crumb crum
 	return resp.StatusCode, buildJenkinsHTTPError(resp.StatusCode, body)
 }
 
+// get 查询并返回指定资源数据。
 func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -2434,6 +2523,7 @@ var (
 	httpErrorPattern     = regexp.MustCompile(`(?i)http error\s+\d+\s+[^\n]{1,120}`)
 )
 
+// buildJenkinsHTTPError 组装业务执行所需的输入数据。
 func buildJenkinsHTTPError(statusCode int, body []byte) error {
 	message := extractJenkinsErrorMessage(string(body))
 	if message == "" {
@@ -2442,6 +2532,7 @@ func buildJenkinsHTTPError(statusCode int, body []byte) error {
 	return fmt.Errorf("jenkins request failed: status=%d message=%s", statusCode, message)
 }
 
+// extractJenkinsErrorMessage 封装当前模块的业务处理逻辑。
 func extractJenkinsErrorMessage(raw string) string {
 	text := strings.TrimSpace(raw)
 	if text == "" {
@@ -2477,6 +2568,7 @@ func extractJenkinsErrorMessage(raw string) string {
 	return candidate
 }
 
+// normalizeHTMLText 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeHTMLText(raw string) string {
 	decoded := html.UnescapeString(strings.TrimSpace(raw))
 	if decoded == "" {
@@ -2487,6 +2579,7 @@ func normalizeHTMLText(raw string) string {
 	return strings.TrimSpace(decoded)
 }
 
+// normalizeJenkinsLogContent 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeJenkinsLogContent(raw string) string {
 	decoded := html.UnescapeString(strings.TrimSpace(raw))
 	if decoded == "" {
@@ -2499,6 +2592,7 @@ func normalizeJenkinsLogContent(raw string) string {
 	return strings.TrimSpace(decoded)
 }
 
+// looksLikeMeaningfulMessage 封装当前模块的业务处理逻辑。
 func looksLikeMeaningfulMessage(message string) bool {
 	if message == "" {
 		return false
@@ -2516,6 +2610,7 @@ func looksLikeMeaningfulMessage(message string) bool {
 	return true
 }
 
+// extractKnownJenkinsReason 封装当前模块的业务处理逻辑。
 func extractKnownJenkinsReason(text string) string {
 	if text == "" {
 		return ""
@@ -2529,6 +2624,7 @@ func extractKnownJenkinsReason(text string) string {
 	return ""
 }
 
+// parseJenkinsMoreData 解析输入内容并返回结构化结果。
 func parseJenkinsMoreData(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "true", "1", "yes":

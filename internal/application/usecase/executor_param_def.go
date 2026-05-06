@@ -41,6 +41,7 @@ func NewExecutorParamDefManager(
 	}
 }
 
+// ListByPipeline 查询并返回列表数据。
 func (uc *ExecutorParamDefManager) ListByPipeline(ctx context.Context, filter domain.ListFilter) ([]domain.ExecutorParamDef, int64, error) {
 	const (
 		defaultPage     = 1
@@ -78,6 +79,7 @@ func (uc *ExecutorParamDefManager) ListByPipeline(ctx context.Context, filter do
 	return uc.repo.ListByPipeline(ctx, filter)
 }
 
+// ListByApplication 查询并返回列表数据。
 func (uc *ExecutorParamDefManager) ListByApplication(
 	ctx context.Context,
 	applicationID string,
@@ -166,6 +168,7 @@ func (uc *ExecutorParamDefManager) ListByApplication(
 	return items, total, nil
 }
 
+// ListByApplications 查询并返回列表数据。
 func (uc *ExecutorParamDefManager) ListByApplications(
 	ctx context.Context,
 	filter domain.ApplicationListFilter,
@@ -214,6 +217,7 @@ func (uc *ExecutorParamDefManager) ListByApplications(
 	return uc.repo.ListByApplications(ctx, filter)
 }
 
+// GetByID 查询并返回指定资源数据。
 func (uc *ExecutorParamDefManager) GetByID(ctx context.Context, id string) (domain.ExecutorParamDef, error) {
 	if strings.TrimSpace(id) == "" {
 		return domain.ExecutorParamDef{}, ErrInvalidID
@@ -221,6 +225,7 @@ func (uc *ExecutorParamDefManager) GetByID(ctx context.Context, id string) (doma
 	return uc.repo.GetByID(ctx, id)
 }
 
+// UpdateParamKey 更新业务资源并返回处理结果。
 func (uc *ExecutorParamDefManager) UpdateParamKey(ctx context.Context, id string, paramKey string) (domain.ExecutorParamDef, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {

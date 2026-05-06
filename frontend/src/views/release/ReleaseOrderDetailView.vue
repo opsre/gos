@@ -451,6 +451,7 @@ const detailItems = computed(() => {
   }
   const items = [
     { key: "order_no", label: "发布单号", value: order.value.order_no },
+    { key: "release_name", label: "发布名称", value: order.value.release_name || "-" },
     {
       key: "created_at",
       label: "创建时间",

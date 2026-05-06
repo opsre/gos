@@ -16,6 +16,7 @@ type PipelineRepository struct {
 	dbDriver string
 }
 
+// NewPipelineRepository 创建并返回对应组件实例。
 func NewPipelineRepository(db *sql.DB, dbDriver string) *PipelineRepository {
 	return &PipelineRepository{
 		db:       db,
@@ -23,6 +24,7 @@ func NewPipelineRepository(db *sql.DB, dbDriver string) *PipelineRepository {
 	}
 }
 
+// InitSchema 封装当前模块的业务处理逻辑。
 func (r *PipelineRepository) InitSchema(ctx context.Context) error {
 	statements, err := pipelineSchemaStatements(r.dbDriver)
 	if err != nil {
@@ -36,6 +38,7 @@ func (r *PipelineRepository) InitSchema(ctx context.Context) error {
 	return r.migratePipelineBindingSchema(ctx)
 }
 
+// pipelineSchemaStatements 封装当前模块的业务处理逻辑。
 func pipelineSchemaStatements(dbDriver string) ([]string, error) {
 	switch dbDriver {
 	case "mysql":
@@ -117,6 +120,7 @@ func pipelineSchemaStatements(dbDriver string) ([]string, error) {
 	}
 }
 
+// migratePipelineBindingSchema 封装当前模块的业务处理逻辑。
 func (r *PipelineRepository) migratePipelineBindingSchema(ctx context.Context) error {
 	switch r.dbDriver {
 	case "mysql":
@@ -128,6 +132,7 @@ func (r *PipelineRepository) migratePipelineBindingSchema(ctx context.Context) e
 	}
 }
 
+// migratePipelineBindingSchemaMySQL 封装当前模块的业务处理逻辑。
 func (r *PipelineRepository) migratePipelineBindingSchemaMySQL(ctx context.Context) error {
 	type columnDef struct {
 		name string
@@ -205,6 +210,7 @@ WHERE pb.name = '';
 	return nil
 }
 
+// migratePipelineBindingSchemaSQLite 封装当前模块的业务处理逻辑。
 func (r *PipelineRepository) migratePipelineBindingSchemaSQLite(ctx context.Context) error {
 	columns, err := r.sqliteTableColumns(ctx, "pipeline_bindings")
 	if err != nil {
@@ -288,6 +294,7 @@ WHERE name = '';
 	return nil
 }
 
+// mysqlColumnExists 封装当前模块的业务处理逻辑。
 func (r *PipelineRepository) mysqlColumnExists(ctx context.Context, table, column string) (bool, error) {
 	const q = `
 SELECT COUNT(1)
@@ -301,6 +308,7 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?;`
 	return count > 0, nil
 }
 
+// mysqlIndexExists 封装当前模块的业务处理逻辑。
 func (r *PipelineRepository) mysqlIndexExists(ctx context.Context, table, index string) (bool, error) {
 	const q = `
 SELECT COUNT(1)
@@ -314,6 +322,7 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?;`
 	return count > 0, nil
 }
 
+// sqliteTableColumns 封装当前模块的业务处理逻辑。
 func (r *PipelineRepository) sqliteTableColumns(ctx context.Context, table string) (map[string]struct{}, error) {
 	q := fmt.Sprintf("PRAGMA table_info(%q);", table)
 	rows, err := r.db.QueryContext(ctx, q)
@@ -343,6 +352,7 @@ func (r *PipelineRepository) sqliteTableColumns(ctx context.Context, table strin
 	return columns, nil
 }
 
+// UpsertPipelines 封装当前模块的业务处理逻辑。
 func (r *PipelineRepository) UpsertPipelines(ctx context.Context, items []domain.Pipeline) (int, int, error) {
 	const (
 		updateByKey = `UPDATE pipelines
@@ -420,6 +430,7 @@ WHERE provider = ? AND job_full_name = ?;`
 	return created, updated, nil
 }
 
+// MarkMissingPipelinesInactive 封装当前模块的业务处理逻辑。
 func (r *PipelineRepository) MarkMissingPipelinesInactive(
 	ctx context.Context,
 	provider domain.Provider,
@@ -464,6 +475,7 @@ func (r *PipelineRepository) MarkMissingPipelinesInactive(
 	return int(affected), nil
 }
 
+// ListPipelines 查询并返回列表数据。
 func (r *PipelineRepository) ListPipelines(ctx context.Context, filter domain.PipelineListFilter) ([]domain.Pipeline, int64, error) {
 	where := make([]string, 0, 3)
 	args := make([]any, 0, 3)
@@ -526,6 +538,7 @@ FROM pipelines`)
 	return items, total, nil
 }
 
+// GetPipelineByID 查询并返回指定资源数据。
 func (r *PipelineRepository) GetPipelineByID(ctx context.Context, id string) (domain.Pipeline, error) {
 	const q = `
 SELECT id, provider, job_full_name, job_name, job_url, description, credential_ref, default_branch, status, last_verified_at, last_synced_at, created_at, updated_at
@@ -542,6 +555,7 @@ WHERE id = ?;`
 	return item, nil
 }
 
+// MarkPipelineVerified 封装当前模块的业务处理逻辑。
 func (r *PipelineRepository) MarkPipelineVerified(ctx context.Context, id string, verifiedAt time.Time, updatedAt time.Time) (domain.Pipeline, error) {
 	const q = `
 UPDATE pipelines
@@ -561,6 +575,7 @@ WHERE id = ?;`
 	return r.GetPipelineByID(ctx, id)
 }
 
+// CreateBinding 创建业务资源并返回处理结果。
 func (r *PipelineRepository) CreateBinding(ctx context.Context, binding domain.PipelineBinding) error {
 	const q = `
 INSERT INTO pipeline_bindings (
@@ -591,6 +606,7 @@ INSERT INTO pipeline_bindings (
 	return nil
 }
 
+// ListBindingsByApplication 查询并返回列表数据。
 func (r *PipelineRepository) ListBindingsByApplication(ctx context.Context, filter domain.BindingListFilter) ([]domain.PipelineBinding, int64, error) {
 	where := []string{"application_id = ?"}
 	args := []any{filter.ApplicationID}
@@ -642,6 +658,7 @@ ORDER BY created_at DESC LIMIT ? OFFSET ?;`
 	return items, total, nil
 }
 
+// GetBindingByID 查询并返回指定资源数据。
 func (r *PipelineRepository) GetBindingByID(ctx context.Context, id string) (domain.PipelineBinding, error) {
 	const q = `
 SELECT id, name, application_id, application_name, binding_type, provider, pipeline_id, external_ref, trigger_mode, status, created_at, updated_at
@@ -658,6 +675,7 @@ WHERE id = ?;`
 	return item, nil
 }
 
+// UpdateBinding 更新业务资源并返回处理结果。
 func (r *PipelineRepository) UpdateBinding(ctx context.Context, id string, input domain.BindingUpdateInput, updatedAt time.Time) (domain.PipelineBinding, error) {
 	const q = `
 UPDATE pipeline_bindings
@@ -691,6 +709,7 @@ WHERE id = ?;`
 	return r.GetBindingByID(ctx, id)
 }
 
+// DeleteBinding 删除业务资源并返回处理结果。
 func (r *PipelineRepository) DeleteBinding(ctx context.Context, id string) error {
 	const q = `DELETE FROM pipeline_bindings WHERE id = ?;`
 	res, err := r.db.ExecContext(ctx, q, id)
@@ -707,6 +726,7 @@ func (r *PipelineRepository) DeleteBinding(ctx context.Context, id string) error
 	return nil
 }
 
+// scanPipeline 封装当前模块的业务处理逻辑。
 func scanPipeline(s scanner) (domain.Pipeline, error) {
 	var (
 		item           domain.Pipeline
@@ -746,6 +766,7 @@ func scanPipeline(s scanner) (domain.Pipeline, error) {
 	return item, nil
 }
 
+// scanPipelineBinding 封装当前模块的业务处理逻辑。
 func scanPipelineBinding(s scanner) (domain.PipelineBinding, error) {
 	var (
 		item           domain.PipelineBinding

@@ -8,6 +8,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// TestPlatformParamRepositoryInitSchemaSyncsBuiltinAppKeyDescription 同步外部或内部状态数据。
 func TestPlatformParamRepositoryInitSchemaSyncsBuiltinAppKeyDescription(t *testing.T) {
 	t.Parallel()
 
@@ -31,7 +32,7 @@ func TestPlatformParamRepositoryInitSchemaSyncsBuiltinAppKeyDescription(t *testi
 		t.Fatalf("GetByParamKey failed: %v", err)
 	}
 
-const want = ""
+	const want = ""
 	if item.Description != want {
 		t.Fatalf("app_key description = %q, want %q", item.Description, want)
 	}

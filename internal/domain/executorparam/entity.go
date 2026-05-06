@@ -13,6 +13,7 @@ const (
 	ExecutorTypeCustom  ExecutorType = "custom"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (t ExecutorType) Valid() bool {
 	switch t {
 	case ExecutorTypeJenkins, ExecutorTypeArgoCD, ExecutorTypeCustom:
@@ -31,6 +32,7 @@ const (
 	ParamTypeNumber ParamType = "number"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (t ParamType) Valid() bool {
 	switch t {
 	case ParamTypeString, ParamTypeChoice, ParamTypeBool, ParamTypeNumber:
@@ -47,6 +49,7 @@ const (
 	SourceFromManual      SourceFrom = "manual"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s SourceFrom) Valid() bool {
 	switch s {
 	case SourceFromSyncJenkins, SourceFromManual:
@@ -63,6 +66,7 @@ const (
 	StatusInactive Status = "inactive"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s Status) Valid() bool {
 	switch s {
 	case StatusActive, StatusInactive:

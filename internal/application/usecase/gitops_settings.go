@@ -34,6 +34,7 @@ type UpdateGitOpsCommitTemplate struct {
 	platformRepo GitOpsCommitTemplateFieldReader
 }
 
+// NewUpdateGitOpsCommitTemplate 创建并返回对应组件实例。
 func NewUpdateGitOpsCommitTemplate(
 	store GitOpsCommitTemplateStore,
 	updater GitOpsCommitTemplateUpdater,
@@ -48,6 +49,7 @@ func NewUpdateGitOpsCommitTemplate(
 	}
 }
 
+// Execute 封装当前模块的业务处理逻辑。
 func (uc *UpdateGitOpsCommitTemplate) Execute(
 	ctx context.Context,
 	input UpdateGitOpsCommitTemplateInput,
@@ -69,6 +71,7 @@ func (uc *UpdateGitOpsCommitTemplate) Execute(
 
 var gitOpsCommitTemplateTokenPattern = regexp.MustCompile(`\{([a-zA-Z0-9_]+)\}`)
 
+// validateGitOpsCommitMessageTemplate 查询并返回指定资源数据。
 func validateGitOpsCommitMessageTemplate(
 	ctx context.Context,
 	platformRepo GitOpsCommitTemplateFieldReader,

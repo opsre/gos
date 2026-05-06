@@ -15,10 +15,12 @@ type GitOpsRepository struct {
 	dbDriver string
 }
 
+// NewGitOpsRepository 创建并返回对应组件实例。
 func NewGitOpsRepository(db *sql.DB, dbDriver string) *GitOpsRepository {
 	return &GitOpsRepository{db: db, dbDriver: strings.ToLower(strings.TrimSpace(dbDriver))}
 }
 
+// InitSchema 封装当前模块的业务处理逻辑。
 func (r *GitOpsRepository) InitSchema(ctx context.Context) error {
 	var statements []string
 	switch r.dbDriver {
@@ -80,6 +82,7 @@ func (r *GitOpsRepository) InitSchema(ctx context.Context) error {
 	return nil
 }
 
+// UpsertInstance 封装当前模块的业务处理逻辑。
 func (r *GitOpsRepository) UpsertInstance(ctx context.Context, item domain.Instance) (domain.Instance, error) {
 	const mysqlQ = `
 INSERT INTO gitops_instance (
@@ -150,6 +153,7 @@ ON CONFLICT(instance_code) DO UPDATE SET
 	return r.GetInstanceByCode(ctx, item.InstanceCode)
 }
 
+// CreateInstance 创建业务资源并返回处理结果。
 func (r *GitOpsRepository) CreateInstance(ctx context.Context, item domain.Instance) (domain.Instance, error) {
 	encryptedPassword, err := encryptStoredSecret(strings.TrimSpace(item.Password))
 	if err != nil {
@@ -187,6 +191,7 @@ INSERT INTO gitops_instance (
 	return r.GetInstanceByID(ctx, item.ID)
 }
 
+// UpdateInstance 更新业务资源并返回处理结果。
 func (r *GitOpsRepository) UpdateInstance(ctx context.Context, item domain.Instance) (domain.Instance, error) {
 	encryptedPassword, err := encryptStoredSecret(strings.TrimSpace(item.Password))
 	if err != nil {
@@ -231,6 +236,7 @@ WHERE id = ?;`
 	return r.GetInstanceByID(ctx, item.ID)
 }
 
+// GetInstanceByID 查询并返回指定资源数据。
 func (r *GitOpsRepository) GetInstanceByID(ctx context.Context, id string) (domain.Instance, error) {
 	const q = `
 SELECT id, instance_code, name, local_root, default_branch, username, password_ciphertext, token_ciphertext,
@@ -246,6 +252,7 @@ FROM gitops_instance WHERE id = ?;`
 	return item, nil
 }
 
+// GetInstanceByCode 查询并返回指定资源数据。
 func (r *GitOpsRepository) GetInstanceByCode(ctx context.Context, code string) (domain.Instance, error) {
 	const q = `
 SELECT id, instance_code, name, local_root, default_branch, username, password_ciphertext, token_ciphertext,
@@ -261,6 +268,7 @@ FROM gitops_instance WHERE instance_code = ?;`
 	return item, nil
 }
 
+// ListInstances 查询并返回列表数据。
 func (r *GitOpsRepository) ListInstances(ctx context.Context, filter domain.InstanceListFilter) ([]domain.Instance, int64, error) {
 	args := make([]any, 0, 8)
 	where := make([]string, 0, 2)
@@ -316,6 +324,7 @@ FROM gitops_instance`
 	return items, total, nil
 }
 
+// ListActiveInstances 查询并返回列表数据。
 func (r *GitOpsRepository) ListActiveInstances(ctx context.Context) ([]domain.Instance, error) {
 	const q = `
 SELECT id, instance_code, name, local_root, default_branch, username, password_ciphertext, token_ciphertext,
@@ -342,6 +351,7 @@ FROM gitops_instance WHERE status = ? ORDER BY instance_code ASC;`
 
 type gitOpsInstanceScanner interface{ Scan(dest ...any) error }
 
+// scanGitOpsInstance 封装当前模块的业务处理逻辑。
 func scanGitOpsInstance(scanner gitOpsInstanceScanner) (domain.Instance, error) {
 	var (
 		item              domain.Instance

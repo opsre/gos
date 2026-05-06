@@ -58,6 +58,7 @@ type LoginOutput struct {
 	User        userdomain.User `json:"user"`
 }
 
+// NewUserManagement 创建并返回对应组件实例。
 func NewUserManagement(repo userdomain.Repository) *UserManagement {
 	return &UserManagement{
 		repo: repo,
@@ -67,6 +68,7 @@ func NewUserManagement(repo userdomain.Repository) *UserManagement {
 	}
 }
 
+// NewAuthSessionManager 创建并返回对应组件实例。
 func NewAuthSessionManager(
 	repo userdomain.Repository,
 	releaseSettings ReleaseSettingsStore,
@@ -85,6 +87,7 @@ func NewAuthSessionManager(
 	}
 }
 
+// HashPassword 封装当前模块的业务处理逻辑。
 func HashPassword(password string) (string, error) {
 	raw := strings.TrimSpace(password)
 	if raw == "" {
@@ -97,6 +100,7 @@ func HashPassword(password string) (string, error) {
 	return string(hashed), nil
 }
 
+// EnsureSeedData 校验前置条件，不满足时写入对应错误响应。
 func (uc *UserManagement) EnsureSeedData(
 	ctx context.Context,
 	adminUsername string,
@@ -115,6 +119,7 @@ func (uc *UserManagement) EnsureSeedData(
 	return uc.repo.EnsureSeedData(ctx, username, strings.TrimSpace(adminDisplayName), passwordHash, uc.now())
 }
 
+// ListUsers 查询并返回列表数据。
 func (uc *UserManagement) ListUsers(ctx context.Context, filter userdomain.UserListFilter) ([]userdomain.User, int64, error) {
 	const (
 		defaultPage     = 1
@@ -141,6 +146,7 @@ func (uc *UserManagement) ListUsers(ctx context.Context, filter userdomain.UserL
 	return uc.repo.ListUsers(ctx, filter)
 }
 
+// GetUserByID 查询并返回指定资源数据。
 func (uc *UserManagement) GetUserByID(ctx context.Context, id string) (userdomain.User, error) {
 	if strings.TrimSpace(id) == "" {
 		return userdomain.User{}, ErrInvalidID
@@ -148,6 +154,7 @@ func (uc *UserManagement) GetUserByID(ctx context.Context, id string) (userdomai
 	return uc.repo.GetUserByID(ctx, id)
 }
 
+// CreateUser 创建业务资源并返回处理结果。
 func (uc *UserManagement) CreateUser(ctx context.Context, input CreateUserInput) (userdomain.User, error) {
 	username := strings.TrimSpace(input.Username)
 	if username == "" {
@@ -195,6 +202,7 @@ func (uc *UserManagement) CreateUser(ctx context.Context, input CreateUserInput)
 	return uc.repo.GetUserByID(ctx, item.ID)
 }
 
+// UpdateUser 更新业务资源并返回处理结果。
 func (uc *UserManagement) UpdateUser(ctx context.Context, id string, input UpdateUserInput) (userdomain.User, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -243,6 +251,7 @@ func (uc *UserManagement) UpdateUser(ctx context.Context, id string, input Updat
 	}, uc.now())
 }
 
+// DeleteUser 删除业务资源并返回处理结果。
 func (uc *UserManagement) DeleteUser(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -251,16 +260,19 @@ func (uc *UserManagement) DeleteUser(ctx context.Context, id string) error {
 	return uc.repo.DeleteUser(ctx, id)
 }
 
+// ListUserOptions 查询并返回列表数据。
 func (uc *UserManagement) ListUserOptions(ctx context.Context) ([]userdomain.User, error) {
 	return uc.repo.ListUserOptions(ctx)
 }
 
+// ListPermissions 查询并返回列表数据。
 func (uc *UserManagement) ListPermissions(ctx context.Context, filter userdomain.PermissionFilter) ([]userdomain.Permission, error) {
 	filter.Module = strings.TrimSpace(filter.Module)
 	filter.Action = strings.TrimSpace(filter.Action)
 	return uc.repo.ListPermissions(ctx, filter)
 }
 
+// ListUserPermissions 查询并返回列表数据。
 func (uc *UserManagement) ListUserPermissions(ctx context.Context, userID string) ([]userdomain.UserPermission, error) {
 	if strings.TrimSpace(userID) == "" {
 		return nil, ErrInvalidID
@@ -271,6 +283,7 @@ func (uc *UserManagement) ListUserPermissions(ctx context.Context, userID string
 	return uc.repo.ListUserPermissions(ctx, userID)
 }
 
+// GrantUserPermissions 封装当前模块的业务处理逻辑。
 func (uc *UserManagement) GrantUserPermissions(
 	ctx context.Context,
 	userID string,
@@ -313,6 +326,7 @@ func (uc *UserManagement) GrantUserPermissions(
 	return uc.repo.GrantUserPermissions(ctx, userID, clean, uc.now())
 }
 
+// RevokeUserPermissions 封装当前模块的业务处理逻辑。
 func (uc *UserManagement) RevokeUserPermissions(
 	ctx context.Context,
 	userID string,
@@ -354,6 +368,7 @@ func (uc *UserManagement) RevokeUserPermissions(
 	return uc.repo.RevokeUserPermissions(ctx, userID, clean)
 }
 
+// ListUserParamPermissions 查询并返回列表数据。
 func (uc *UserManagement) ListUserParamPermissions(
 	ctx context.Context,
 	userID string,
@@ -369,6 +384,7 @@ func (uc *UserManagement) ListUserParamPermissions(
 	return uc.repo.ListUserParamPermissions(ctx, userID, strings.TrimSpace(applicationID))
 }
 
+// UpsertUserParamPermission 封装当前模块的业务处理逻辑。
 func (uc *UserManagement) UpsertUserParamPermission(
 	ctx context.Context,
 	item userdomain.UserParamPermission,
@@ -393,6 +409,7 @@ func (uc *UserManagement) UpsertUserParamPermission(
 	return uc.repo.UpsertUserParamPermission(ctx, item)
 }
 
+// DeleteUserParamPermission 删除业务资源并返回处理结果。
 func (uc *UserManagement) DeleteUserParamPermission(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -401,6 +418,7 @@ func (uc *UserManagement) DeleteUserParamPermission(ctx context.Context, id stri
 	return uc.repo.DeleteUserParamPermission(ctx, id)
 }
 
+// Login 封装当前模块的业务处理逻辑。
 func (uc *AuthSessionManager) Login(ctx context.Context, input LoginInput) (LoginOutput, error) {
 	username := strings.TrimSpace(input.Username)
 	password := strings.TrimSpace(input.Password)
@@ -479,6 +497,7 @@ func (uc *AuthSessionManager) Login(ctx context.Context, input LoginInput) (Logi
 	}, nil
 }
 
+// Logout 封装当前模块的业务处理逻辑。
 func (uc *AuthSessionManager) Logout(ctx context.Context, token string) error {
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -493,6 +512,7 @@ func (uc *AuthSessionManager) Logout(ctx context.Context, token string) error {
 	return nil
 }
 
+// ResolveUserByToken 解析上下文数据，得到后续流程需要的结果。
 func (uc *AuthSessionManager) ResolveUserByToken(ctx context.Context, token string) (userdomain.User, userdomain.UserSession, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -547,6 +567,7 @@ func (uc *AuthSessionManager) ResolveUserByToken(ctx context.Context, token stri
 	return user, session, nil
 }
 
+// ListEffectivePermissions 查询并返回列表数据。
 func (uc *AuthSessionManager) ListEffectivePermissions(ctx context.Context, user userdomain.User) ([]userdomain.UserPermission, error) {
 	if user.Role == userdomain.RoleAdmin {
 		return []userdomain.UserPermission{
@@ -568,6 +589,7 @@ func (uc *AuthSessionManager) ListEffectivePermissions(ctx context.Context, user
 	return uc.filterUserPermissionsByCurrentReleaseEnvs(ctx, items)
 }
 
+// HasPermission 封装当前模块的业务处理逻辑。
 func (uc *AuthSessionManager) HasPermission(
 	ctx context.Context,
 	user userdomain.User,
@@ -618,6 +640,7 @@ func (uc *AuthSessionManager) HasPermission(
 	return false, nil
 }
 
+// isReleaseApplicationScopedPermission 封装当前模块的业务处理逻辑。
 func isReleaseApplicationScopedPermission(code string) bool {
 	switch strings.ToLower(strings.TrimSpace(code)) {
 	case "release.view", "release.create", "release.execute", "release.cancel":
@@ -627,6 +650,7 @@ func isReleaseApplicationScopedPermission(code string) bool {
 	}
 }
 
+// filterUserPermissionsByCurrentReleaseEnvs 封装当前模块的业务处理逻辑。
 func (uc *AuthSessionManager) filterUserPermissionsByCurrentReleaseEnvs(
 	ctx context.Context,
 	items []userdomain.UserPermission,
@@ -641,6 +665,7 @@ func (uc *AuthSessionManager) filterUserPermissionsByCurrentReleaseEnvs(
 	return filterUserPermissionsByReleaseEnvOptions(items, normalizeReleaseEnvOptionSet(options)), nil
 }
 
+// normalizeReleaseEnvOptionSet 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeReleaseEnvOptionSet(values []string) map[string]struct{} {
 	normalized := normalizeReleaseEnvOptions(values)
 	if len(normalized) == 0 {
@@ -653,6 +678,7 @@ func normalizeReleaseEnvOptionSet(values []string) map[string]struct{} {
 	return result
 }
 
+// filterUserPermissionsByReleaseEnvOptions 封装当前模块的业务处理逻辑。
 func filterUserPermissionsByReleaseEnvOptions(
 	items []userdomain.UserPermission,
 	validEnvSet map[string]struct{},
@@ -678,6 +704,7 @@ func filterUserPermissionsByReleaseEnvOptions(
 	return result
 }
 
+// matchesReleaseScopedPermission 封装当前模块的业务处理逻辑。
 func matchesReleaseScopedPermission(
 	itemScopeType string,
 	itemScopeValue string,
@@ -729,6 +756,7 @@ func matchesReleaseScopedPermission(
 	}
 }
 
+// parseApplicationEnvScopeValue 解析输入内容并返回结构化结果。
 func parseApplicationEnvScopeValue(value string) (applicationID string, envCode string, ok bool) {
 	text := strings.TrimSpace(value)
 	if text == "" {
@@ -746,6 +774,7 @@ func parseApplicationEnvScopeValue(value string) (applicationID string, envCode 
 	return applicationID, envCode, true
 }
 
+// ResolveParamAccess 解析上下文数据，得到后续流程需要的结果。
 func (uc *AuthSessionManager) ResolveParamAccess(
 	ctx context.Context,
 	user userdomain.User,
@@ -791,11 +820,13 @@ func (uc *AuthSessionManager) ResolveParamAccess(
 	return target.CanView, target.CanEdit, nil
 }
 
+// cleanupExpiredSessions 封装当前模块的业务处理逻辑。
 func (uc *AuthSessionManager) cleanupExpiredSessions(ctx context.Context) error {
 	_, err := uc.repo.DeleteExpiredSessions(ctx, uc.now())
 	return err
 }
 
+// generateSecureToken 封装当前模块的业务处理逻辑。
 func generateSecureToken(size int) (string, error) {
 	if size <= 0 {
 		size = 32
@@ -807,6 +838,7 @@ func generateSecureToken(size int) (string, error) {
 	return strings.ToLower(hex.EncodeToString(buffer)), nil
 }
 
+// suffixToken 封装当前模块的业务处理逻辑。
 func suffixToken(value string) string {
 	value = strings.TrimSpace(value)
 	if len(value) <= 8 {

@@ -7,6 +7,7 @@ import (
 	releasedomain "gos/internal/domain/release"
 )
 
+// TestBuildReleaseOrderVisibilityClauseWithEnvScopes 组装业务执行所需的输入数据。
 func TestBuildReleaseOrderVisibilityClauseWithEnvScopes(t *testing.T) {
 	clause, args := buildReleaseOrderVisibilityClauseWithAlias(
 		"ro",

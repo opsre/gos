@@ -20,6 +20,7 @@ type ListApprovalRecordSummaryInput struct {
 	PageSize                    int
 }
 
+// ListApprovalRecordSummaries 查询并返回列表数据。
 func (uc *ReleaseOrderManager) ListApprovalRecordSummaries(
 	ctx context.Context,
 	input ListApprovalRecordSummaryInput,
@@ -44,6 +45,7 @@ func (uc *ReleaseOrderManager) ListApprovalRecordSummaries(
 	})
 }
 
+// ListApprovalRecords 查询并返回列表数据。
 func (uc *ReleaseOrderManager) ListApprovalRecords(ctx context.Context, orderID string) ([]domain.ReleaseOrderApprovalRecord, error) {
 	orderID = strings.TrimSpace(orderID)
 	if orderID == "" {
@@ -55,6 +57,7 @@ func (uc *ReleaseOrderManager) ListApprovalRecords(ctx context.Context, orderID 
 	return uc.repo.ListApprovalRecords(ctx, orderID)
 }
 
+// SubmitApproval 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) SubmitApproval(
 	ctx context.Context,
 	orderID string,
@@ -117,6 +120,7 @@ func (uc *ReleaseOrderManager) SubmitApproval(
 	return uc.repo.GetByID(ctx, order.ID)
 }
 
+// Approve 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) Approve(
 	ctx context.Context,
 	orderID string,
@@ -203,6 +207,7 @@ func (uc *ReleaseOrderManager) Approve(
 	return uc.repo.GetByID(ctx, order.ID)
 }
 
+// Reject 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) Reject(
 	ctx context.Context,
 	orderID string,
@@ -282,6 +287,7 @@ func (uc *ReleaseOrderManager) Reject(
 	return uc.repo.GetByID(ctx, order.ID)
 }
 
+// approvalAlreadyActed 封装当前模块的业务处理逻辑。
 func approvalAlreadyActed(records []domain.ReleaseOrderApprovalRecord, operatorUserID string, action domain.ReleaseOrderApprovalAction) bool {
 	operatorUserID = strings.TrimSpace(operatorUserID)
 	for _, item := range records {
@@ -295,6 +301,7 @@ func approvalAlreadyActed(records []domain.ReleaseOrderApprovalRecord, operatorU
 	return false
 }
 
+// approvalIncludesUser 封装当前模块的业务处理逻辑。
 func approvalIncludesUser(approverIDs []string, operatorUserID string) bool {
 	operatorUserID = strings.TrimSpace(operatorUserID)
 	if operatorUserID == "" {
@@ -308,6 +315,7 @@ func approvalIncludesUser(approverIDs []string, operatorUserID string) bool {
 	return false
 }
 
+// approvalAllApproversApproved 封装当前模块的业务处理逻辑。
 func approvalAllApproversApproved(
 	records []domain.ReleaseOrderApprovalRecord,
 	approverIDs []string,

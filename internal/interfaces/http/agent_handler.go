@@ -20,10 +20,12 @@ type AgentHandler struct {
 	authz         RequestAuthorizer
 }
 
+// NewAgentHandler 创建并返回对应组件实例。
 func NewAgentHandler(manager *usecase.AgentManager, taskManager *usecase.AgentTaskManager, scriptManager *usecase.AgentScriptManager, authz RequestAuthorizer) *AgentHandler {
 	return &AgentHandler{manager: manager, taskManager: taskManager, scriptManager: scriptManager, authz: authz}
 }
 
+// RegisterPublicRoutes 封装当前模块的业务处理逻辑。
 func (h *AgentHandler) RegisterPublicRoutes(router gin.IRouter) {
 	if h == nil {
 		return
@@ -35,6 +37,7 @@ func (h *AgentHandler) RegisterPublicRoutes(router gin.IRouter) {
 	router.POST("/agent/tasks/:id/finish", h.FinishTask)
 }
 
+// RegisterRoutes 封装当前模块的业务处理逻辑。
 func (h *AgentHandler) RegisterRoutes(router gin.IRouter) {
 	if h == nil {
 		return
@@ -194,6 +197,18 @@ type finishAgentTaskRequest struct {
 	FailureReason string `json:"failure_reason"`
 }
 
+// List 查询资源列表。
+// @Summary      查询资源列表
+// @Description  查询资源列表，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents [get]
 func (h *AgentHandler) List(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.agent.view", "component.agent.manage") {
 		return
@@ -231,6 +246,19 @@ func (h *AgentHandler) List(c *gin.Context) {
 	})
 }
 
+// Get 获取资源详情。
+// @Summary      获取资源详情
+// @Description  获取资源详情，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents/{id} [get]
 func (h *AgentHandler) Get(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.agent.view", "component.agent.manage") {
 		return
@@ -247,6 +275,19 @@ func (h *AgentHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// Create 创建资源。
+// @Summary      创建资源
+// @Description  创建资源，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents [post]
 func (h *AgentHandler) Create(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -276,6 +317,20 @@ func (h *AgentHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// Update 更新资源。
+// @Summary      更新资源
+// @Description  更新资源，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents/{id} [put]
 func (h *AgentHandler) Update(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -305,6 +360,19 @@ func (h *AgentHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// Delete 删除资源。
+// @Summary      删除资源
+// @Description  删除资源，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents/{id} [delete]
 func (h *AgentHandler) Delete(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -320,6 +388,19 @@ func (h *AgentHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// Config 处理Config接口。
+// @Summary      处理Config接口
+// @Description  处理Config接口，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents/{id}/config [get]
 func (h *AgentHandler) Config(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.agent.view", "component.agent.manage") {
 		return
@@ -336,6 +417,18 @@ func (h *AgentHandler) Config(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// BootstrapConfig 处理Bootstrap Config接口。
+// @Summary      处理Bootstrap Config接口
+// @Description  处理Bootstrap Config接口，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents/bootstrap-config [get]
 func (h *AgentHandler) BootstrapConfig(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -352,6 +445,19 @@ func (h *AgentHandler) BootstrapConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// ResetBootstrapToken 重置Bootstrap Token。
+// @Summary      重置Bootstrap Token
+// @Description  重置Bootstrap Token，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents/bootstrap-token/reset [post]
 func (h *AgentHandler) ResetBootstrapToken(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -368,6 +474,20 @@ func (h *AgentHandler) ResetBootstrapToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// ResetToken 重置Token。
+// @Summary      重置Token
+// @Description  重置Token，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents/{id}/reset-token [post]
 func (h *AgentHandler) ResetToken(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -384,6 +504,19 @@ func (h *AgentHandler) ResetToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// ListTasks 查询Tasks列表。
+// @Summary      查询Tasks列表
+// @Description  查询Tasks列表，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents/{id}/tasks [get]
 func (h *AgentHandler) ListTasks(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.agent.view", "component.agent.manage") {
 		return
@@ -415,6 +548,18 @@ func (h *AgentHandler) ListTasks(c *gin.Context) {
 	})
 }
 
+// ListAllTasks 查询All Tasks列表。
+// @Summary      查询All Tasks列表
+// @Description  查询All Tasks列表，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agent-tasks [get]
 func (h *AgentHandler) ListAllTasks(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.agent.view", "component.agent.manage") {
 		return
@@ -446,6 +591,18 @@ func (h *AgentHandler) ListAllTasks(c *gin.Context) {
 	})
 }
 
+// ListScripts 查询Scripts列表。
+// @Summary      查询Scripts列表
+// @Description  查询Scripts列表，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agent-scripts [get]
 func (h *AgentHandler) ListScripts(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.agent.view", "component.agent.manage") {
 		return
@@ -482,6 +639,19 @@ func (h *AgentHandler) ListScripts(c *gin.Context) {
 	})
 }
 
+// GetScript 获取Script详情。
+// @Summary      获取Script详情
+// @Description  获取Script详情，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agent-scripts/{id} [get]
 func (h *AgentHandler) GetScript(c *gin.Context) {
 	if !ensureAnyPermission(c, h.authz, "component.agent.view", "component.agent.manage") {
 		return
@@ -498,6 +668,20 @@ func (h *AgentHandler) GetScript(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// CreateTask 创建Task。
+// @Summary      创建Task
+// @Description  创建Task，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents/{id}/tasks [post]
 func (h *AgentHandler) CreateTask(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -543,6 +727,19 @@ func (h *AgentHandler) CreateTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// CreateUnassignedTask 创建Unassigned Task。
+// @Summary      创建Unassigned Task
+// @Description  创建Unassigned Task，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agent-tasks [post]
 func (h *AgentHandler) CreateUnassignedTask(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -587,6 +784,21 @@ func (h *AgentHandler) CreateUnassignedTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// UpdateTask 更新Task。
+// @Summary      更新Task
+// @Description  更新Task，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Param        taskID  path  string  true  "任务 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents/{id}/tasks/{taskID} [put]
 func (h *AgentHandler) UpdateTask(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -616,6 +828,21 @@ func (h *AgentHandler) UpdateTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// ExecuteTask 执行Task。
+// @Summary      执行Task
+// @Description  执行Task，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Param        taskID  path  string  true  "任务 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents/{id}/tasks/{taskID}/execute [post]
 func (h *AgentHandler) ExecuteTask(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -634,6 +861,20 @@ func (h *AgentHandler) ExecuteTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// ExecuteStandaloneTask 执行Standalone Task。
+// @Summary      执行Standalone Task
+// @Description  执行Standalone Task，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Param        taskID  path  string  true  "任务 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agent-tasks/{taskID}/execute [post]
 func (h *AgentHandler) ExecuteStandaloneTask(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -650,6 +891,21 @@ func (h *AgentHandler) ExecuteStandaloneTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// StopTask 停止Task。
+// @Summary      停止Task
+// @Description  停止Task，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Param        taskID  path  string  true  "任务 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents/{id}/tasks/{taskID}/stop [post]
 func (h *AgentHandler) StopTask(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -668,6 +924,21 @@ func (h *AgentHandler) StopTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// ResumeTask 恢复Task。
+// @Summary      恢复Task
+// @Description  恢复Task，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Param        taskID  path  string  true  "任务 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents/{id}/tasks/{taskID}/resume [post]
 func (h *AgentHandler) ResumeTask(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -686,6 +957,20 @@ func (h *AgentHandler) ResumeTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// DeleteTask 删除Task。
+// @Summary      删除Task
+// @Description  删除Task，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Param        taskID  path  string  true  "任务 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents/{id}/tasks/{taskID} [delete]
 func (h *AgentHandler) DeleteTask(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -703,6 +988,20 @@ func (h *AgentHandler) DeleteTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// UpdateTemporaryTask 更新Temporary Task。
+// @Summary      更新Temporary Task
+// @Description  更新Temporary Task，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Param        taskID  path  string  true  "任务 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agent-tasks/{taskID} [put]
 func (h *AgentHandler) UpdateTemporaryTask(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -732,6 +1031,19 @@ func (h *AgentHandler) UpdateTemporaryTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// DeleteTemporaryTask 删除Temporary Task。
+// @Summary      删除Temporary Task
+// @Description  删除Temporary Task，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Produce      json
+// @Param        taskID  path  string  true  "任务 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agent-tasks/{taskID} [delete]
 func (h *AgentHandler) DeleteTemporaryTask(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -747,6 +1059,20 @@ func (h *AgentHandler) DeleteTemporaryTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// UpdateResidentTask 更新Resident Task。
+// @Summary      更新Resident Task
+// @Description  更新Resident Task，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Param        taskID  path  string  true  "任务 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /resident-tasks/{taskID} [put]
 func (h *AgentHandler) UpdateResidentTask(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -775,6 +1101,19 @@ func (h *AgentHandler) UpdateResidentTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// DeleteResidentTask 删除Resident Task。
+// @Summary      删除Resident Task
+// @Description  删除Resident Task，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Produce      json
+// @Param        taskID  path  string  true  "任务 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /resident-tasks/{taskID} [delete]
 func (h *AgentHandler) DeleteResidentTask(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -790,6 +1129,19 @@ func (h *AgentHandler) DeleteResidentTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// CreateScript 创建Script。
+// @Summary      创建Script
+// @Description  创建Script，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agent-scripts [post]
 func (h *AgentHandler) CreateScript(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -829,6 +1181,20 @@ func (h *AgentHandler) CreateScript(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// UpdateScript 更新Script。
+// @Summary      更新Script
+// @Description  更新Script，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agent-scripts/{id} [put]
 func (h *AgentHandler) UpdateScript(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -868,6 +1234,19 @@ func (h *AgentHandler) UpdateScript(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// DeleteScript 删除Script。
+// @Summary      删除Script
+// @Description  删除Script，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agent-scripts/{id} [delete]
 func (h *AgentHandler) DeleteScript(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -883,6 +1262,19 @@ func (h *AgentHandler) DeleteScript(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// PollTask 处理Poll Task接口。
+// @Summary      处理Poll Task接口
+// @Description  处理Poll Task接口，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agent/tasks/poll [post]
 func (h *AgentHandler) PollTask(c *gin.Context) {
 	if h.taskManager == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "agent task manager is not configured"})
@@ -904,6 +1296,20 @@ func (h *AgentHandler) PollTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// StartTask 启动Task。
+// @Summary      启动Task
+// @Description  启动Task，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agent/tasks/{id}/start [post]
 func (h *AgentHandler) StartTask(c *gin.Context) {
 	if h.taskManager == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "agent task manager is not configured"})
@@ -922,6 +1328,20 @@ func (h *AgentHandler) StartTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// FinishTask 完成Task。
+// @Summary      完成Task
+// @Description  完成Task，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agent/tasks/{id}/finish [post]
 func (h *AgentHandler) FinishTask(c *gin.Context) {
 	if h.taskManager == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "agent task manager is not configured"})
@@ -949,18 +1369,61 @@ func (h *AgentHandler) FinishTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// Enable 处理Enable接口。
+// @Summary      处理Enable接口
+// @Description  处理Enable接口，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents/{id}/enable [post]
 func (h *AgentHandler) Enable(c *gin.Context) {
 	h.updateStatus(c, agentdomain.StatusActive)
 }
 
+// Disable 处理Disable接口。
+// @Summary      处理Disable接口
+// @Description  处理Disable接口，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents/{id}/disable [post]
 func (h *AgentHandler) Disable(c *gin.Context) {
 	h.updateStatus(c, agentdomain.StatusDisabled)
 }
 
+// Maintenance 处理Maintenance接口。
+// @Summary      处理Maintenance接口
+// @Description  处理Maintenance接口，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agents/{id}/maintenance [post]
 func (h *AgentHandler) Maintenance(c *gin.Context) {
 	h.updateStatus(c, agentdomain.StatusMaintenance)
 }
 
+// updateStatus 更新业务资源并返回处理结果。
 func (h *AgentHandler) updateStatus(c *gin.Context, status agentdomain.Status) {
 	if !ensurePermission(c, h.authz, "component.agent.manage", "", "") {
 		return
@@ -977,6 +1440,19 @@ func (h *AgentHandler) updateStatus(c *gin.Context, status agentdomain.Status) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// Heartbeat 处理Heartbeat接口。
+// @Summary      处理Heartbeat接口
+// @Description  处理Heartbeat接口，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agent/heartbeat [post]
 func (h *AgentHandler) Heartbeat(c *gin.Context) {
 	if h.manager == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "agent manager is not configured"})
@@ -1012,6 +1488,19 @@ func (h *AgentHandler) Heartbeat(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// Register 处理Register接口。
+// @Summary      处理Register接口
+// @Description  处理Register接口，并按统一响应结构返回处理结果。
+// @Tags         agents
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /agent/register [post]
 func (h *AgentHandler) Register(c *gin.Context) {
 	if h.manager == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "agent manager is not configured"})
@@ -1042,6 +1531,7 @@ func (h *AgentHandler) Register(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
+// parseOptionalTime 解析输入内容并返回结构化结果。
 func parseOptionalTime(raw string) *time.Time {
 	text := strings.TrimSpace(raw)
 	if text == "" {
@@ -1055,6 +1545,7 @@ func parseOptionalTime(raw string) *time.Time {
 	return &value
 }
 
+// writeAgentHTTPError 写入处理结果或错误信息。
 func writeAgentHTTPError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrInvalidInput), errors.Is(err, usecase.ErrInvalidID), errors.Is(err, usecase.ErrInvalidStatus):
@@ -1074,6 +1565,7 @@ func writeAgentHTTPError(c *gin.Context, err error) {
 	}
 }
 
+// resolveAgentBaseURL 解析上下文数据，得到后续流程需要的结果。
 func resolveAgentBaseURL(c *gin.Context) string {
 	if c == nil || c.Request == nil {
 		return "http://127.0.0.1:8081"

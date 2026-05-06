@@ -9,6 +9,7 @@ const (
 	PipelineScopeCD PipelineScope = "cd"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s PipelineScope) Valid() bool {
 	switch s {
 	case PipelineScopeCI, PipelineScopeCD:
@@ -26,6 +27,7 @@ const (
 	StepScopeCD     StepScope = "cd"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s StepScope) Valid() bool {
 	switch s {
 	case StepScopeGlobal, StepScopeCI, StepScopeCD:
@@ -43,6 +45,7 @@ const (
 	TriggerTypeSchedule TriggerType = "schedule"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (t TriggerType) Valid() bool {
 	switch t {
 	case TriggerTypeManual, TriggerTypeWebhook, TriggerTypeSchedule:
@@ -60,6 +63,7 @@ const (
 	OperationTypeReplay   OperationType = "replay"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (t OperationType) Valid() bool {
 	switch t {
 	case OperationTypeDeploy, OperationTypeRollback, OperationTypeReplay:
@@ -87,6 +91,7 @@ const (
 	ReleaseBusinessStatusCancelled          ReleaseBusinessStatus = "cancelled"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s ReleaseBusinessStatus) Valid() bool {
 	switch s {
 	case ReleaseBusinessStatusDraft,
@@ -129,6 +134,7 @@ const (
 	OrderStatusDeployFailed       OrderStatus = "deploy_failed"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s OrderStatus) Valid() bool {
 	switch s {
 	case OrderStatusPending,
@@ -153,6 +159,7 @@ func (s OrderStatus) Valid() bool {
 	}
 }
 
+// IsTerminal 封装当前模块的业务处理逻辑。
 func (s OrderStatus) IsTerminal() bool {
 	switch s {
 	case OrderStatusSuccess,
@@ -178,6 +185,7 @@ const (
 	ExecutionStatusSkipped   ExecutionStatus = "skipped"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s ExecutionStatus) Valid() bool {
 	switch s {
 	case ExecutionStatusPending,
@@ -192,6 +200,7 @@ func (s ExecutionStatus) Valid() bool {
 	}
 }
 
+// IsTerminal 封装当前模块的业务处理逻辑。
 func (s ExecutionStatus) IsTerminal() bool {
 	switch s {
 	case ExecutionStatusSuccess, ExecutionStatusFailed, ExecutionStatusCancelled, ExecutionStatusSkipped:
@@ -210,6 +219,7 @@ const (
 	StepStatusFailed  StepStatus = "failed"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s StepStatus) Valid() bool {
 	switch s {
 	case StepStatusPending, StepStatusRunning, StepStatusSuccess, StepStatusFailed:
@@ -230,6 +240,7 @@ const (
 	ValueSourceBuiltin      ValueSource = "builtin"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s ValueSource) Valid() bool {
 	switch s {
 	case ValueSourceApplication, ValueSourceEnvironment, ValueSourceReleaseInput, ValueSourceFixed, ValueSourceCIParam, ValueSourceBuiltin:
@@ -242,12 +253,14 @@ func (s ValueSource) Valid() bool {
 type ReleaseOrder struct {
 	ID                    string
 	OrderNo               string
+	ReleaseName           string
 	PreviousOrderNo       string
 	OperationType         OperationType
 	SourceOrderID         string
 	SourceOrderNo         string
 	IsConcurrent          bool
 	ConcurrentBatchNo     string
+	ConcurrentBatchName   string
 	ConcurrentBatchSeq    int
 	CDProvider            string
 	HasCIExecution        bool
@@ -287,6 +300,118 @@ type ReleaseOrder struct {
 	UpdatedAt             time.Time
 }
 
+type ScheduleMode string
+
+const (
+	ScheduleModeBuild       ScheduleMode = "build"
+	ScheduleModeDeploy      ScheduleMode = "deploy"
+	ScheduleModeBuildDeploy ScheduleMode = "build_deploy"
+	ScheduleModeExecute     ScheduleMode = "execute"
+)
+
+func (s ScheduleMode) Valid() bool {
+	switch s {
+	case ScheduleModeBuild, ScheduleModeDeploy, ScheduleModeBuildDeploy, ScheduleModeExecute:
+		return true
+	default:
+		return false
+	}
+}
+
+type ScheduleStatus string
+
+const (
+	ScheduleStatusPendingApproval ScheduleStatus = "pending_approval"
+	ScheduleStatusApproving       ScheduleStatus = "approving"
+	ScheduleStatusScheduled       ScheduleStatus = "scheduled"
+	ScheduleStatusDispatching     ScheduleStatus = "dispatching"
+	ScheduleStatusDispatched      ScheduleStatus = "dispatched"
+	ScheduleStatusExpired         ScheduleStatus = "expired"
+	ScheduleStatusBlocked         ScheduleStatus = "blocked"
+	ScheduleStatusFailed          ScheduleStatus = "failed"
+	ScheduleStatusSkipped         ScheduleStatus = "skipped"
+	ScheduleStatusCancelled       ScheduleStatus = "cancelled"
+	ScheduleStatusRejected        ScheduleStatus = "rejected"
+)
+
+func (s ScheduleStatus) Valid() bool {
+	switch s {
+	case ScheduleStatusPendingApproval,
+		ScheduleStatusApproving,
+		ScheduleStatusScheduled,
+		ScheduleStatusDispatching,
+		ScheduleStatusDispatched,
+		ScheduleStatusExpired,
+		ScheduleStatusBlocked,
+		ScheduleStatusFailed,
+		ScheduleStatusSkipped,
+		ScheduleStatusCancelled,
+		ScheduleStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s ScheduleStatus) IsActive() bool {
+	switch s {
+	case ScheduleStatusPendingApproval, ScheduleStatusApproving, ScheduleStatusScheduled, ScheduleStatusDispatching:
+		return true
+	default:
+		return false
+	}
+}
+
+type ReleaseOrderSchedule struct {
+	ID                    string
+	ScheduleNo            string
+	ReleaseOrderID        string
+	ReleaseOrderNo        string
+	ApplicationID         string
+	ApplicationName       string
+	EnvCode               string
+	TemplateID            string
+	TemplateName          string
+	ScheduleMode          ScheduleMode
+	BuildScheduledAt      *time.Time
+	DeployScheduledAt     *time.Time
+	ExecuteScheduledAt    *time.Time
+	CDConflictAt          *time.Time
+	Timezone              string
+	Status                ScheduleStatus
+	ApprovalRequired      bool
+	ApprovalMode          TemplateApprovalMode
+	ApprovalApproverIDs   []string
+	ApprovalApproverNames []string
+	ApprovedAt            *time.Time
+	ApprovedBy            string
+	RejectedAt            *time.Time
+	RejectedBy            string
+	RejectedReason        string
+	BuildDispatchedAt     *time.Time
+	DeployDispatchedAt    *time.Time
+	ExecuteDispatchedAt   *time.Time
+	ExpiredAt             *time.Time
+	CancelledAt           *time.Time
+	CancelledBy           string
+	LastError             string
+	Remark                string
+	CreatorUserID         string
+	CreatorName           string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+}
+
+type ReleaseOrderScheduleApprovalRecord struct {
+	ID             string
+	ScheduleID     string
+	Action         ReleaseOrderApprovalAction
+	OperatorUserID string
+	OperatorName   string
+	Comment        string
+	CreatedAt      time.Time
+}
+
 type DeploySnapshot struct {
 	ID               string
 	ReleaseOrderID   string
@@ -311,6 +436,7 @@ const (
 	AppReleaseStateStatusSuperseded     AppReleaseStateStatus = "superseded"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s AppReleaseStateStatus) Valid() bool {
 	switch s {
 	case AppReleaseStateStatusPendingConfirm, AppReleaseStateStatusActive, AppReleaseStateStatusSuperseded:
@@ -321,32 +447,32 @@ func (s AppReleaseStateStatus) Valid() bool {
 }
 
 type AppReleaseState struct {
-	ID                 string
-	ReleaseOrderID     string
-	ReleaseOrderNo     string
-	ApplicationID      string
-	ApplicationName    string
-	EnvCode            string
-	OperationType      OperationType
-	TemplateID         string
-	TemplateName       string
-	CDProvider         string
-	GitOpsType         GitOpsType
-	HasCIExecution     bool
-	HasCDExecution     bool
-	GitRef             string
-	ImageTag           string
-	StateStatus        AppReleaseStateStatus
-	IsCurrentLive      bool
-	PreviousStateID    string
-	ConfirmedAt        *time.Time
-	ConfirmedBy        string
-	ParamsSnapshotJSON string
+	ID                    string
+	ReleaseOrderID        string
+	ReleaseOrderNo        string
+	ApplicationID         string
+	ApplicationName       string
+	EnvCode               string
+	OperationType         OperationType
+	TemplateID            string
+	TemplateName          string
+	CDProvider            string
+	GitOpsType            GitOpsType
+	HasCIExecution        bool
+	HasCDExecution        bool
+	GitRef                string
+	ImageTag              string
+	StateStatus           AppReleaseStateStatus
+	IsCurrentLive         bool
+	PreviousStateID       string
+	ConfirmedAt           *time.Time
+	ConfirmedBy           string
+	ParamsSnapshotJSON    string
 	ExecutionSnapshotJSON string
-	DeploySnapshotJSON string
-	ResultSnapshotJSON string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	DeploySnapshotJSON    string
+	ResultSnapshotJSON    string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 type AppReleaseStateSummary struct {
@@ -404,6 +530,7 @@ const (
 	ExecutionLockScopeGitOpsRepoBranch ExecutionLockScope = "gitops_repo_branch"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s ExecutionLockScope) Valid() bool {
 	switch s {
 	case ExecutionLockScopeApplication, ExecutionLockScopeApplicationEnv, ExecutionLockScopeGitOpsRepoBranch:
@@ -421,6 +548,7 @@ const (
 	ExecutionLockStatusExpired  ExecutionLockStatus = "expired"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s ExecutionLockStatus) Valid() bool {
 	switch s {
 	case ExecutionLockStatusActive, ExecutionLockStatusReleased, ExecutionLockStatusExpired:
@@ -475,6 +603,7 @@ const (
 	PipelineStageStatusSkipped   PipelineStageStatus = "skipped"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s PipelineStageStatus) Valid() bool {
 	switch s {
 	case PipelineStageStatusPending,
@@ -526,6 +655,7 @@ const (
 	TemplateStatusInactive TemplateStatus = "inactive"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s TemplateStatus) Valid() bool {
 	switch s {
 	case TemplateStatusActive, TemplateStatusInactive:
@@ -562,6 +692,7 @@ const (
 	TemplateApprovalModeAll TemplateApprovalMode = "all"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s TemplateApprovalMode) Valid() bool {
 	switch s {
 	case "", TemplateApprovalModeAny, TemplateApprovalModeAll:
@@ -616,6 +747,7 @@ const (
 	TemplateParamValueSourceBuiltin      TemplateParamValueSource = "builtin"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s TemplateParamValueSource) Valid() bool {
 	switch s {
 	case TemplateParamValueSourceReleaseInput, TemplateParamValueSourceFixed, TemplateParamValueSourceCIParam, TemplateParamValueSourceBuiltin:
@@ -633,6 +765,7 @@ const (
 	GitOpsRuleSourceCDInput GitOpsRuleSourceFrom = "cd_input"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s GitOpsRuleSourceFrom) Valid() bool {
 	switch s {
 	case GitOpsRuleSourceCI, GitOpsRuleSourceBuiltin, GitOpsRuleSourceCDInput:
@@ -649,6 +782,7 @@ const (
 	GitOpsTypeHelm      GitOpsType = "helm"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s GitOpsType) Valid() bool {
 	switch s {
 	case "", GitOpsTypeKustomize, GitOpsTypeHelm:
@@ -691,6 +825,7 @@ const (
 	TemplateHookTypeWebhookNotification TemplateHookType = "webhook_notification"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s TemplateHookType) Valid() bool {
 	switch s {
 	case TemplateHookTypeAgentTask, TemplateHookTypeNotificationHook, TemplateHookTypeWebhookNotification:
@@ -708,6 +843,7 @@ const (
 	TemplateHookTriggerAlways    TemplateHookTriggerCondition = "always"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s TemplateHookTriggerCondition) Valid() bool {
 	switch s {
 	case TemplateHookTriggerOnSuccess, TemplateHookTriggerOnFailed, TemplateHookTriggerAlways:
@@ -724,6 +860,7 @@ const (
 	TemplateHookExecuteStageBuildComplete TemplateHookExecuteStage = "build_complete"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s TemplateHookExecuteStage) Valid() bool {
 	switch s {
 	case TemplateHookExecuteStagePostRelease, TemplateHookExecuteStageBuildComplete:
@@ -733,6 +870,7 @@ func (s TemplateHookExecuteStage) Valid() bool {
 	}
 }
 
+// NormalizeTemplateHookExecuteStages 标准化输入值，保证后续逻辑使用统一格式。
 func NormalizeTemplateHookExecuteStages(stages []TemplateHookExecuteStage, legacy TemplateHookExecuteStage) []TemplateHookExecuteStage {
 	result := make([]TemplateHookExecuteStage, 0, len(stages))
 	seen := make(map[TemplateHookExecuteStage]struct{}, len(stages))
@@ -755,6 +893,7 @@ func NormalizeTemplateHookExecuteStages(stages []TemplateHookExecuteStage, legac
 	return []TemplateHookExecuteStage{TemplateHookExecuteStagePostRelease}
 }
 
+// PrimaryTemplateHookExecuteStage 封装当前模块的业务处理逻辑。
 func PrimaryTemplateHookExecuteStage(stages []TemplateHookExecuteStage, legacy TemplateHookExecuteStage) TemplateHookExecuteStage {
 	normalized := NormalizeTemplateHookExecuteStages(stages, legacy)
 	if len(normalized) == 0 {
@@ -763,6 +902,7 @@ func PrimaryTemplateHookExecuteStage(stages []TemplateHookExecuteStage, legacy T
 	return normalized[0]
 }
 
+// TemplateHookHasExecuteStage 封装当前模块的业务处理逻辑。
 func TemplateHookHasExecuteStage(stages []TemplateHookExecuteStage, legacy TemplateHookExecuteStage, target TemplateHookExecuteStage) bool {
 	for _, item := range NormalizeTemplateHookExecuteStages(stages, legacy) {
 		if item == target {
@@ -779,6 +919,7 @@ const (
 	TemplateHookFailurePolicyWarnOnly     TemplateHookFailurePolicy = "warn_only"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s TemplateHookFailurePolicy) Valid() bool {
 	switch s {
 	case TemplateHookFailurePolicyBlockRelease, TemplateHookFailurePolicyWarnOnly:
@@ -817,6 +958,7 @@ const (
 	ReleaseOrderApprovalActionReject  ReleaseOrderApprovalAction = "reject"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s ReleaseOrderApprovalAction) Valid() bool {
 	switch s {
 	case ReleaseOrderApprovalActionSubmit, ReleaseOrderApprovalActionApprove, ReleaseOrderApprovalActionReject:

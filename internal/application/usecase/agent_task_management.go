@@ -113,10 +113,12 @@ type FinishAgentTaskInput struct {
 	FailureReason string
 }
 
+// NewAgentTaskManager 创建并返回对应组件实例。
 func NewAgentTaskManager(repo agentdomain.Repository) *AgentTaskManager {
 	return &AgentTaskManager{repo: repo, now: func() time.Time { return time.Now().UTC() }}
 }
 
+// Create 创建业务资源并返回处理结果。
 func (uc *AgentTaskManager) Create(ctx context.Context, input CreateAgentTaskInput) (AgentTaskOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentTaskOutput{}, fmt.Errorf("%w: agent task manager is not configured", ErrInvalidInput)
@@ -199,6 +201,7 @@ func (uc *AgentTaskManager) Create(ctx context.Context, input CreateAgentTaskInp
 	return toAgentTaskOutput(created), nil
 }
 
+// List 查询并返回列表数据。
 func (uc *AgentTaskManager) List(ctx context.Context, page, pageSize int) (AgentTaskListOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentTaskListOutput{}, fmt.Errorf("%w: agent task manager is not configured", ErrInvalidInput)
@@ -221,6 +224,7 @@ func (uc *AgentTaskManager) List(ctx context.Context, page, pageSize int) (Agent
 	return AgentTaskListOutput{Items: outputs, Total: total}, nil
 }
 
+// Update 更新业务资源并返回处理结果。
 func (uc *AgentTaskManager) Update(ctx context.Context, taskID string, input UpdateAgentTaskInput) (AgentTaskOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentTaskOutput{}, fmt.Errorf("%w: agent task manager is not configured", ErrInvalidInput)
@@ -276,6 +280,7 @@ func (uc *AgentTaskManager) Update(ctx context.Context, taskID string, input Upd
 	return toAgentTaskOutput(updated), nil
 }
 
+// ListByAgent 查询并返回列表数据。
 func (uc *AgentTaskManager) ListByAgent(ctx context.Context, agentID string, page, pageSize int) (AgentTaskListOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentTaskListOutput{}, fmt.Errorf("%w: agent task manager is not configured", ErrInvalidInput)
@@ -299,6 +304,7 @@ func (uc *AgentTaskManager) ListByAgent(ctx context.Context, agentID string, pag
 	return AgentTaskListOutput{Items: outputs, Total: total}, nil
 }
 
+// Get 查询并返回指定资源数据。
 func (uc *AgentTaskManager) Get(ctx context.Context, taskID string) (AgentTaskOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentTaskOutput{}, fmt.Errorf("%w: agent task manager is not configured", ErrInvalidInput)
@@ -314,6 +320,7 @@ func (uc *AgentTaskManager) Get(ctx context.Context, taskID string) (AgentTaskOu
 	return toAgentTaskOutput(item), nil
 }
 
+// Stop 封装当前模块的业务处理逻辑。
 func (uc *AgentTaskManager) Stop(ctx context.Context, taskID string, input StopAgentTaskInput) (AgentTaskOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentTaskOutput{}, fmt.Errorf("%w: agent task manager is not configured", ErrInvalidInput)
@@ -338,6 +345,7 @@ func (uc *AgentTaskManager) Stop(ctx context.Context, taskID string, input StopA
 	return toAgentTaskOutput(updated), nil
 }
 
+// Resume 封装当前模块的业务处理逻辑。
 func (uc *AgentTaskManager) Resume(ctx context.Context, taskID string, input ResumeAgentTaskInput) (AgentTaskOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentTaskOutput{}, fmt.Errorf("%w: agent task manager is not configured", ErrInvalidInput)
@@ -370,6 +378,7 @@ func (uc *AgentTaskManager) Resume(ctx context.Context, taskID string, input Res
 	return toAgentTaskOutput(updated), nil
 }
 
+// Execute 封装当前模块的业务处理逻辑。
 func (uc *AgentTaskManager) Execute(ctx context.Context, taskID string, input ExecuteAgentTaskInput) (AgentTaskOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentTaskOutput{}, fmt.Errorf("%w: agent task manager is not configured", ErrInvalidInput)
@@ -419,6 +428,7 @@ func (uc *AgentTaskManager) Execute(ctx context.Context, taskID string, input Ex
 	return toAgentTaskOutput(updated), nil
 }
 
+// Delete 删除业务资源并返回处理结果。
 func (uc *AgentTaskManager) Delete(ctx context.Context, taskID string, input StopAgentTaskInput) error {
 	if uc == nil || uc.repo == nil {
 		return fmt.Errorf("%w: agent task manager is not configured", ErrInvalidInput)
@@ -439,6 +449,7 @@ func (uc *AgentTaskManager) Delete(ctx context.Context, taskID string, input Sto
 	return uc.repo.DeleteTask(ctx, current.ID)
 }
 
+// UpdateTemporaryTask 更新业务资源并返回处理结果。
 func (uc *AgentTaskManager) UpdateTemporaryTask(ctx context.Context, taskID string, input UpdateAgentTaskInput) (AgentTaskOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentTaskOutput{}, fmt.Errorf("%w: agent task manager is not configured", ErrInvalidInput)
@@ -497,6 +508,7 @@ func (uc *AgentTaskManager) UpdateTemporaryTask(ctx context.Context, taskID stri
 	return toAgentTaskOutput(updated), nil
 }
 
+// DeleteTemporaryTask 删除业务资源并返回处理结果。
 func (uc *AgentTaskManager) DeleteTemporaryTask(ctx context.Context, taskID string) error {
 	if uc == nil || uc.repo == nil {
 		return fmt.Errorf("%w: agent task manager is not configured", ErrInvalidInput)
@@ -515,6 +527,7 @@ func (uc *AgentTaskManager) DeleteTemporaryTask(ctx context.Context, taskID stri
 	return uc.repo.DeleteTask(ctx, current.ID)
 }
 
+// UpdateResidentTask 更新业务资源并返回处理结果。
 func (uc *AgentTaskManager) UpdateResidentTask(ctx context.Context, taskID string, input UpdateAgentTaskInput) (AgentTaskOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentTaskOutput{}, fmt.Errorf("%w: agent task manager is not configured", ErrInvalidInput)
@@ -566,6 +579,7 @@ func (uc *AgentTaskManager) UpdateResidentTask(ctx context.Context, taskID strin
 	return toAgentTaskOutput(updated), nil
 }
 
+// DeleteResidentTask 删除业务资源并返回处理结果。
 func (uc *AgentTaskManager) DeleteResidentTask(ctx context.Context, taskID string) error {
 	if uc == nil || uc.repo == nil {
 		return fmt.Errorf("%w: agent task manager is not configured", ErrInvalidInput)
@@ -583,6 +597,7 @@ func (uc *AgentTaskManager) DeleteResidentTask(ctx context.Context, taskID strin
 	return uc.repo.DeleteTask(ctx, current.ID)
 }
 
+// Poll 封装当前模块的业务处理逻辑。
 func (uc *AgentTaskManager) Poll(ctx context.Context, input AgentTaskPollInput) (*AgentTaskOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return nil, fmt.Errorf("%w: agent task manager is not configured", ErrInvalidInput)
@@ -606,6 +621,7 @@ func (uc *AgentTaskManager) Poll(ctx context.Context, input AgentTaskPollInput) 
 	return &output, nil
 }
 
+// Start 封装当前模块的业务处理逻辑。
 func (uc *AgentTaskManager) Start(ctx context.Context, agentCode, token, taskID string) (AgentTaskOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentTaskOutput{}, fmt.Errorf("%w: agent task manager is not configured", ErrInvalidInput)
@@ -636,6 +652,7 @@ func (uc *AgentTaskManager) Start(ctx context.Context, agentCode, token, taskID 
 	return toAgentTaskOutput(updated), nil
 }
 
+// Finish 封装当前模块的业务处理逻辑。
 func (uc *AgentTaskManager) Finish(ctx context.Context, input FinishAgentTaskInput) (AgentTaskOutput, error) {
 	if uc == nil || uc.repo == nil {
 		return AgentTaskOutput{}, fmt.Errorf("%w: agent task manager is not configured", ErrInvalidInput)
@@ -686,6 +703,7 @@ func (uc *AgentTaskManager) Finish(ctx context.Context, input FinishAgentTaskInp
 	return toAgentTaskOutput(updated), nil
 }
 
+// executeBoundTemporaryTask 封装当前模块的业务处理逻辑。
 func (uc *AgentTaskManager) executeBoundTemporaryTask(ctx context.Context, sourceTask agentdomain.Task) (agentdomain.Task, error) {
 	if uc == nil || uc.repo == nil {
 		return agentdomain.Task{}, fmt.Errorf("%w: agent task manager is not configured", ErrInvalidInput)
@@ -731,6 +749,7 @@ func (uc *AgentTaskManager) executeBoundTemporaryTask(ctx context.Context, sourc
 	return uc.repo.UpdateTask(ctx, sourceTask)
 }
 
+// syncSourceTemporaryTaskState 同步外部或内部状态数据。
 func (uc *AgentTaskManager) syncSourceTemporaryTaskState(ctx context.Context, sourceTaskID string, batchID string) (agentdomain.Task, error) {
 	if uc == nil || uc.repo == nil {
 		return agentdomain.Task{}, fmt.Errorf("%w: agent task manager is not configured", ErrInvalidInput)
@@ -783,6 +802,7 @@ type resolvedTaskScript struct {
 	ScriptText string
 }
 
+// resolveTaskScript 解析上下文数据，得到后续流程需要的结果。
 func (uc *AgentTaskManager) resolveTaskScript(ctx context.Context, scriptID, taskType, shellType, scriptPath, scriptText string) (resolvedTaskScript, error) {
 	scriptID = strings.TrimSpace(scriptID)
 	if scriptID != "" {
@@ -843,6 +863,7 @@ func (uc *AgentTaskManager) resolveTaskScript(ctx context.Context, scriptID, tas
 	}, nil
 }
 
+// authenticateAgent 封装当前模块的业务处理逻辑。
 func (uc *AgentTaskManager) authenticateAgent(ctx context.Context, agentCode, token string) (agentdomain.Instance, error) {
 	agentCode = strings.TrimSpace(agentCode)
 	if agentCode == "" {
@@ -861,6 +882,7 @@ func (uc *AgentTaskManager) authenticateAgent(ctx context.Context, agentCode, to
 	return item, nil
 }
 
+// resolveNewTaskStatus 解析上下文数据，得到后续流程需要的结果。
 func (uc *AgentTaskManager) resolveNewTaskStatus(ctx context.Context, agentID, excludeTaskID string) (agentdomain.TaskStatus, error) {
 	agentID = strings.TrimSpace(agentID)
 	if agentID == "" {
@@ -885,6 +907,7 @@ func (uc *AgentTaskManager) resolveNewTaskStatus(ctx context.Context, agentID, e
 	return agentdomain.TaskStatusPending, nil
 }
 
+// toAgentTaskOutput 将领域对象转换为接口响应结构。
 func toAgentTaskOutput(item agentdomain.Task) AgentTaskOutput {
 	variables := make(map[string]string, len(item.Variables))
 	targetAgentIDs := make([]string, 0, len(item.TargetAgentIDs))
@@ -934,6 +957,7 @@ func toAgentTaskOutput(item agentdomain.Task) AgentTaskOutput {
 	}
 }
 
+// normalizeTaskVariables 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeTaskVariables(items map[string]string) map[string]string {
 	if len(items) == 0 {
 		return map[string]string{}
@@ -949,6 +973,7 @@ func normalizeTaskVariables(items map[string]string) map[string]string {
 	return result
 }
 
+// trimAgentTaskOutput 封装当前模块的业务处理逻辑。
 func trimAgentTaskOutput(value string) string {
 	value = strings.TrimSpace(value)
 	if len(value) <= 65535 {
@@ -957,6 +982,7 @@ func trimAgentTaskOutput(value string) string {
 	return value[:65535]
 }
 
+// isSupportedScriptFile 封装当前模块的业务处理逻辑。
 func isSupportedScriptFile(path string) bool {
 	switch strings.ToLower(filepath.Ext(strings.TrimSpace(path))) {
 	case ".sh", ".bash":
@@ -966,6 +992,7 @@ func isSupportedScriptFile(path string) bool {
 	}
 }
 
+// buildRunningRuntimeTaskPayload 组装业务执行所需的输入数据。
 func buildRunningRuntimeTaskPayload(task agentdomain.Task) agentdomain.RuntimeTaskPayload {
 	return agentdomain.RuntimeTaskPayload{
 		CurrentTaskID:      strings.TrimSpace(task.ID),
@@ -978,6 +1005,7 @@ func buildRunningRuntimeTaskPayload(task agentdomain.Task) agentdomain.RuntimeTa
 	}
 }
 
+// buildFinishedRuntimeTaskPayload 组装业务执行所需的输入数据。
 func buildFinishedRuntimeTaskPayload(task agentdomain.Task) agentdomain.RuntimeTaskPayload {
 	return agentdomain.RuntimeTaskPayload{
 		CurrentTaskID:      "",
@@ -990,6 +1018,7 @@ func buildFinishedRuntimeTaskPayload(task agentdomain.Task) agentdomain.RuntimeT
 	}
 }
 
+// runtimeLastTaskStatus 封装当前模块的业务处理逻辑。
 func runtimeLastTaskStatus(status agentdomain.TaskStatus) agentdomain.LastTaskStatus {
 	switch status {
 	case agentdomain.TaskStatusRunning:

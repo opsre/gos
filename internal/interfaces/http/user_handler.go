@@ -17,6 +17,7 @@ type UserHandler struct {
 	authz RequestAuthorizer
 }
 
+// NewUserHandler 创建并返回对应组件实例。
 func NewUserHandler(users *usecase.UserManagement, authz RequestAuthorizer) *UserHandler {
 	return &UserHandler{
 		users: users,
@@ -24,6 +25,7 @@ func NewUserHandler(users *usecase.UserManagement, authz RequestAuthorizer) *Use
 	}
 }
 
+// RegisterRoutes 封装当前模块的业务处理逻辑。
 func (h *UserHandler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/users", h.ListUsers)
 	router.GET("/users/options", h.ListUserOptions)
@@ -161,6 +163,18 @@ type UserParamPermissionListResponse struct {
 	Data []UserParamPermissionResponse `json:"data"`
 }
 
+// ListUsers 查询Users列表。
+// @Summary      查询Users列表
+// @Description  查询Users列表，并按统一响应结构返回处理结果。
+// @Tags         users
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /users [get]
 func (h *UserHandler) ListUsers(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "system.user.manage", "", "") {
 		return
@@ -200,6 +214,18 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 	})
 }
 
+// ListUserOptions 查询User Options列表。
+// @Summary      查询User Options列表
+// @Description  查询User Options列表，并按统一响应结构返回处理结果。
+// @Tags         users
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /users/options [get]
 func (h *UserHandler) ListUserOptions(c *gin.Context) {
 	if !ensureAnyPermission(
 		c,
@@ -227,6 +253,19 @@ func (h *UserHandler) ListUserOptions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": resp})
 }
 
+// GetUserByID 获取User By ID详情。
+// @Summary      获取User By ID详情
+// @Description  获取User By ID详情，并按统一响应结构返回处理结果。
+// @Tags         users
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /users/{id} [get]
 func (h *UserHandler) GetUserByID(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "system.user.manage", "", "") {
 		return
@@ -239,6 +278,19 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toUserResponse(item)})
 }
 
+// CreateUser 创建User。
+// @Summary      创建User
+// @Description  创建User，并按统一响应结构返回处理结果。
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /users [post]
 func (h *UserHandler) CreateUser(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "system.user.manage", "", "") {
 		return
@@ -264,6 +316,20 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"data": toUserResponse(item)})
 }
 
+// UpdateUser 更新User。
+// @Summary      更新User
+// @Description  更新User，并按统一响应结构返回处理结果。
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /users/{id} [put]
 func (h *UserHandler) UpdateUser(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "system.user.manage", "", "") {
 		return
@@ -288,6 +354,19 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toUserResponse(item)})
 }
 
+// DeleteUser 删除User。
+// @Summary      删除User
+// @Description  删除User，并按统一响应结构返回处理结果。
+// @Tags         users
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /users/{id} [delete]
 func (h *UserHandler) DeleteUser(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "system.user.manage", "", "") {
 		return
@@ -299,6 +378,18 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// ListPermissions 查询Permissions列表。
+// @Summary      查询Permissions列表
+// @Description  查询Permissions列表，并按统一响应结构返回处理结果。
+// @Tags         users
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /permissions [get]
 func (h *UserHandler) ListPermissions(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "system.permission.manage", "", "") {
 		return
@@ -327,6 +418,19 @@ func (h *UserHandler) ListPermissions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": resp})
 }
 
+// ListUserPermissions 查询User Permissions列表。
+// @Summary      查询User Permissions列表
+// @Description  查询User Permissions列表，并按统一响应结构返回处理结果。
+// @Tags         users
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /users/{id}/permissions [get]
 func (h *UserHandler) ListUserPermissions(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "system.permission.manage", "", "") {
 		return
@@ -343,6 +447,20 @@ func (h *UserHandler) ListUserPermissions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": resp})
 }
 
+// GrantUserPermissions 处理Grant User Permissions接口。
+// @Summary      处理Grant User Permissions接口
+// @Description  处理Grant User Permissions接口，并按统一响应结构返回处理结果。
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /users/{id}/permissions [post]
 func (h *UserHandler) GrantUserPermissions(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "system.permission.manage", "", "") {
 		return
@@ -367,6 +485,19 @@ func (h *UserHandler) GrantUserPermissions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"ok": true}})
 }
 
+// RevokeUserPermissions 处理Revoke User Permissions接口。
+// @Summary      处理Revoke User Permissions接口
+// @Description  处理Revoke User Permissions接口，并按统一响应结构返回处理结果。
+// @Tags         users
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /users/{id}/permissions [delete]
 func (h *UserHandler) RevokeUserPermissions(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "system.permission.manage", "", "") {
 		return
@@ -391,6 +522,19 @@ func (h *UserHandler) RevokeUserPermissions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"ok": true}})
 }
 
+// ListUserParamPermissions 查询User Param Permissions列表。
+// @Summary      查询User Param Permissions列表
+// @Description  查询User Param Permissions列表，并按统一响应结构返回处理结果。
+// @Tags         users
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /users/{id}/param-permissions [get]
 func (h *UserHandler) ListUserParamPermissions(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "system.permission.manage", "", "") {
 		return
@@ -407,6 +551,22 @@ func (h *UserHandler) ListUserParamPermissions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": resp})
 }
 
+// UpsertUserParamPermission 处理Upsert User Param Permission接口。
+// @Summary      处理Upsert User Param Permission接口
+// @Description  处理Upsert User Param Permission接口，并按统一响应结构返回处理结果。
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Param        permission_id  path  string  true  "参数权限 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /users/{id}/param-permissions [post]
+// @Router       /users/{id}/param-permissions/{permission_id} [put]
 func (h *UserHandler) UpsertUserParamPermission(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "system.permission.manage", "", "") {
 		return
@@ -432,6 +592,20 @@ func (h *UserHandler) UpsertUserParamPermission(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": toUserParamPermissionResponse(updated)})
 }
 
+// DeleteUserParamPermission 删除User Param Permission。
+// @Summary      删除User Param Permission
+// @Description  删除User Param Permission，并按统一响应结构返回处理结果。
+// @Tags         users
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Param        permission_id  path  string  true  "参数权限 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /users/{id}/param-permissions/{permission_id} [delete]
 func (h *UserHandler) DeleteUserParamPermission(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "system.permission.manage", "", "") {
 		return
@@ -443,6 +617,7 @@ func (h *UserHandler) DeleteUserParamPermission(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// toUserResponse 将领域对象转换为接口响应结构。
 func toUserResponse(item userdomain.User) UserResponse {
 	return UserResponse{
 		ID:          item.ID,
@@ -457,6 +632,7 @@ func toUserResponse(item userdomain.User) UserResponse {
 	}
 }
 
+// toUserPermissionResponse 将领域对象转换为接口响应结构。
 func toUserPermissionResponse(item userdomain.UserPermission) UserPermissionResponse {
 	return UserPermissionResponse{
 		ID:             item.ID,
@@ -470,6 +646,7 @@ func toUserPermissionResponse(item userdomain.UserPermission) UserPermissionResp
 	}
 }
 
+// toUserParamPermissionResponse 将领域对象转换为接口响应结构。
 func toUserParamPermissionResponse(item userdomain.UserParamPermission) UserParamPermissionResponse {
 	return UserParamPermissionResponse{
 		ID:            item.ID,
@@ -483,6 +660,7 @@ func toUserParamPermissionResponse(item userdomain.UserParamPermission) UserPara
 	}
 }
 
+// writeUserHTTPError 写入处理结果或错误信息。
 func writeUserHTTPError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrInvalidInput),

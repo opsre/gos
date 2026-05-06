@@ -14,6 +14,7 @@ type SessionUserResolver interface {
 	ResolveUserByToken(ctx context.Context, token string) (userdomain.User, userdomain.UserSession, error)
 }
 
+// authMiddleware 封装当前模块的业务处理逻辑。
 func authMiddleware(resolver SessionUserResolver) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if isPublicPath(c.Request.URL.Path) {
@@ -50,6 +51,7 @@ func authMiddleware(resolver SessionUserResolver) gin.HandlerFunc {
 	}
 }
 
+// isPublicPath 封装当前模块的业务处理逻辑。
 func isPublicPath(path string) bool {
 	clean := strings.TrimSpace(path)
 	if clean == "" {

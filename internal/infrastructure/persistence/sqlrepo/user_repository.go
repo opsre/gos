@@ -20,6 +20,7 @@ type UserRepository struct {
 	dbDriver string
 }
 
+// NewUserRepository 创建并返回对应组件实例。
 func NewUserRepository(db *sql.DB, dbDriver string) *UserRepository {
 	return &UserRepository{
 		db:       db,
@@ -27,6 +28,7 @@ func NewUserRepository(db *sql.DB, dbDriver string) *UserRepository {
 	}
 }
 
+// InitSchema 封装当前模块的业务处理逻辑。
 func (r *UserRepository) InitSchema(ctx context.Context) error {
 	stmts, err := r.schemaStatements()
 	if err != nil {
@@ -40,6 +42,7 @@ func (r *UserRepository) InitSchema(ctx context.Context) error {
 	return nil
 }
 
+// schemaStatements 封装当前模块的业务处理逻辑。
 func (r *UserRepository) schemaStatements() ([]string, error) {
 	switch r.dbDriver {
 	case "mysql":
@@ -178,6 +181,7 @@ func (r *UserRepository) schemaStatements() ([]string, error) {
 	}
 }
 
+// EnsureSeedData 校验前置条件，不满足时写入对应错误响应。
 func (r *UserRepository) EnsureSeedData(
 	ctx context.Context,
 	adminUsername string,
@@ -220,6 +224,7 @@ func (r *UserRepository) EnsureSeedData(
 	return r.CreateUser(ctx, item)
 }
 
+// ensureBuiltinPermissions 校验前置条件，不满足时写入对应错误响应。
 func (r *UserRepository) ensureBuiltinPermissions(ctx context.Context, now time.Time) error {
 	permissions := []domain.Permission{
 		{ID: "perm-application-view", Code: "application.view", Name: "查看应用", Module: "application", Action: "view", Description: "查看应用与详情"},
@@ -289,6 +294,7 @@ name = excluded.name, module = excluded.module, action = excluded.action, descri
 	return nil
 }
 
+// CreateUser 创建业务资源并返回处理结果。
 func (r *UserRepository) CreateUser(ctx context.Context, item domain.User) error {
 	const q = `
 INSERT INTO sys_user (
@@ -317,6 +323,7 @@ INSERT INTO sys_user (
 	return nil
 }
 
+// GetUserByID 查询并返回指定资源数据。
 func (r *UserRepository) GetUserByID(ctx context.Context, id string) (domain.User, error) {
 	const q = `
 SELECT id, username, display_name, email, phone, role, status, password_hash, created_at, updated_at
@@ -333,6 +340,7 @@ WHERE id = ?;`
 	return item, nil
 }
 
+// GetUserByUsername 查询并返回指定资源数据。
 func (r *UserRepository) GetUserByUsername(ctx context.Context, username string) (domain.User, error) {
 	const q = `
 SELECT id, username, display_name, email, phone, role, status, password_hash, created_at, updated_at
@@ -349,6 +357,7 @@ WHERE username = ?;`
 	return item, nil
 }
 
+// ListUsers 查询并返回列表数据。
 func (r *UserRepository) ListUsers(ctx context.Context, filter domain.UserListFilter) ([]domain.User, int64, error) {
 	args := make([]any, 0, 4)
 	where := make([]string, 0, 4)
@@ -411,6 +420,7 @@ FROM sys_user`)
 	return result, total, nil
 }
 
+// UpdateUser 更新业务资源并返回处理结果。
 func (r *UserRepository) UpdateUser(
 	ctx context.Context,
 	id string,
@@ -450,6 +460,7 @@ WHERE id = ?;`
 	return r.GetUserByID(ctx, id)
 }
 
+// DeleteUser 删除业务资源并返回处理结果。
 func (r *UserRepository) DeleteUser(ctx context.Context, id string) error {
 	const q = `DELETE FROM sys_user WHERE id = ?;`
 	res, err := r.db.ExecContext(ctx, q, strings.TrimSpace(id))
@@ -466,6 +477,7 @@ func (r *UserRepository) DeleteUser(ctx context.Context, id string) error {
 	return nil
 }
 
+// ListUserOptions 查询并返回列表数据。
 func (r *UserRepository) ListUserOptions(ctx context.Context) ([]domain.User, error) {
 	const q = `
 SELECT id, username, display_name, email, phone, role, status, password_hash, created_at, updated_at
@@ -492,6 +504,7 @@ ORDER BY display_name ASC, username ASC;`
 	return result, nil
 }
 
+// ListPermissions 查询并返回列表数据。
 func (r *UserRepository) ListPermissions(ctx context.Context, filter domain.PermissionFilter) ([]domain.Permission, error) {
 	args := make([]any, 0, 2)
 	where := make([]string, 0, 2)
@@ -532,6 +545,7 @@ func (r *UserRepository) ListPermissions(ctx context.Context, filter domain.Perm
 	return result, nil
 }
 
+// ListUserPermissions 查询并返回列表数据。
 func (r *UserRepository) ListUserPermissions(ctx context.Context, userID string) ([]domain.UserPermission, error) {
 	const q = `
 SELECT id, user_id, permission_code, scope_type, scope_value, enabled, created_at, updated_at
@@ -559,6 +573,7 @@ ORDER BY permission_code ASC, scope_type ASC, scope_value ASC;`
 	return result, nil
 }
 
+// GrantUserPermissions 封装当前模块的业务处理逻辑。
 func (r *UserRepository) GrantUserPermissions(
 	ctx context.Context,
 	userID string,
@@ -607,6 +622,7 @@ enabled = excluded.enabled, updated_at = excluded.updated_at;`
 	return nil
 }
 
+// RevokeUserPermissions 封装当前模块的业务处理逻辑。
 func (r *UserRepository) RevokeUserPermissions(
 	ctx context.Context,
 	userID string,
@@ -629,6 +645,7 @@ WHERE user_id = ? AND permission_code = ? AND scope_type = ? AND scope_value = ?
 	return nil
 }
 
+// ListUserParamPermissions 查询并返回列表数据。
 func (r *UserRepository) ListUserParamPermissions(
 	ctx context.Context,
 	userID string,
@@ -666,6 +683,7 @@ WHERE user_id = ?`)
 	return result, nil
 }
 
+// UpsertUserParamPermission 封装当前模块的业务处理逻辑。
 func (r *UserRepository) UpsertUserParamPermission(
 	ctx context.Context,
 	item domain.UserParamPermission,
@@ -706,6 +724,7 @@ can_view = excluded.can_view, can_edit = excluded.can_edit, updated_at = exclude
 	return r.getUserParamPermissionByUnique(ctx, item.UserID, item.ParamKey, item.ApplicationID)
 }
 
+// getUserParamPermissionByUnique 查询并返回指定资源数据。
 func (r *UserRepository) getUserParamPermissionByUnique(
 	ctx context.Context,
 	userID string,
@@ -733,6 +752,7 @@ WHERE user_id = ? AND param_key = ? AND application_id = ?;`
 	return item, nil
 }
 
+// DeleteUserParamPermission 删除业务资源并返回处理结果。
 func (r *UserRepository) DeleteUserParamPermission(ctx context.Context, id string) error {
 	const q = `DELETE FROM sys_user_param_permission WHERE id = ?;`
 	res, err := r.db.ExecContext(ctx, q, strings.TrimSpace(id))
@@ -749,6 +769,7 @@ func (r *UserRepository) DeleteUserParamPermission(ctx context.Context, id strin
 	return nil
 }
 
+// CreateSession 创建业务资源并返回处理结果。
 func (r *UserRepository) CreateSession(ctx context.Context, item domain.UserSession) error {
 	const q = `
 INSERT INTO sys_user_session (
@@ -773,6 +794,7 @@ INSERT INTO sys_user_session (
 	return nil
 }
 
+// GetSessionByAccessToken 查询并返回指定资源数据。
 func (r *UserRepository) GetSessionByAccessToken(ctx context.Context, token string) (domain.UserSession, error) {
 	const q = `
 SELECT id, user_id, access_token, expired_at, client_ip, user_agent, created_at
@@ -789,12 +811,14 @@ WHERE access_token = ?;`
 	return item, nil
 }
 
+// DeleteSessionByAccessToken 删除业务资源并返回处理结果。
 func (r *UserRepository) DeleteSessionByAccessToken(ctx context.Context, token string) error {
 	const q = `DELETE FROM sys_user_session WHERE access_token = ?;`
 	_, err := r.db.ExecContext(ctx, q, strings.TrimSpace(token))
 	return err
 }
 
+// DeleteExpiredSessions 删除业务资源并返回处理结果。
 func (r *UserRepository) DeleteExpiredSessions(ctx context.Context, now time.Time) (int64, error) {
 	const q = `DELETE FROM sys_user_session WHERE expired_at <= ?;`
 	res, err := r.db.ExecContext(ctx, q, now.UTC().UnixNano())
@@ -812,6 +836,7 @@ type userScanner interface {
 	Scan(dest ...any) error
 }
 
+// scanUser 封装当前模块的业务处理逻辑。
 func scanUser(s userScanner) (domain.User, error) {
 	var (
 		item              domain.User
@@ -841,6 +866,7 @@ func scanUser(s userScanner) (domain.User, error) {
 	return item, nil
 }
 
+// scanPermission 封装当前模块的业务处理逻辑。
 func scanPermission(s userScanner) (domain.Permission, error) {
 	var (
 		item              domain.Permission
@@ -864,6 +890,7 @@ func scanPermission(s userScanner) (domain.Permission, error) {
 	return item, nil
 }
 
+// scanUserPermission 封装当前模块的业务处理逻辑。
 func scanUserPermission(s userScanner) (domain.UserPermission, error) {
 	var (
 		item              domain.UserPermission
@@ -889,6 +916,7 @@ func scanUserPermission(s userScanner) (domain.UserPermission, error) {
 	return item, nil
 }
 
+// scanUserParamPermission 封装当前模块的业务处理逻辑。
 func scanUserParamPermission(s userScanner) (domain.UserParamPermission, error) {
 	var (
 		item              domain.UserParamPermission
@@ -917,6 +945,7 @@ func scanUserParamPermission(s userScanner) (domain.UserParamPermission, error) 
 	return item, nil
 }
 
+// scanUserSession 封装当前模块的业务处理逻辑。
 func scanUserSession(s userScanner) (domain.UserSession, error) {
 	var (
 		item            domain.UserSession
@@ -939,6 +968,7 @@ func scanUserSession(s userScanner) (domain.UserSession, error) {
 	return item, nil
 }
 
+// isDuplicateUserError 封装当前模块的业务处理逻辑。
 func isDuplicateUserError(dbDriver string, err error) bool {
 	switch dbDriver {
 	case "mysql":
@@ -951,6 +981,7 @@ func isDuplicateUserError(dbDriver string, err error) bool {
 	}
 }
 
+// boolToTinyInt 封装当前模块的业务处理逻辑。
 func boolToTinyInt(value bool) int {
 	if value {
 		return 1
@@ -958,6 +989,7 @@ func boolToTinyInt(value bool) int {
 	return 0
 }
 
+// newSimpleID 封装当前模块的业务处理逻辑。
 func newSimpleID() string {
 	var buffer [8]byte
 	if _, err := rand.Read(buffer[:]); err != nil {

@@ -14,6 +14,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// OpenDatabase 封装当前模块的业务处理逻辑。
 func OpenDatabase(cfg Config) (*sql.DB, error) {
 	switch cfg.Database.Driver {
 	case "sqlite":
@@ -55,12 +56,14 @@ func OpenDatabase(cfg Config) (*sql.DB, error) {
 	}
 }
 
+// PingDB 封装当前模块的业务处理逻辑。
 func PingDB(db *sql.DB, timeoutSec int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 	return db.PingContext(ctx)
 }
 
+// InitSchema 封装当前模块的业务处理逻辑。
 func InitSchema(initializer interface{ InitSchema(context.Context) error }) error {
 	// Release and GitOps schema migration can be slower on remote MySQL during
 	// startup, so we give initialization a wider window than a normal query.
@@ -69,6 +72,7 @@ func InitSchema(initializer interface{ InitSchema(context.Context) error }) erro
 	return initializer.InitSchema(ctx)
 }
 
+// applyDBPoolSettings 封装当前模块的业务处理逻辑。
 func applyDBPoolSettings(db *sql.DB, cfg DatabaseConfig) {
 	db.SetMaxOpenConns(cfg.MaxOpenConns)
 	db.SetMaxIdleConns(cfg.MaxIdleConns)
@@ -76,6 +80,7 @@ func applyDBPoolSettings(db *sql.DB, cfg DatabaseConfig) {
 	db.SetConnMaxIdleTime(time.Duration(cfg.ConnMaxIdleTimeSec) * time.Second)
 }
 
+// checkMySQLStartupConnection 检查业务状态并返回校验结果。
 func checkMySQLStartupConnection(db *sql.DB, cfg DatabaseConfig) error {
 	var lastErr error
 	for attempt := 1; attempt <= cfg.StartupMaxRetries; attempt++ {
@@ -96,6 +101,7 @@ func checkMySQLStartupConnection(db *sql.DB, cfg DatabaseConfig) error {
 	)
 }
 
+// mysqlAddrForLog 封装当前模块的业务处理逻辑。
 func mysqlAddrForLog(dsn string) string {
 	parsed, err := mysqlDriver.ParseDSN(dsn)
 	if err != nil || parsed == nil || parsed.Addr == "" {

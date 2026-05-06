@@ -17,6 +17,7 @@ var activeDispatchTaskStatuses = []agentdomain.TaskStatus{
 	agentdomain.TaskStatusRunning,
 }
 
+// normalizeTaskTargetAgentIDs 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeTaskTargetAgentIDs(items []string) []string {
 	if len(items) == 0 {
 		return []string{}
@@ -37,6 +38,7 @@ func normalizeTaskTargetAgentIDs(items []string) []string {
 	return result
 }
 
+// resolveTaskDispatchTargets 解析上下文数据，得到后续流程需要的结果。
 func resolveTaskDispatchTargets(ctx context.Context, repo agentdomain.Repository, sourceTask agentdomain.Task) ([]agentdomain.Instance, error) {
 	targetAgentIDs := normalizeTaskTargetAgentIDs(sourceTask.TargetAgentIDs)
 	if len(targetAgentIDs) == 0 {
@@ -66,6 +68,7 @@ func resolveTaskDispatchTargets(ctx context.Context, repo agentdomain.Repository
 	return targets, nil
 }
 
+// resolveDispatchTaskInitialStatus 解析上下文数据，得到后续流程需要的结果。
 func resolveDispatchTaskInitialStatus(ctx context.Context, repo agentdomain.Repository, agentID, excludeTaskID string) (agentdomain.TaskStatus, error) {
 	agentID = strings.TrimSpace(agentID)
 	if agentID == "" {
@@ -90,6 +93,7 @@ func resolveDispatchTaskInitialStatus(ctx context.Context, repo agentdomain.Repo
 	return agentdomain.TaskStatusPending, nil
 }
 
+// dispatchTemporaryTaskBatch 封装当前模块的业务处理逻辑。
 func dispatchTemporaryTaskBatch(
 	ctx context.Context,
 	repo agentdomain.Repository,
@@ -149,6 +153,7 @@ func dispatchTemporaryTaskBatch(
 	return result, nil
 }
 
+// aggregateTaskBatchStatus 封装当前模块的业务处理逻辑。
 func aggregateTaskBatchStatus(tasks []agentdomain.Task) agentdomain.TaskStatus {
 	hasPending := false
 	hasQueued := false
@@ -202,6 +207,7 @@ func aggregateTaskBatchStatus(tasks []agentdomain.Task) agentdomain.TaskStatus {
 	}
 }
 
+// taskBatchStatusText 封装当前模块的业务处理逻辑。
 func taskBatchStatusText(status agentdomain.TaskStatus) string {
 	switch status {
 	case agentdomain.TaskStatusPending:
@@ -223,6 +229,7 @@ func taskBatchStatusText(status agentdomain.TaskStatus) string {
 	}
 }
 
+// buildTaskBatchSummary 组装业务执行所需的输入数据。
 func buildTaskBatchSummary(prefix string, tasks []agentdomain.Task) string {
 	if len(tasks) == 0 {
 		return strings.TrimSpace(prefix)

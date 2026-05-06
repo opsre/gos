@@ -7,6 +7,7 @@ import {
   QuestionCircleOutlined,
   RocketOutlined,
   SearchOutlined,
+  SoundOutlined,
   SyncOutlined,
   WarningOutlined,
 } from '@ant-design/icons-vue'
@@ -20,6 +21,8 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { computed, h, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { deleteApplication, listApplications } from '../../api/application'
+import { listActiveAnnouncements } from '../../api/announcement'
+import type { Announcement } from '../../types/announcement'
 import { listProjects } from '../../api/project'
 import {
   createApplicationRollbackOrder,
@@ -154,6 +157,28 @@ const loading = ref(false)
 const loadingProjects = ref(false)
 const deletingId = ref('')
 const dataSource = ref<Application[]>([])
+const announcements = ref<Announcement[]>([])
+const announcementPopoverVisible = ref(false)
+const lastSeenAnnouncementIds = ref<string[]>([])
+
+const hasUnreadAnnouncement = computed(() => {
+  if (announcements.value.length === 0) return false
+  const seen = new Set(lastSeenAnnouncementIds.value)
+  return announcements.value.some(a => !seen.has(a.id))
+})
+
+const unreadCount = computed(() => {
+  const seen = new Set(lastSeenAnnouncementIds.value)
+  return announcements.value.filter(a => !seen.has(a.id)).length
+})
+
+function markAsRead() {
+  lastSeenAnnouncementIds.value = announcements.value.map(a => a.id)
+  try {
+    localStorage.setItem('gos-seen-announcement-ids', JSON.stringify(lastSeenAnnouncementIds.value))
+  } catch { /* ignore */ }
+  announcementPopoverVisible.value = false
+}
 const total = ref(0)
 const loadingTemplateAvailability = ref(false)
 const loadingRecentReleases = ref(false)
@@ -1068,6 +1093,16 @@ function orderedEnvCodes(items: string[]) {
     })
 }
 
+async function loadActiveAnnouncements() {
+  try {
+    const items = await listActiveAnnouncements()
+    announcements.value = Array.isArray(items) ? items : []
+    console.log('announcements loaded:', announcements.value.length, 'hasUnread:', hasUnreadAnnouncement.value, 'unreadCount:', unreadCount.value)
+  } catch (err) {
+    console.error('loadActiveAnnouncements failed:', err)
+  }
+}
+
 async function loadApplications(options: { silent?: boolean } = {}) {
   if (!options.silent) {
     loading.value = true
@@ -1910,6 +1945,11 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 }
 
 onMounted(() => {
+  try {
+    const raw = localStorage.getItem('gos-seen-announcement-ids')
+    if (raw) lastSeenAnnouncementIds.value = JSON.parse(raw)
+  } catch { /* ignore */ }
+  loadActiveAnnouncements()
   void (async () => {
     await loadProjectOptions()
     await loadApplications()
@@ -1935,7 +1975,44 @@ onUnmounted(() => {
   <div class="page-wrapper">
     <div class="page-header application-page-header">
       <div class="page-header-copy">
-        <h2 class="page-title">应用</h2>
+        <span class="page-title-wrap">
+          <h2 class="page-title">应用</h2>
+          <span v-if="hasUnreadAnnouncement" class="announcement-badge" @click.stop="announcementPopoverVisible = true">{{ unreadCount }}</span>
+        </span>
+        <a-popover
+          v-model:open="announcementPopoverVisible"
+          placement="bottomLeft"
+          trigger="click"
+          overlay-class-name="announcement-popover"
+        >
+          <template #content>
+            <div class="announcement-panel">
+              <div class="announcement-panel-head">
+                <SoundOutlined class="announcement-head-icon" />
+                <span class="announcement-head-title">系统公告</span>
+              </div>
+              <div class="announcement-list">
+                <div
+                  v-for="item in announcements"
+                  :key="item.id"
+                  class="announcement-item"
+                >
+                  <div class="announcement-item-title">{{ item.title }}</div>
+                  <div v-if="item.content" class="announcement-item-content">{{ item.content }}</div>
+                </div>
+                <div v-if="announcements.length === 0" class="announcement-empty">暂无公告</div>
+              </div>
+              <div v-if="hasUnreadAnnouncement" class="announcement-panel-foot">
+                <a-button
+                  type="link"
+                  size="small"
+                  class="announcement-read-btn"
+                  @click="markAsRead"
+                >标记已读</a-button>
+              </div>
+            </div>
+          </template>
+        </a-popover>
       </div>
       <div class="page-header-actions">
         <a-button class="application-toolbar-icon-btn" @click="openSearchDialog">
@@ -5388,5 +5465,144 @@ button.workbench-release-overview-chip:hover {
   .rollback-preview-summary {
     grid-template-columns: 1fr;
   }
+}
+
+.page-title-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.announcement-badge {
+  position: absolute;
+  top: -4px;
+  right: -8px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(239, 68, 68, 0.4);
+  white-space: nowrap;
+}
+
+.announcement-popover {
+  z-index: 1060;
+}
+
+.announcement-popover .ant-popover-inner {
+  width: 360px;
+  max-width: 90vw;
+  padding: 0;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+}
+
+.announcement-popover .ant-popover-inner-content {
+  padding: 0;
+}
+
+.announcement-popover .ant-popover-arrow {
+  display: none;
+}
+
+.announcement-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.announcement-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.5);
+}
+
+.announcement-head-icon {
+  color: #64748b;
+  font-size: 16px;
+}
+
+.announcement-head-title {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.announcement-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.announcement-item {
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.5);
+}
+
+.announcement-item:last-of-type {
+  border-bottom: none;
+}
+
+.announcement-item-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.announcement-item-title::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ef4444;
+  flex-shrink: 0;
+}
+
+.announcement-item-content {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.announcement-empty {
+  padding: 32px 18px;
+  color: #94a3b8;
+  font-size: 13px;
+  text-align: center;
+}
+
+.announcement-panel-foot {
+  display: flex;
+  justify-content: center;
+  padding: 8px 18px 12px;
+  border-top: 1px solid rgba(226, 232, 240, 0.5);
+}
+
+.announcement-read-btn {
+  color: #94a3b8;
+  font-size: 12px;
+  padding: 0;
+}
+
+.announcement-read-btn:hover {
+  color: #1d4ed8;
 }
 </style>

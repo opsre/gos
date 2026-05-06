@@ -19,6 +19,7 @@ type ReleaseTemplateHandler struct {
 	authz   RequestAuthorizer
 }
 
+// NewReleaseTemplateHandler 创建并返回对应组件实例。
 func NewReleaseTemplateHandler(
 	manager *usecase.ReleaseTemplateManager,
 	authz RequestAuthorizer,
@@ -29,6 +30,7 @@ func NewReleaseTemplateHandler(
 	}
 }
 
+// RegisterRoutes 封装当前模块的业务处理逻辑。
 func (h *ReleaseTemplateHandler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/release-templates", h.List)
 	router.POST("/release-templates", h.Create)
@@ -222,6 +224,19 @@ type ReleaseTemplateListResponse struct {
 	Total    int64                     `json:"total"`
 }
 
+// Create 创建资源。
+// @Summary      创建资源
+// @Description  创建资源，并按统一响应结构返回处理结果。
+// @Tags         release-templates
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-templates [post]
 func (h *ReleaseTemplateHandler) Create(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "release.template.manage", "", "") {
 		return
@@ -259,6 +274,18 @@ func (h *ReleaseTemplateHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, toReleaseTemplateDataResponse(template, bindings, params, gitopsRules, hooks))
 }
 
+// List 查询资源列表。
+// @Summary      查询资源列表
+// @Description  查询资源列表，并按统一响应结构返回处理结果。
+// @Tags         release-templates
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-templates [get]
 func (h *ReleaseTemplateHandler) List(c *gin.Context) {
 	allowAll, applicationIDs, ok := h.resolveListApplications(c)
 	if !ok {
@@ -298,6 +325,19 @@ func (h *ReleaseTemplateHandler) List(c *gin.Context) {
 	})
 }
 
+// GetByID 获取By ID详情。
+// @Summary      获取By ID详情
+// @Description  获取By ID详情，并按统一响应结构返回处理结果。
+// @Tags         release-templates
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-templates/{id} [get]
 func (h *ReleaseTemplateHandler) GetByID(c *gin.Context) {
 	template, bindings, params, gitopsRules, hooks, err := h.manager.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -310,6 +350,20 @@ func (h *ReleaseTemplateHandler) GetByID(c *gin.Context) {
 	c.JSON(http.StatusOK, toReleaseTemplateDataResponse(template, bindings, params, gitopsRules, hooks))
 }
 
+// Update 更新资源。
+// @Summary      更新资源
+// @Description  更新资源，并按统一响应结构返回处理结果。
+// @Tags         release-templates
+// @Accept       json
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-templates/{id} [put]
 func (h *ReleaseTemplateHandler) Update(c *gin.Context) {
 	template, _, _, _, _, err := h.manager.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -350,6 +404,19 @@ func (h *ReleaseTemplateHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, toReleaseTemplateDataResponse(updated, bindings, params, gitopsRules, hooks))
 }
 
+// Delete 删除资源。
+// @Summary      删除资源
+// @Description  删除资源，并按统一响应结构返回处理结果。
+// @Tags         release-templates
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-templates/{id} [delete]
 func (h *ReleaseTemplateHandler) Delete(c *gin.Context) {
 	if !ensurePermission(c, h.authz, "release.template.manage", "", "") {
 		return
@@ -361,6 +428,7 @@ func (h *ReleaseTemplateHandler) Delete(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// resolveListApplications 解析上下文数据，得到后续流程需要的结果。
 func (h *ReleaseTemplateHandler) resolveListApplications(c *gin.Context) (allowAll bool, applicationIDs []string, ok bool) {
 	user, ok := getCurrentUser(c)
 	if !ok {
@@ -422,6 +490,7 @@ func (h *ReleaseTemplateHandler) resolveListApplications(c *gin.Context) (allowA
 	return false, result, true
 }
 
+// ensureTemplateAccess 校验前置条件，不满足时写入对应错误响应。
 func (h *ReleaseTemplateHandler) ensureTemplateAccess(c *gin.Context, template releasedomain.ReleaseTemplate) bool {
 	user, ok := getCurrentUser(c)
 	if !ok {
@@ -451,6 +520,7 @@ func (h *ReleaseTemplateHandler) ensureTemplateAccess(c *gin.Context, template r
 	return true
 }
 
+// resolveReleaseTemplateListFilterApplications 解析上下文数据，得到后续流程需要的结果。
 func resolveReleaseTemplateListFilterApplications(
 	applicationID string,
 	allowAll bool,
@@ -473,6 +543,7 @@ func resolveReleaseTemplateListFilterApplications(
 	return result
 }
 
+// toReleaseTemplateResponse 将领域对象转换为接口响应结构。
 func toReleaseTemplateResponse(item releasedomain.ReleaseTemplate) ReleaseTemplateResponse {
 	return ReleaseTemplateResponse{
 		ID:                    item.ID,
@@ -495,6 +566,7 @@ func toReleaseTemplateResponse(item releasedomain.ReleaseTemplate) ReleaseTempla
 	}
 }
 
+// toReleaseTemplateParamResponse 将领域对象转换为接口响应结构。
 func toReleaseTemplateParamResponse(item releasedomain.ReleaseTemplateParam) ReleaseTemplateParamResponse {
 	return ReleaseTemplateParamResponse{
 		ID:                 item.ID,
@@ -517,6 +589,7 @@ func toReleaseTemplateParamResponse(item releasedomain.ReleaseTemplateParam) Rel
 	}
 }
 
+// toReleaseTemplateBindingResponse 将领域对象转换为接口响应结构。
 func toReleaseTemplateBindingResponse(item releasedomain.ReleaseTemplateBinding) ReleaseTemplateBindingResponse {
 	return ReleaseTemplateBindingResponse{
 		ID:            item.ID,
@@ -533,6 +606,7 @@ func toReleaseTemplateBindingResponse(item releasedomain.ReleaseTemplateBinding)
 	}
 }
 
+// toReleaseTemplateGitOpsRuleInputs 将领域对象转换为接口响应结构。
 func toReleaseTemplateGitOpsRuleInputs(items []ReleaseTemplateGitOpsRuleRequest) []usecase.ReleaseTemplateGitOpsRuleInput {
 	result := make([]usecase.ReleaseTemplateGitOpsRuleInput, 0, len(items))
 	for _, item := range items {
@@ -550,6 +624,7 @@ func toReleaseTemplateGitOpsRuleInputs(items []ReleaseTemplateGitOpsRuleRequest)
 	return result
 }
 
+// toReleaseTemplateParamConfigInputs 将领域对象转换为接口响应结构。
 func toReleaseTemplateParamConfigInputs(items []ReleaseTemplateParamConfigRequest) []usecase.ReleaseTemplateParamConfigInput {
 	result := make([]usecase.ReleaseTemplateParamConfigInput, 0, len(items))
 	for _, item := range items {
@@ -563,6 +638,7 @@ func toReleaseTemplateParamConfigInputs(items []ReleaseTemplateParamConfigReques
 	return result
 }
 
+// toReleaseTemplateHookInputs 将领域对象转换为接口响应结构。
 func toReleaseTemplateHookInputs(items []ReleaseTemplateHookRequest) []usecase.ReleaseTemplateHookInput {
 	result := make([]usecase.ReleaseTemplateHookInput, 0, len(items))
 	for _, item := range items {
@@ -584,6 +660,7 @@ func toReleaseTemplateHookInputs(items []ReleaseTemplateHookRequest) []usecase.R
 	return result
 }
 
+// toReleaseTemplateGitOpsRuleResponse 将领域对象转换为接口响应结构。
 func toReleaseTemplateGitOpsRuleResponse(item releasedomain.ReleaseTemplateGitOpsRule) ReleaseTemplateGitOpsRuleResponse {
 	return ReleaseTemplateGitOpsRuleResponse{
 		ID:               item.ID,
@@ -605,6 +682,7 @@ func toReleaseTemplateGitOpsRuleResponse(item releasedomain.ReleaseTemplateGitOp
 	}
 }
 
+// normalizeReleaseTemplateGitOpsFilePathTemplate 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeReleaseTemplateGitOpsFilePathTemplate(value string) string {
 	value = strings.ReplaceAll(strings.TrimSpace(value), "\\", "/")
 	if value == "" || !strings.HasPrefix(value, "apps/") {
@@ -623,6 +701,7 @@ func normalizeReleaseTemplateGitOpsFilePathTemplate(value string) string {
 	return value
 }
 
+// toReleaseTemplateHookResponse 将领域对象转换为接口响应结构。
 func toReleaseTemplateHookResponse(item releasedomain.ReleaseTemplateHook) ReleaseTemplateHookResponse {
 	return ReleaseTemplateHookResponse{
 		ID:               item.ID,
@@ -646,6 +725,7 @@ func toReleaseTemplateHookResponse(item releasedomain.ReleaseTemplateHook) Relea
 	}
 }
 
+// normalizeReleaseTemplateHookExecuteStages 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeReleaseTemplateHookExecuteStages(values []string) []releasedomain.TemplateHookExecuteStage {
 	result := make([]releasedomain.TemplateHookExecuteStage, 0, len(values))
 	for _, item := range values {
@@ -658,6 +738,7 @@ func normalizeReleaseTemplateHookExecuteStages(values []string) []releasedomain.
 	return result
 }
 
+// releaseTemplateHookExecuteStagesToStrings 封装当前模块的业务处理逻辑。
 func releaseTemplateHookExecuteStagesToStrings(values []releasedomain.TemplateHookExecuteStage, legacy releasedomain.TemplateHookExecuteStage) []string {
 	stages := releasedomain.NormalizeTemplateHookExecuteStages(values, legacy)
 	result := make([]string, 0, len(stages))
@@ -667,6 +748,7 @@ func releaseTemplateHookExecuteStagesToStrings(values []releasedomain.TemplateHo
 	return result
 }
 
+// toReleaseTemplateDataResponse 将领域对象转换为接口响应结构。
 func toReleaseTemplateDataResponse(
 	template releasedomain.ReleaseTemplate,
 	bindings []releasedomain.ReleaseTemplateBinding,

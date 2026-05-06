@@ -28,6 +28,7 @@ func NewExecutorParamRepository(db *sql.DB, dbDriver string) *ExecutorParamRepos
 	}
 }
 
+// InitSchema 封装当前模块的业务处理逻辑。
 func (r *ExecutorParamRepository) InitSchema(ctx context.Context) error {
 	// 兼容旧版本表名：
 	// 如果数据库里还是 `pipeline_param_def`，必须先迁移到新表名，
@@ -49,6 +50,7 @@ func (r *ExecutorParamRepository) InitSchema(ctx context.Context) error {
 	return r.migrateSchema(ctx)
 }
 
+// schemaStatements 封装当前模块的业务处理逻辑。
 func (r *ExecutorParamRepository) schemaStatements() ([]string, error) {
 	switch r.dbDriver {
 	case "mysql":
@@ -110,6 +112,7 @@ func (r *ExecutorParamRepository) schemaStatements() ([]string, error) {
 	}
 }
 
+// migrateSchema 封装当前模块的业务处理逻辑。
 func (r *ExecutorParamRepository) migrateSchema(ctx context.Context) error {
 	switch r.dbDriver {
 	case "mysql":
@@ -167,6 +170,7 @@ func (r *ExecutorParamRepository) migrateSchema(ctx context.Context) error {
 	}
 }
 
+// renameLegacyTable 封装当前模块的业务处理逻辑。
 func (r *ExecutorParamRepository) renameLegacyTable(ctx context.Context, legacyTable, targetTable string) error {
 	targetExists, err := r.tableExists(ctx, targetTable)
 	if err != nil {
@@ -196,6 +200,7 @@ func (r *ExecutorParamRepository) renameLegacyTable(ctx context.Context, legacyT
 	}
 }
 
+// tableExists 封装当前模块的业务处理逻辑。
 func (r *ExecutorParamRepository) tableExists(ctx context.Context, table string) (bool, error) {
 	switch r.dbDriver {
 	case "mysql":
@@ -220,6 +225,7 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?;`
 	}
 }
 
+// mysqlColumnExists 封装当前模块的业务处理逻辑。
 func (r *ExecutorParamRepository) mysqlColumnExists(ctx context.Context, table, column string) (bool, error) {
 	const q = `
 SELECT COUNT(1)
@@ -233,6 +239,7 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?;`
 	return count > 0, nil
 }
 
+// sqliteTableColumns 封装当前模块的业务处理逻辑。
 func (r *ExecutorParamRepository) sqliteTableColumns(ctx context.Context, table string) (map[string]struct{}, error) {
 	q := fmt.Sprintf("PRAGMA table_info(%q);", table)
 	rows, err := r.db.QueryContext(ctx, q)
@@ -262,6 +269,7 @@ func (r *ExecutorParamRepository) sqliteTableColumns(ctx context.Context, table 
 	return columns, nil
 }
 
+// Upsert 封装当前模块的业务处理逻辑。
 func (r *ExecutorParamRepository) Upsert(ctx context.Context, items []domain.ExecutorParamDef) (int, int, error) {
 	if r.dbDriver == "mysql" {
 		return r.upsertMySQL(ctx, items)
@@ -366,6 +374,7 @@ WHERE pipeline_id = ? AND executor_type = ? AND executor_param_name = ?;`
 	return created, updated, nil
 }
 
+// upsertMySQL 封装当前模块的业务处理逻辑。
 func (r *ExecutorParamRepository) upsertMySQL(ctx context.Context, items []domain.ExecutorParamDef) (int, int, error) {
 	if len(items) == 0 {
 		return 0, 0, nil
@@ -411,6 +420,7 @@ func (r *ExecutorParamRepository) upsertMySQL(ctx context.Context, items []domai
 	return created, updated, nil
 }
 
+// mysqlBatchUpsert 封装当前模块的业务处理逻辑。
 func (r *ExecutorParamRepository) mysqlBatchUpsert(ctx context.Context, tx *sql.Tx, items []domain.ExecutorParamDef) error {
 	if len(items) == 0 {
 		return nil
@@ -467,6 +477,7 @@ updated_at = VALUES(updated_at)`)
 	return err
 }
 
+// mysqlExistingParamKeys 封装当前模块的业务处理逻辑。
 func (r *ExecutorParamRepository) mysqlExistingParamKeys(ctx context.Context, items []domain.ExecutorParamDef) (map[string]struct{}, error) {
 	pipelineIDs := make([]string, 0, len(items))
 	seenPipelineIDs := make(map[string]struct{}, len(items))
@@ -524,10 +535,12 @@ WHERE executor_type = ? AND pipeline_id IN (%s)`, placeholders)
 	return result, nil
 }
 
+// executorParamUniqueKey 封装当前模块的业务处理逻辑。
 func executorParamUniqueKey(pipelineID string, executorType domain.ExecutorType, executorParamName string) string {
 	return pipelineID + "\x00" + string(executorType) + "\x00" + executorParamName
 }
 
+// MarkMissingInactive 封装当前模块的业务处理逻辑。
 func (r *ExecutorParamRepository) MarkMissingInactive(
 	ctx context.Context,
 	executorType domain.ExecutorType,
@@ -575,6 +588,7 @@ WHERE executor_type = ? AND source_from = ? AND status <> ?`
 	return int(affected), nil
 }
 
+// ListByPipeline 查询并返回列表数据。
 func (r *ExecutorParamRepository) ListByPipeline(ctx context.Context, filter domain.ListFilter) ([]domain.ExecutorParamDef, int64, error) {
 	where := []string{"pipeline_id = ?"}
 	args := []any{filter.PipelineID}
@@ -633,6 +647,7 @@ ORDER BY sort_no ASC, created_at ASC LIMIT ? OFFSET ?;`
 	return items, total, nil
 }
 
+// ListByApplications 查询并返回列表数据。
 func (r *ExecutorParamRepository) ListByApplications(
 	ctx context.Context,
 	filter domain.ApplicationListFilter,
@@ -752,6 +767,7 @@ LIMIT ? OFFSET ?;`
 	return items, total, nil
 }
 
+// GetByID 查询并返回指定资源数据。
 func (r *ExecutorParamRepository) GetByID(ctx context.Context, id string) (domain.ExecutorParamDef, error) {
 	const q = `
 SELECT id, pipeline_id, executor_type, executor_param_name, param_key, param_type, single_select, required, default_value, description, visible, editable, source_from, status, raw_meta, sort_no, created_at, updated_at
@@ -769,6 +785,7 @@ WHERE id = ?;`
 	return item, nil
 }
 
+// UpdateParamKey 更新业务资源并返回处理结果。
 func (r *ExecutorParamRepository) UpdateParamKey(ctx context.Context, id string, paramKey string, updatedAt time.Time) (domain.ExecutorParamDef, error) {
 	const q = `
 UPDATE executor_param_def
@@ -789,6 +806,7 @@ WHERE id = ?;`
 	return r.GetByID(ctx, id)
 }
 
+// CountByParamKey 封装当前模块的业务处理逻辑。
 func (r *ExecutorParamRepository) CountByParamKey(ctx context.Context, paramKey string) (int64, error) {
 	const q = `SELECT COUNT(1) FROM executor_param_def WHERE param_key = ?;`
 	var total int64
@@ -798,6 +816,7 @@ func (r *ExecutorParamRepository) CountByParamKey(ctx context.Context, paramKey 
 	return total, nil
 }
 
+// scanExecutorParam 封装当前模块的业务处理逻辑。
 func scanExecutorParam(s scanner) (domain.ExecutorParamDef, error) {
 	var (
 		item         domain.ExecutorParamDef
@@ -854,6 +873,7 @@ func scanExecutorParam(s scanner) (domain.ExecutorParamDef, error) {
 	return item, nil
 }
 
+// scanExecutorParamWithApplication 封装当前模块的业务处理逻辑。
 func scanExecutorParamWithApplication(s scanner) (domain.ExecutorParamDef, error) {
 	var (
 		item         domain.ExecutorParamDef

@@ -30,6 +30,7 @@ type CreatePlatformParamDictInput struct {
 	Status        domain.Status
 }
 
+// NewPlatformParamDictManager 创建并返回对应组件实例。
 func NewPlatformParamDictManager(repo domain.Repository, paramRepo pipelineparamdomain.Repository) *PlatformParamDictManager {
 	return &PlatformParamDictManager{
 		repo:      repo,
@@ -40,6 +41,7 @@ func NewPlatformParamDictManager(repo domain.Repository, paramRepo pipelineparam
 	}
 }
 
+// Create 创建业务资源并返回处理结果。
 func (uc *PlatformParamDictManager) Create(ctx context.Context, input CreatePlatformParamDictInput) (domain.PlatformParamDict, error) {
 	paramKey, err := normalizePlatformParamKey(input.ParamKey)
 	if err != nil {
@@ -80,6 +82,7 @@ func (uc *PlatformParamDictManager) Create(ctx context.Context, input CreatePlat
 	return uc.repo.GetByID(ctx, item.ID)
 }
 
+// List 查询并返回列表数据。
 func (uc *PlatformParamDictManager) List(ctx context.Context, filter domain.ListFilter) ([]domain.PlatformParamDict, int64, error) {
 	const (
 		defaultPage     = 1
@@ -104,6 +107,7 @@ func (uc *PlatformParamDictManager) List(ctx context.Context, filter domain.List
 	return uc.repo.List(ctx, filter)
 }
 
+// GetByID 查询并返回指定资源数据。
 func (uc *PlatformParamDictManager) GetByID(ctx context.Context, id string) (domain.PlatformParamDict, error) {
 	if strings.TrimSpace(id) == "" {
 		return domain.PlatformParamDict{}, ErrInvalidID
@@ -111,6 +115,7 @@ func (uc *PlatformParamDictManager) GetByID(ctx context.Context, id string) (dom
 	return uc.repo.GetByID(ctx, id)
 }
 
+// Update 更新业务资源并返回处理结果。
 func (uc *PlatformParamDictManager) Update(ctx context.Context, id string, input domain.UpdateInput) (domain.PlatformParamDict, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -164,6 +169,7 @@ func (uc *PlatformParamDictManager) Update(ctx context.Context, id string, input
 	return uc.repo.Update(ctx, id, clean, uc.now())
 }
 
+// Delete 删除业务资源并返回处理结果。
 func (uc *PlatformParamDictManager) Delete(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -188,6 +194,7 @@ func (uc *PlatformParamDictManager) Delete(ctx context.Context, id string) error
 	return uc.repo.Delete(ctx, id)
 }
 
+// normalizePlatformParamKey 标准化输入值，保证后续逻辑使用统一格式。
 func normalizePlatformParamKey(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {

@@ -6,6 +6,7 @@ import (
 	userdomain "gos/internal/domain/user"
 )
 
+// TestFilterUserPermissionsByReleaseEnvOptions 封装当前模块的业务处理逻辑。
 func TestFilterUserPermissionsByReleaseEnvOptions(t *testing.T) {
 	items := []userdomain.UserPermission{
 		{PermissionCode: "release.create", ScopeType: "application_env", ScopeValue: "app-1::dev", Enabled: true},
@@ -23,6 +24,7 @@ func TestFilterUserPermissionsByReleaseEnvOptions(t *testing.T) {
 	}
 }
 
+// TestMatchesReleaseScopedPermission 封装当前模块的业务处理逻辑。
 func TestMatchesReleaseScopedPermission(t *testing.T) {
 	if !matchesReleaseScopedPermission("application_env", "app-1::prod", "application", "app-1") {
 		t.Fatalf("expected application_env permission to satisfy application-level lookup")

@@ -30,6 +30,7 @@ type helmDeploySnapshotRule struct {
 	Value      string `json:"value"`
 }
 
+// startArgoCDExecution 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) startArgoCDExecution(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -419,6 +420,7 @@ func (uc *ReleaseOrderManager) startArgoCDExecution(
 	return nil
 }
 
+// shouldUseArgoCDRollback 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) shouldUseArgoCDRollback(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -433,6 +435,7 @@ func (uc *ReleaseOrderManager) shouldUseArgoCDRollback(
 	return true, nil
 }
 
+// startArgoCDRollbackExecution 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) startArgoCDRollbackExecution(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -576,6 +579,7 @@ func (uc *ReleaseOrderManager) startArgoCDRollbackExecution(
 	return nil
 }
 
+// ensureArgoCDExecutionSteps 校验前置条件，不满足时写入对应错误响应。
 func (uc *ReleaseOrderManager) ensureArgoCDExecutionSteps(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -612,6 +616,7 @@ func (uc *ReleaseOrderManager) ensureArgoCDExecutionSteps(
 	return uc.repo.ReplaceSteps(ctx, order.ID, rebuilt)
 }
 
+// resolveExecutionBinding 解析上下文数据，得到后续流程需要的结果。
 func (uc *ReleaseOrderManager) resolveExecutionBinding(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -655,6 +660,7 @@ func (uc *ReleaseOrderManager) resolveExecutionBinding(
 	}, nil
 }
 
+// resolveArgoCDImageVersion 解析上下文数据，得到后续流程需要的结果。
 func (uc *ReleaseOrderManager) resolveArgoCDImageVersion(
 	order domain.ReleaseOrder,
 	params []domain.ReleaseOrderParam,
@@ -683,6 +689,7 @@ func (uc *ReleaseOrderManager) resolveArgoCDImageVersion(
 	return strings.TrimSpace(order.ImageTag)
 }
 
+// resolveArgoCDEnvironment 解析上下文数据，得到后续流程需要的结果。
 func (uc *ReleaseOrderManager) resolveArgoCDEnvironment(
 	order domain.ReleaseOrder,
 	params []domain.ReleaseOrderParam,
@@ -699,6 +706,7 @@ func (uc *ReleaseOrderManager) resolveArgoCDEnvironment(
 	return strings.TrimSpace(order.EnvCode)
 }
 
+// findReleaseParamValue 封装当前模块的业务处理逻辑。
 func findReleaseParamValue(params []domain.ReleaseOrderParam, scope domain.PipelineScope, keys ...string) string {
 	normalizedKeys := make([]string, 0, len(keys))
 	for _, key := range keys {
@@ -724,10 +732,12 @@ func findReleaseParamValue(params []domain.ReleaseOrderParam, scope domain.Pipel
 	return ""
 }
 
+// isArgoCDExecution 封装当前模块的业务处理逻辑。
 func isArgoCDExecution(execution domain.ReleaseOrderExecution) bool {
 	return strings.EqualFold(strings.TrimSpace(execution.Provider), string(pipelinedomain.ProviderArgoCD))
 }
 
+// buildGitOpsCommitMessageFields 组装业务执行所需的输入数据。
 func buildGitOpsCommitMessageFields(
 	order domain.ReleaseOrder,
 	params []domain.ReleaseOrderParam,
@@ -773,6 +783,7 @@ func buildGitOpsCommitMessageFields(
 	return fields
 }
 
+// buildArgoCDManifestRules 组装业务执行所需的输入数据。
 func (uc *ReleaseOrderManager) buildArgoCDManifestRules(
 	gitopsService GitOpsReleaseService,
 	rules []domain.ReleaseTemplateGitOpsRule,
@@ -812,6 +823,7 @@ func (uc *ReleaseOrderManager) buildArgoCDManifestRules(
 	return result, nil
 }
 
+// buildArgoCDValuesRules 组装业务执行所需的输入数据。
 func (uc *ReleaseOrderManager) buildArgoCDValuesRules(
 	gitopsService GitOpsReleaseService,
 	rules []domain.ReleaseTemplateGitOpsRule,
@@ -852,10 +864,12 @@ func (uc *ReleaseOrderManager) buildArgoCDValuesRules(
 	return result, nil
 }
 
+// unresolvedGitOpsTemplate 解析上下文数据，得到后续流程需要的结果。
 func unresolvedGitOpsTemplate(value string) bool {
 	return gitopsTemplatePlaceholderPattern.MatchString(strings.TrimSpace(value))
 }
 
+// saveHelmDeploySnapshot 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) saveHelmDeploySnapshot(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -889,6 +903,7 @@ func (uc *ReleaseOrderManager) saveHelmDeploySnapshot(
 	})
 }
 
+// encodeHelmDeploySnapshot 封装当前模块的业务处理逻辑。
 func encodeHelmDeploySnapshot(imageVersion string, rules []gitopsdomain.ValuesRule) (string, error) {
 	payload := helmDeploySnapshotPayload{
 		ImageVersion: strings.TrimSpace(imageVersion),
@@ -908,6 +923,7 @@ func encodeHelmDeploySnapshot(imageVersion string, rules []gitopsdomain.ValuesRu
 	return string(raw), nil
 }
 
+// decodeHelmDeploySnapshot 封装当前模块的业务处理逻辑。
 func decodeHelmDeploySnapshot(snapshot domain.DeploySnapshot) ([]gitopsdomain.ValuesRule, string, error) {
 	var payload helmDeploySnapshotPayload
 	if err := json.Unmarshal([]byte(strings.TrimSpace(snapshot.SnapshotPayload)), &payload); err != nil {
@@ -932,6 +948,7 @@ func decodeHelmDeploySnapshot(snapshot domain.DeploySnapshot) ([]gitopsdomain.Va
 	return rules, strings.TrimSpace(payload.ImageVersion), nil
 }
 
+// resolveArgoCDExecutionContext 解析上下文数据，得到后续流程需要的结果。
 func (uc *ReleaseOrderManager) resolveArgoCDExecutionContext(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -961,6 +978,7 @@ func (uc *ReleaseOrderManager) resolveArgoCDExecutionContext(
 	return binding, instance, client, nil
 }
 
+// resolveArgoCDInstance 解析上下文数据，得到后续流程需要的结果。
 func (uc *ReleaseOrderManager) resolveArgoCDInstance(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -983,6 +1001,7 @@ func (uc *ReleaseOrderManager) resolveArgoCDInstance(
 	return instance, nil
 }
 
+// resolveGitOpsService 解析上下文数据，得到后续流程需要的结果。
 func (uc *ReleaseOrderManager) resolveGitOpsService(
 	ctx context.Context,
 	argocdInstance argocddomain.Instance,
@@ -1059,6 +1078,7 @@ func resolveArgoCDApplicationByRef(
 	return "", nil, err
 }
 
+// buildArgoCDSourcePathCandidates 组装业务执行所需的输入数据。
 func buildArgoCDSourcePathCandidates(ref string, environment string, gitopsType domain.GitOpsType) []string {
 	ref = normalizeArgoCDSourcePath(ref)
 	if ref == "" {
@@ -1086,6 +1106,7 @@ func buildArgoCDSourcePathCandidates(ref string, environment string, gitopsType 
 	return uniqueStringSlice(candidates)
 }
 
+// uniqueStringSlice 封装当前模块的业务处理逻辑。
 func uniqueStringSlice(values []string) []string {
 	result := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
@@ -1103,6 +1124,7 @@ func uniqueStringSlice(values []string) []string {
 	return result
 }
 
+// normalizeArgoCDSourcePath 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeArgoCDSourcePath(value string) string {
 	normalized := strings.TrimSpace(value)
 	normalized = strings.TrimPrefix(normalized, "./")
@@ -1110,6 +1132,7 @@ func normalizeArgoCDSourcePath(value string) string {
 	return strings.TrimSuffix(normalized, "/")
 }
 
+// resolveGitOpsTargetBranch 解析上下文数据，得到后续流程需要的结果。
 func (uc *ReleaseOrderManager) resolveGitOpsTargetBranch(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -1121,6 +1144,7 @@ func (uc *ReleaseOrderManager) resolveGitOpsTargetBranch(
 	return uc.resolveGitOpsBranchByApplication(ctx, order.ApplicationID, environment, argocdInstance, strings.TrimSpace(app.GetTargetRevision()))
 }
 
+// resolveGitOpsBranchByEnv 解析上下文数据，得到后续流程需要的结果。
 func (uc *ReleaseOrderManager) resolveGitOpsBranchByEnv(
 	environment string,
 	_ argocddomain.Instance,
@@ -1137,6 +1161,7 @@ func (uc *ReleaseOrderManager) resolveGitOpsBranchByEnv(
 	return firstNonEmpty(revision, "master")
 }
 
+// resolveGitOpsBranchByApplication 解析上下文数据，得到后续流程需要的结果。
 func (uc *ReleaseOrderManager) resolveGitOpsBranchByApplication(
 	ctx context.Context,
 	applicationID string,
@@ -1158,6 +1183,7 @@ func (uc *ReleaseOrderManager) resolveGitOpsBranchByApplication(
 	return uc.resolveGitOpsBranchByEnv(environment, argocdInstance, fallback)
 }
 
+// resolveGitOpsBranchFromMappings 解析上下文数据，得到后续流程需要的结果。
 func resolveGitOpsBranchFromMappings(items []appdomain.GitOpsBranchMapping, environment string) string {
 	envCode := strings.ToLower(strings.TrimSpace(environment))
 	if envCode == "" {

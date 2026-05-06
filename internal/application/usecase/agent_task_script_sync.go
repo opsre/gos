@@ -13,6 +13,7 @@ type managedScriptCache struct {
 	missing map[string]struct{}
 }
 
+// newManagedScriptCache 封装当前模块的业务处理逻辑。
 func newManagedScriptCache() *managedScriptCache {
 	return &managedScriptCache{
 		items:   make(map[string]agentdomain.Script),
@@ -20,6 +21,7 @@ func newManagedScriptCache() *managedScriptCache {
 	}
 }
 
+// syncManagedScriptSnapshotsForTasks 同步外部或内部状态数据。
 func syncManagedScriptSnapshotsForTasks(
 	ctx context.Context,
 	repo agentdomain.Repository,
@@ -43,6 +45,7 @@ func syncManagedScriptSnapshotsForTasks(
 	return result, nil
 }
 
+// syncManagedScriptSnapshotForTask 同步外部或内部状态数据。
 func syncManagedScriptSnapshotForTask(
 	ctx context.Context,
 	repo agentdomain.Repository,
@@ -67,6 +70,7 @@ func syncManagedScriptSnapshotForTask(
 	return item, nil
 }
 
+// loadManagedScriptSnapshot 封装当前模块的业务处理逻辑。
 func loadManagedScriptSnapshot(
 	ctx context.Context,
 	repo agentdomain.Repository,
@@ -98,6 +102,7 @@ func loadManagedScriptSnapshot(
 	return item, true, nil
 }
 
+// applyManagedScriptSnapshot 封装当前模块的业务处理逻辑。
 func applyManagedScriptSnapshot(task *agentdomain.Task, script agentdomain.Script) bool {
 	if task == nil {
 		return false

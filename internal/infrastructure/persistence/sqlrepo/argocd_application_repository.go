@@ -16,10 +16,12 @@ type ArgoCDApplicationRepository struct {
 	dbDriver string
 }
 
+// NewArgoCDApplicationRepository 创建并返回对应组件实例。
 func NewArgoCDApplicationRepository(db *sql.DB, dbDriver string) *ArgoCDApplicationRepository {
 	return &ArgoCDApplicationRepository{db: db, dbDriver: strings.ToLower(strings.TrimSpace(dbDriver))}
 }
 
+// InitSchema 封装当前模块的业务处理逻辑。
 func (r *ArgoCDApplicationRepository) InitSchema(ctx context.Context) error {
 	var statements []string
 	switch r.dbDriver {
@@ -166,6 +168,7 @@ func (r *ArgoCDApplicationRepository) InitSchema(ctx context.Context) error {
 	return r.migrateSchema(ctx)
 }
 
+// migrateSchema 封装当前模块的业务处理逻辑。
 func (r *ArgoCDApplicationRepository) migrateSchema(ctx context.Context) error {
 	switch r.dbDriver {
 	case "mysql":
@@ -244,6 +247,7 @@ func (r *ArgoCDApplicationRepository) migrateSchema(ctx context.Context) error {
 	return nil
 }
 
+// CleanupLegacyApplications 封装当前模块的业务处理逻辑。
 func (r *ArgoCDApplicationRepository) CleanupLegacyApplications(ctx context.Context) error {
 	// 多实例改造前，argocd_application 里允许存在空 argocd_instance_id 的历史快照。
 	// 启用多实例后，这类记录会和新的实例化快照重复显示；启动时清掉这些旧数据。
@@ -271,6 +275,7 @@ WHERE COALESCE(argocd_instance_id, '') = ''
 	return err
 }
 
+// rebuildSQLiteApplicationTable 组装业务执行所需的输入数据。
 func (r *ArgoCDApplicationRepository) rebuildSQLiteApplicationTable(ctx context.Context) error {
 	statements := []string{
 		`ALTER TABLE argocd_application RENAME TO argocd_application_legacy;`,
@@ -321,6 +326,7 @@ FROM argocd_application_legacy;`,
 	return nil
 }
 
+// UpsertInstance 封装当前模块的业务处理逻辑。
 func (r *ArgoCDApplicationRepository) UpsertInstance(ctx context.Context, item domain.Instance) (domain.Instance, error) {
 	now := item.UpdatedAt.UTC().UnixNano()
 	createdAt := item.CreatedAt.UTC().UnixNano()
@@ -409,6 +415,7 @@ ON CONFLICT(instance_code) DO UPDATE SET
 	return r.GetInstanceByCode(ctx, item.InstanceCode)
 }
 
+// CreateInstance 创建业务资源并返回处理结果。
 func (r *ArgoCDApplicationRepository) CreateInstance(ctx context.Context, item domain.Instance) (domain.Instance, error) {
 	encryptedToken, err := encryptStoredSecret(strings.TrimSpace(item.Token))
 	if err != nil {
@@ -453,6 +460,7 @@ INSERT INTO argocd_instance (
 	return r.GetInstanceByID(ctx, item.ID)
 }
 
+// UpdateInstance 更新业务资源并返回处理结果。
 func (r *ArgoCDApplicationRepository) UpdateInstance(ctx context.Context, item domain.Instance) (domain.Instance, error) {
 	encryptedToken, err := encryptStoredSecret(strings.TrimSpace(item.Token))
 	if err != nil {
@@ -499,6 +507,7 @@ WHERE id = ?;`
 	return r.GetInstanceByID(ctx, item.ID)
 }
 
+// GetInstanceByID 查询并返回指定资源数据。
 func (r *ArgoCDApplicationRepository) GetInstanceByID(ctx context.Context, id string) (domain.Instance, error) {
 	const q = `
 SELECT i.id, i.instance_code, i.name, i.base_url, i.insecure_skip_verify, i.auth_mode, i.token_ciphertext, i.username, i.password_ciphertext,
@@ -516,6 +525,7 @@ WHERE i.id = ?;`
 	return item, nil
 }
 
+// GetInstanceByCode 查询并返回指定资源数据。
 func (r *ArgoCDApplicationRepository) GetInstanceByCode(ctx context.Context, code string) (domain.Instance, error) {
 	const q = `
 SELECT i.id, i.instance_code, i.name, i.base_url, i.insecure_skip_verify, i.auth_mode, i.token_ciphertext, i.username, i.password_ciphertext,
@@ -533,6 +543,7 @@ WHERE i.instance_code = ?;`
 	return item, nil
 }
 
+// ListInstances 查询并返回列表数据。
 func (r *ArgoCDApplicationRepository) ListInstances(ctx context.Context, filter domain.InstanceListFilter) ([]domain.Instance, int64, error) {
 	args := make([]any, 0, 8)
 	where := make([]string, 0, 2)
@@ -589,6 +600,7 @@ LEFT JOIN gitops_instance g ON g.id = i.gitops_instance_id`
 	return items, total, nil
 }
 
+// ListActiveInstances 查询并返回列表数据。
 func (r *ArgoCDApplicationRepository) ListActiveInstances(ctx context.Context) ([]domain.Instance, error) {
 	const q = `
 SELECT i.id, i.instance_code, i.name, i.base_url, i.insecure_skip_verify, i.auth_mode, i.token_ciphertext, i.username, i.password_ciphertext,
@@ -615,6 +627,7 @@ WHERE i.status = ? ORDER BY i.instance_code ASC;`
 	return items, nil
 }
 
+// UpdateInstanceHealth 更新业务资源并返回处理结果。
 func (r *ArgoCDApplicationRepository) UpdateInstanceHealth(ctx context.Context, id string, healthStatus string, checkedAt time.Time) error {
 	const q = `UPDATE argocd_instance SET health_status = ?, last_check_at = ?, updated_at = ? WHERE id = ?;`
 	res, err := r.db.ExecContext(ctx, q, strings.TrimSpace(healthStatus), instanceLastCheckUnixNano(checkedAt), checkedAt.UTC().UnixNano(), strings.TrimSpace(id))
@@ -631,6 +644,7 @@ func (r *ArgoCDApplicationRepository) UpdateInstanceHealth(ctx context.Context, 
 	return nil
 }
 
+// ListEnvBindings 查询并返回列表数据。
 func (r *ArgoCDApplicationRepository) ListEnvBindings(ctx context.Context) ([]domain.EnvBinding, error) {
 	const q = `
 SELECT b.id, b.env_code, b.argocd_instance_id, i.instance_code, i.name, i.cluster_name, b.priority, b.status, b.created_at, b.updated_at
@@ -656,6 +670,7 @@ ORDER BY b.env_code ASC, b.priority ASC, b.created_at ASC;`
 	return items, nil
 }
 
+// ReplaceEnvBindings 封装当前模块的业务处理逻辑。
 func (r *ArgoCDApplicationRepository) ReplaceEnvBindings(ctx context.Context, items []domain.EnvBinding) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -698,6 +713,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?);`
 	return err
 }
 
+// ResolveInstanceByEnv 解析上下文数据，得到后续流程需要的结果。
 func (r *ArgoCDApplicationRepository) ResolveInstanceByEnv(ctx context.Context, envCode string) (domain.Instance, error) {
 	envCode = strings.TrimSpace(envCode)
 	if envCode == "" {
@@ -729,6 +745,7 @@ LIMIT 1;`
 	return domain.Instance{}, domain.ErrEnvBindingNotFound
 }
 
+// UpsertApplications 封装当前模块的业务处理逻辑。
 func (r *ArgoCDApplicationRepository) UpsertApplications(ctx context.Context, items []domain.Application) (created int, updated int, err error) {
 	if len(items) == 0 {
 		return 0, 0, nil
@@ -843,6 +860,7 @@ ON CONFLICT(argocd_instance_id, app_name) DO UPDATE SET
 	return created, updated, nil
 }
 
+// MarkMissingApplicationsInactive 封装当前模块的业务处理逻辑。
 func (r *ArgoCDApplicationRepository) MarkMissingApplicationsInactive(ctx context.Context, argocdInstanceID string, keepNames []string, updatedAt time.Time) (int, error) {
 	args := make([]any, 0, 3+len(keepNames))
 	builder := strings.Builder{}
@@ -869,6 +887,7 @@ func (r *ArgoCDApplicationRepository) MarkMissingApplicationsInactive(ctx contex
 	return int(affected), nil
 }
 
+// ListApplications 查询并返回列表数据。
 func (r *ArgoCDApplicationRepository) ListApplications(ctx context.Context, filter domain.ListFilter) ([]domain.Application, int64, error) {
 	args := make([]any, 0, 10)
 	where := make([]string, 0, 7)
@@ -941,6 +960,7 @@ FROM argocd_application`
 	return items, total, nil
 }
 
+// GetApplicationByID 查询并返回指定资源数据。
 func (r *ArgoCDApplicationRepository) GetApplicationByID(ctx context.Context, id string) (domain.Application, error) {
 	const q = `SELECT id, argocd_instance_id, instance_code, instance_name, cluster_name, instance_base_url, app_name, project, repo_url, source_path, target_revision,
 	dest_server, dest_namespace, sync_status, health_status, operation_phase, argocd_url, status, raw_meta, last_synced_at, created_at, updated_at
@@ -961,6 +981,7 @@ type argocdEnvBindingScanner interface{ Scan(dest ...any) error }
 
 type argocdApplicationScanner interface{ Scan(dest ...any) error }
 
+// scanArgoCDInstance 封装当前模块的业务处理逻辑。
 func scanArgoCDInstance(scanner argocdInstanceScanner) (domain.Instance, error) {
 	var (
 		item               domain.Instance
@@ -1014,6 +1035,7 @@ func scanArgoCDInstance(scanner argocdInstanceScanner) (domain.Instance, error) 
 	return item, nil
 }
 
+// scanArgoCDEnvBinding 封装当前模块的业务处理逻辑。
 func scanArgoCDEnvBinding(scanner argocdEnvBindingScanner) (domain.EnvBinding, error) {
 	var (
 		item      domain.EnvBinding
@@ -1041,6 +1063,7 @@ func scanArgoCDEnvBinding(scanner argocdEnvBindingScanner) (domain.EnvBinding, e
 	return item, nil
 }
 
+// scanArgoCDApplication 封装当前模块的业务处理逻辑。
 func scanArgoCDApplication(scanner argocdApplicationScanner) (domain.Application, error) {
 	var (
 		item         domain.Application
@@ -1084,6 +1107,7 @@ func scanArgoCDApplication(scanner argocdApplicationScanner) (domain.Application
 	return item, nil
 }
 
+// instanceLastCheckUnixNano 检查业务状态并返回校验结果。
 func instanceLastCheckUnixNano(value time.Time) int64 {
 	if value.IsZero() {
 		return 0
@@ -1091,6 +1115,7 @@ func instanceLastCheckUnixNano(value time.Time) int64 {
 	return value.UTC().UnixNano()
 }
 
+// unixNanoToTime 封装当前模块的业务处理逻辑。
 func unixNanoToTime(value int64) time.Time {
 	if value <= 0 {
 		return time.Time{}
@@ -1098,6 +1123,7 @@ func unixNanoToTime(value int64) time.Time {
 	return time.Unix(0, value).UTC()
 }
 
+// argocdBoolToTinyInt 封装当前模块的业务处理逻辑。
 func argocdBoolToTinyInt(value bool) int {
 	if value {
 		return 1
@@ -1105,6 +1131,7 @@ func argocdBoolToTinyInt(value bool) int {
 	return 0
 }
 
+// mysqlColumnExists 封装当前模块的业务处理逻辑。
 func (r *ArgoCDApplicationRepository) mysqlColumnExists(ctx context.Context, table, column string) (bool, error) {
 	const q = `SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?;`
 	var count int
@@ -1114,6 +1141,7 @@ func (r *ArgoCDApplicationRepository) mysqlColumnExists(ctx context.Context, tab
 	return count > 0, nil
 }
 
+// mysqlIndexExists 封装当前模块的业务处理逻辑。
 func (r *ArgoCDApplicationRepository) mysqlIndexExists(ctx context.Context, table, index string) (bool, error) {
 	const q = `SELECT COUNT(1) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?;`
 	var count int
@@ -1123,6 +1151,7 @@ func (r *ArgoCDApplicationRepository) mysqlIndexExists(ctx context.Context, tabl
 	return count > 0, nil
 }
 
+// sqliteTableColumns 封装当前模块的业务处理逻辑。
 func (r *ArgoCDApplicationRepository) sqliteTableColumns(ctx context.Context, table string) (map[string]struct{}, error) {
 	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(`PRAGMA table_info(%s);`, table))
 	if err != nil {

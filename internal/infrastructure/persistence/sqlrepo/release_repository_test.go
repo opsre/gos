@@ -12,6 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// TestCountActiveOrdersByApplicationEnv_IncludesQueuedAndRunning 封装当前模块的业务处理逻辑。
 func TestCountActiveOrdersByApplicationEnv_IncludesQueuedAndRunning(t *testing.T) {
 	t.Parallel()
 
@@ -39,6 +40,7 @@ func TestCountActiveOrdersByApplicationEnv_IncludesQueuedAndRunning(t *testing.T
 	}
 }
 
+// TestFindActiveOrderByApplicationEnv_PrioritizesDeployingBeforeQueued 封装当前模块的业务处理逻辑。
 func TestFindActiveOrderByApplicationEnv_PrioritizesDeployingBeforeQueued(t *testing.T) {
 	t.Parallel()
 
@@ -65,6 +67,7 @@ func TestFindActiveOrderByApplicationEnv_PrioritizesDeployingBeforeQueued(t *tes
 	}
 }
 
+// TestList_StatusFilterSupportsLegacyAndBusinessAlias 查询并返回列表数据。
 func TestList_StatusFilterSupportsLegacyAndBusinessAlias(t *testing.T) {
 	t.Parallel()
 
@@ -138,6 +141,56 @@ func TestList_StatusFilterSupportsLegacyAndBusinessAlias(t *testing.T) {
 	assertIDs(runningItems, runningLegacy.ID, runningBusiness.ID)
 }
 
+// TestList_ConcurrentBatchFilters 查询并返回列表数据。
+func TestList_ConcurrentBatchFilters(t *testing.T) {
+	t.Parallel()
+
+	repo := newTestReleaseRepository(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	targetByNo := newTestReleaseOrder("ro-batch-no", "RO-BATCH-NO", "app-1", "dev", domain.OrderStatusApproved, now)
+	targetByNo.ConcurrentBatchNo = "CB-20260504-ABC"
+	targetByNo.ConcurrentBatchName = "灰度发布第一批"
+	targetByName := newTestReleaseOrder("ro-batch-name", "RO-BATCH-NAME", "app-1", "dev", domain.OrderStatusApproved, now.Add(time.Second))
+	targetByName.ConcurrentBatchNo = "CB-20260504-DEF"
+	targetByName.ConcurrentBatchName = "核心服务并发发布"
+	other := newTestReleaseOrder("ro-batch-other", "RO-BATCH-OTHER", "app-1", "dev", domain.OrderStatusApproved, now.Add(2*time.Second))
+	other.ConcurrentBatchNo = "CB-20260504-GHI"
+	other.ConcurrentBatchName = "普通批次"
+
+	for _, item := range []domain.ReleaseOrder{targetByNo, targetByName, other} {
+		if err := repo.Create(ctx, item, nil, nil, nil); err != nil {
+			t.Fatalf("Create(%s) failed: %v", item.OrderNo, err)
+		}
+	}
+
+	itemsByNo, totalByNo, err := repo.List(ctx, domain.ListFilter{
+		ConcurrentBatchNo: "ABC",
+		Page:              1,
+		PageSize:          20,
+	})
+	if err != nil {
+		t.Fatalf("List by concurrent batch no failed: %v", err)
+	}
+	if totalByNo != 1 || len(itemsByNo) != 1 || itemsByNo[0].ID != targetByNo.ID {
+		t.Fatalf("List by no returned (%d, %#v), want %s only", totalByNo, itemsByNo, targetByNo.ID)
+	}
+
+	itemsByName, totalByName, err := repo.List(ctx, domain.ListFilter{
+		ConcurrentBatchName: "核心服务",
+		Page:                1,
+		PageSize:            20,
+	})
+	if err != nil {
+		t.Fatalf("List by concurrent batch name failed: %v", err)
+	}
+	if totalByName != 1 || len(itemsByName) != 1 || itemsByName[0].ID != targetByName.ID {
+		t.Fatalf("List by name returned (%d, %#v), want %s only", totalByName, itemsByName, targetByName.ID)
+	}
+}
+
+// TestList_VisibilityIncludesAppCreatorAndApprover 查询并返回列表数据。
 func TestList_VisibilityIncludesAppCreatorAndApprover(t *testing.T) {
 	t.Parallel()
 
@@ -184,6 +237,7 @@ func TestList_VisibilityIncludesAppCreatorAndApprover(t *testing.T) {
 	}
 }
 
+// TestListApprovalRecordSummaries_VisibilityIncludesAppCreatorAndApprover 查询并返回列表数据。
 func TestListApprovalRecordSummaries_VisibilityIncludesAppCreatorAndApprover(t *testing.T) {
 	t.Parallel()
 
@@ -241,6 +295,7 @@ func TestListApprovalRecordSummaries_VisibilityIncludesAppCreatorAndApprover(t *
 	}
 }
 
+// TestCreateTemplate_PersistsHookEnvCodes 创建业务资源并返回处理结果。
 func TestCreateTemplate_PersistsHookEnvCodes(t *testing.T) {
 	t.Parallel()
 
@@ -302,6 +357,7 @@ func TestCreateTemplate_PersistsHookEnvCodes(t *testing.T) {
 	}
 }
 
+// TestConfirmAppReleaseState_RejectsOutdatedOrder 封装当前模块的业务处理逻辑。
 func TestConfirmAppReleaseState_RejectsOutdatedOrder(t *testing.T) {
 	t.Parallel()
 
@@ -350,6 +406,7 @@ func TestConfirmAppReleaseState_RejectsOutdatedOrder(t *testing.T) {
 	}
 }
 
+// newTestReleaseRepository 封装当前模块的业务处理逻辑。
 func newTestReleaseRepository(t *testing.T) *ReleaseRepository {
 	t.Helper()
 
@@ -382,6 +439,7 @@ CREATE TABLE IF NOT EXISTS sys_user (
 	return repo
 }
 
+// newTestReleaseOrder 封装当前模块的业务处理逻辑。
 func newTestReleaseOrder(id, orderNo, applicationID, envCode string, status domain.OrderStatus, createdAt time.Time) domain.ReleaseOrder {
 	return domain.ReleaseOrder{
 		ID:                  id,

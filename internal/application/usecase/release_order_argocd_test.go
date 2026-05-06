@@ -15,10 +15,12 @@ type applicationRepositoryStub struct {
 	err error
 }
 
+// Create 创建业务资源并返回处理结果。
 func (s applicationRepositoryStub) Create(context.Context, appdomain.Application) error {
 	return nil
 }
 
+// GetByID 查询并返回指定资源数据。
 func (s applicationRepositoryStub) GetByID(context.Context, string) (appdomain.Application, error) {
 	if s.err != nil {
 		return appdomain.Application{}, s.err
@@ -26,18 +28,22 @@ func (s applicationRepositoryStub) GetByID(context.Context, string) (appdomain.A
 	return s.app, nil
 }
 
+// List 查询并返回列表数据。
 func (s applicationRepositoryStub) List(context.Context, appdomain.ListFilter) ([]appdomain.Application, int64, error) {
 	return nil, 0, nil
 }
 
+// Update 更新业务资源并返回处理结果。
 func (s applicationRepositoryStub) Update(context.Context, string, appdomain.UpdateInput, time.Time) (appdomain.Application, error) {
 	return appdomain.Application{}, nil
 }
 
+// Delete 删除业务资源并返回处理结果。
 func (s applicationRepositoryStub) Delete(context.Context, string) error {
 	return nil
 }
 
+// InitSchema 封装当前模块的业务处理逻辑。
 func (s applicationRepositoryStub) InitSchema(context.Context) error {
 	return nil
 }
@@ -46,18 +52,40 @@ type argoAppSnapshotStub struct {
 	targetRevision string
 }
 
-func (s argoAppSnapshotStub) GetName() string           { return "demo" }
-func (s argoAppSnapshotStub) GetProject() string        { return "" }
-func (s argoAppSnapshotStub) GetRepoURL() string        { return "" }
-func (s argoAppSnapshotStub) GetSourcePath() string     { return "" }
-func (s argoAppSnapshotStub) GetTargetRevision() string { return s.targetRevision }
-func (s argoAppSnapshotStub) GetDestServer() string     { return "" }
-func (s argoAppSnapshotStub) GetDestNamespace() string  { return "" }
-func (s argoAppSnapshotStub) GetSyncStatus() string     { return "" }
-func (s argoAppSnapshotStub) GetHealthStatus() string   { return "" }
-func (s argoAppSnapshotStub) GetOperationPhase() string { return "" }
-func (s argoAppSnapshotStub) GetRawMeta() string        { return "" }
+// GetName 查询并返回指定资源数据。
+func (s argoAppSnapshotStub) GetName() string { return "demo" }
 
+// GetProject 查询并返回指定资源数据。
+func (s argoAppSnapshotStub) GetProject() string { return "" }
+
+// GetRepoURL 查询并返回指定资源数据。
+func (s argoAppSnapshotStub) GetRepoURL() string { return "" }
+
+// GetSourcePath 查询并返回指定资源数据。
+func (s argoAppSnapshotStub) GetSourcePath() string { return "" }
+
+// GetTargetRevision 查询并返回指定资源数据。
+func (s argoAppSnapshotStub) GetTargetRevision() string { return s.targetRevision }
+
+// GetDestServer 查询并返回指定资源数据。
+func (s argoAppSnapshotStub) GetDestServer() string { return "" }
+
+// GetDestNamespace 查询并返回指定资源数据。
+func (s argoAppSnapshotStub) GetDestNamespace() string { return "" }
+
+// GetSyncStatus 查询并返回指定资源数据。
+func (s argoAppSnapshotStub) GetSyncStatus() string { return "" }
+
+// GetHealthStatus 查询并返回指定资源数据。
+func (s argoAppSnapshotStub) GetHealthStatus() string { return "" }
+
+// GetOperationPhase 查询并返回指定资源数据。
+func (s argoAppSnapshotStub) GetOperationPhase() string { return "" }
+
+// GetRawMeta 查询并返回指定资源数据。
+func (s argoAppSnapshotStub) GetRawMeta() string { return "" }
+
+// TestResolveGitOpsTargetBranchUsesApplicationMapping 解析上下文数据，得到后续流程需要的结果。
 func TestResolveGitOpsTargetBranchUsesApplicationMapping(t *testing.T) {
 	manager := &ReleaseOrderManager{
 		appRepo: applicationRepositoryStub{
@@ -84,6 +112,7 @@ func TestResolveGitOpsTargetBranchUsesApplicationMapping(t *testing.T) {
 	}
 }
 
+// TestResolveGitOpsTargetBranchDefaultsToAppKeyEnv 解析上下文数据，得到后续流程需要的结果。
 func TestResolveGitOpsTargetBranchDefaultsToAppKeyEnv(t *testing.T) {
 	manager := &ReleaseOrderManager{
 		appRepo: applicationRepositoryStub{
@@ -107,6 +136,7 @@ func TestResolveGitOpsTargetBranchDefaultsToAppKeyEnv(t *testing.T) {
 	}
 }
 
+// TestBuildArgoCDSourcePathCandidatesPrefersHoistedHelmPath 组装业务执行所需的输入数据。
 func TestBuildArgoCDSourcePathCandidatesPrefersHoistedHelmPath(t *testing.T) {
 	items := buildArgoCDSourcePathCandidates("apps/java-nantong-test", "dev", releasedomain.GitOpsTypeHelm)
 	if len(items) < 2 {

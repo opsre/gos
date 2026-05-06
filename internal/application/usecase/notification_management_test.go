@@ -7,6 +7,7 @@ import (
 	notificationdomain "gos/internal/domain/notification"
 )
 
+// TestNormalizeNotificationVariablesBuildsRichFallbacks 标准化输入值，保证后续逻辑使用统一格式。
 func TestNormalizeNotificationVariablesBuildsRichFallbacks(t *testing.T) {
 	t.Parallel()
 
@@ -23,6 +24,7 @@ func TestNormalizeNotificationVariablesBuildsRichFallbacks(t *testing.T) {
 	}
 }
 
+// TestRenderNotificationMarkdownTemplateUsesRichFallbacks 封装当前模块的业务处理逻辑。
 func TestRenderNotificationMarkdownTemplateUsesRichFallbacks(t *testing.T) {
 	t.Parallel()
 

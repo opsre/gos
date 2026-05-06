@@ -6,6 +6,7 @@ import (
 	agentdomain "gos/internal/domain/agent"
 )
 
+// TestIsReusableAgentTaskHookTarget 查询并返回指定资源数据。
 func TestIsReusableAgentTaskHookTarget(t *testing.T) {
 	t.Parallel()
 

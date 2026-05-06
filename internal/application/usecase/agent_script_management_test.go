@@ -12,6 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// TestAgentScriptUpdateSyncsBoundTasks 更新业务资源并返回处理结果。
 func TestAgentScriptUpdateSyncsBoundTasks(t *testing.T) {
 	t.Parallel()
 
@@ -126,6 +127,7 @@ func TestAgentScriptUpdateSyncsBoundTasks(t *testing.T) {
 	}
 }
 
+// TestAgentTaskManagerUsesLatestManagedScriptForStaleTaskSnapshots 封装当前模块的业务处理逻辑。
 func TestAgentTaskManagerUsesLatestManagedScriptForStaleTaskSnapshots(t *testing.T) {
 	t.Parallel()
 

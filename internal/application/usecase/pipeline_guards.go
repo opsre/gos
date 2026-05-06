@@ -8,6 +8,7 @@ import (
 	pipelinedomain "gos/internal/domain/pipeline"
 )
 
+// ensureActivePipelineRecord 校验前置条件，不满足时写入对应错误响应。
 func ensureActivePipelineRecord(pipeline pipelinedomain.Pipeline, scene string) error {
 	if pipeline.Status == pipelinedomain.StatusInactive {
 		if strings.TrimSpace(scene) == "" {
@@ -18,6 +19,7 @@ func ensureActivePipelineRecord(pipeline pipelinedomain.Pipeline, scene string) 
 	return nil
 }
 
+// ensureActiveExecutorParamDef 校验前置条件，不满足时写入对应错误响应。
 func ensureActiveExecutorParamDef(param pipelineparamdomain.ExecutorParamDef, scene string) error {
 	if param.Status == pipelineparamdomain.StatusInactive {
 		if strings.TrimSpace(scene) == "" {

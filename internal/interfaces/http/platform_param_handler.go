@@ -18,6 +18,7 @@ type PlatformParamHandler struct {
 	authz   RequestAuthorizer
 }
 
+// NewPlatformParamHandler 创建并返回对应组件实例。
 func NewPlatformParamHandler(manager *usecase.PlatformParamDictManager, authz RequestAuthorizer) *PlatformParamHandler {
 	return &PlatformParamHandler{
 		manager: manager,
@@ -25,6 +26,7 @@ func NewPlatformParamHandler(manager *usecase.PlatformParamDictManager, authz Re
 	}
 }
 
+// RegisterRoutes 封装当前模块的业务处理逻辑。
 func (h *PlatformParamHandler) RegisterRoutes(router gin.IRouter) {
 	router.POST("/platform-param-dicts", h.Create)
 	router.GET("/platform-param-dicts", h.List)
@@ -267,6 +269,7 @@ func (h *PlatformParamHandler) Delete(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// toPlatformParamResponse 将领域对象转换为接口响应结构。
 func toPlatformParamResponse(item domain.PlatformParamDict) PlatformParamDictResponse {
 	return PlatformParamDictResponse{
 		ID:            item.ID,
@@ -284,6 +287,7 @@ func toPlatformParamResponse(item domain.PlatformParamDict) PlatformParamDictRes
 	}
 }
 
+// writePlatformParamHTTPError 写入处理结果或错误信息。
 func writePlatformParamHTTPError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrInvalidInput),
@@ -303,6 +307,7 @@ func writePlatformParamHTTPError(c *gin.Context, err error) {
 	}
 }
 
+// parseOptionalPlatformParamStatus 解析输入内容并返回结构化结果。
 func parseOptionalPlatformParamStatus(c *gin.Context, name string) (*domain.Status, error) {
 	raw := strings.TrimSpace(c.Query(name))
 	if raw == "" {
@@ -319,6 +324,7 @@ func parseOptionalPlatformParamStatus(c *gin.Context, name string) (*domain.Stat
 	return &status, nil
 }
 
+// createPlatformParamStatus 创建业务资源并返回处理结果。
 func createPlatformParamStatus(status *int) domain.Status {
 	if status == nil {
 		return domain.StatusEnabled

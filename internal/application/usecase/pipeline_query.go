@@ -41,6 +41,7 @@ type PipelineOriginalLinkOutput struct {
 	OriginalLink string          `json:"original_link"`
 }
 
+// NewQueryPipeline 创建并返回对应组件实例。
 func NewQueryPipeline(repo domain.Repository, jenkins JenkinsPipelineClient) *QueryPipeline {
 	return &QueryPipeline{
 		repo:    repo,
@@ -51,6 +52,7 @@ func NewQueryPipeline(repo domain.Repository, jenkins JenkinsPipelineClient) *Qu
 	}
 }
 
+// List 查询并返回列表数据。
 func (uc *QueryPipeline) List(ctx context.Context, filter domain.PipelineListFilter) ([]domain.Pipeline, int64, error) {
 	const (
 		defaultPage     = 1
@@ -80,6 +82,7 @@ func (uc *QueryPipeline) List(ctx context.Context, filter domain.PipelineListFil
 	return uc.repo.ListPipelines(ctx, filter)
 }
 
+// GetByID 查询并返回指定资源数据。
 func (uc *QueryPipeline) GetByID(ctx context.Context, id string) (domain.Pipeline, error) {
 	if strings.TrimSpace(id) == "" {
 		return domain.Pipeline{}, ErrInvalidID
@@ -87,6 +90,7 @@ func (uc *QueryPipeline) GetByID(ctx context.Context, id string) (domain.Pipelin
 	return uc.repo.GetPipelineByID(ctx, id)
 }
 
+// Verify 封装当前模块的业务处理逻辑。
 func (uc *QueryPipeline) Verify(ctx context.Context, id string) (VerifyPipelineOutput, error) {
 	if strings.TrimSpace(id) == "" {
 		return VerifyPipelineOutput{}, ErrInvalidID
@@ -115,6 +119,7 @@ func (uc *QueryPipeline) Verify(ctx context.Context, id string) (VerifyPipelineO
 	}, nil
 }
 
+// GetRawScript 查询并返回指定资源数据。
 func (uc *QueryPipeline) GetRawScript(ctx context.Context, id string) (PipelineRawScriptOutput, error) {
 	if strings.TrimSpace(id) == "" {
 		return PipelineRawScriptOutput{}, ErrInvalidID
@@ -147,6 +152,7 @@ func (uc *QueryPipeline) GetRawScript(ctx context.Context, id string) (PipelineR
 	}, nil
 }
 
+// GetConfigXML 查询并返回指定资源数据。
 func (uc *QueryPipeline) GetConfigXML(ctx context.Context, id string) (PipelineConfigXMLOutput, error) {
 	if strings.TrimSpace(id) == "" {
 		return PipelineConfigXMLOutput{}, ErrInvalidID
@@ -174,6 +180,7 @@ func (uc *QueryPipeline) GetConfigXML(ctx context.Context, id string) (PipelineC
 	}, nil
 }
 
+// GetOriginalLink 查询并返回指定资源数据。
 func (uc *QueryPipeline) GetOriginalLink(ctx context.Context, id string) (PipelineOriginalLinkOutput, error) {
 	if strings.TrimSpace(id) == "" {
 		return PipelineOriginalLinkOutput{}, ErrInvalidID

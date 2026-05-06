@@ -13,6 +13,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// TestExecuteBoundTemporaryTaskDispatchesToAllBoundAgents 封装当前模块的业务处理逻辑。
 func TestExecuteBoundTemporaryTaskDispatchesToAllBoundAgents(t *testing.T) {
 	t.Parallel()
 
@@ -165,6 +166,7 @@ func TestExecuteBoundTemporaryTaskDispatchesToAllBoundAgents(t *testing.T) {
 	}
 }
 
+// TestUpdateTemporaryTaskCanChangeTargetAgents 查询并返回指定资源数据。
 func TestUpdateTemporaryTaskCanChangeTargetAgents(t *testing.T) {
 	t.Parallel()
 

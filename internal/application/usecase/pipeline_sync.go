@@ -32,6 +32,7 @@ type SyncPipelinesOutput struct {
 	Skipped     int `json:"skipped"`
 }
 
+// NewSyncPipelines 创建并返回对应组件实例。
 func NewSyncPipelines(repo domain.Repository, jenkins JenkinsPipelineClient) *SyncPipelines {
 	return &SyncPipelines{
 		repo:    repo,
@@ -42,6 +43,7 @@ func NewSyncPipelines(repo domain.Repository, jenkins JenkinsPipelineClient) *Sy
 	}
 }
 
+// Execute 封装当前模块的业务处理逻辑。
 func (uc *SyncPipelines) Execute(ctx context.Context) (SyncPipelinesOutput, error) {
 	jobs, err := uc.jenkins.ListJobs(ctx)
 	if err != nil {
@@ -103,6 +105,7 @@ func (uc *SyncPipelines) Execute(ctx context.Context) (SyncPipelinesOutput, erro
 	}, nil
 }
 
+// pipelineID 封装当前模块的业务处理逻辑。
 func pipelineID(provider, fullName string) string {
 	sum := sha1.Sum([]byte(provider + ":" + fullName))
 	return "pln-" + hex.EncodeToString(sum[:12])

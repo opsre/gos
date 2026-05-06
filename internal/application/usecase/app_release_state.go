@@ -79,6 +79,7 @@ type ApplicationRollbackPrecheckOutput struct {
 	Params           []ApplicationRollbackPrecheckParam `json:"params"`
 }
 
+// RecordAppReleaseState 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) RecordAppReleaseState(ctx context.Context, releaseOrderID string) error {
 	if uc == nil || uc.repo == nil {
 		return fmt.Errorf("%w: release order manager is not configured", ErrInvalidInput)
@@ -182,6 +183,7 @@ func (uc *ReleaseOrderManager) RecordAppReleaseState(ctx context.Context, releas
 	return uc.repo.UpsertAppReleaseState(ctx, state)
 }
 
+// ConfirmAppReleaseState 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) ConfirmAppReleaseState(
 	ctx context.Context,
 	releaseOrderID string,
@@ -193,6 +195,7 @@ func (uc *ReleaseOrderManager) ConfirmAppReleaseState(
 	return uc.repo.ConfirmAppReleaseState(ctx, strings.TrimSpace(releaseOrderID), strings.TrimSpace(confirmedBy), uc.now())
 }
 
+// CanConfirmAppReleaseState 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) CanConfirmAppReleaseState(
 	ctx context.Context,
 	releaseOrderID string,
@@ -213,6 +216,7 @@ func (uc *ReleaseOrderManager) CanConfirmAppReleaseState(
 	return uc.repo.IsLatestOrderByApplicationEnv(ctx, state.ApplicationID, state.EnvCode, state.ReleaseOrderID)
 }
 
+// GetAppReleaseStateByOrderID 查询并返回指定资源数据。
 func (uc *ReleaseOrderManager) GetAppReleaseStateByOrderID(
 	ctx context.Context,
 	releaseOrderID string,
@@ -223,6 +227,7 @@ func (uc *ReleaseOrderManager) GetAppReleaseStateByOrderID(
 	return uc.repo.GetAppReleaseStateByOrderID(ctx, strings.TrimSpace(releaseOrderID))
 }
 
+// ListCurrentAppReleaseStateSummaries 查询并返回列表数据。
 func (uc *ReleaseOrderManager) ListCurrentAppReleaseStateSummaries(
 	ctx context.Context,
 	applicationIDs []string,
@@ -233,6 +238,7 @@ func (uc *ReleaseOrderManager) ListCurrentAppReleaseStateSummaries(
 	return uc.repo.ListCurrentAppReleaseStateSummaries(ctx, applicationIDs)
 }
 
+// GetApplicationRollbackCapability 查询并返回指定资源数据。
 func (uc *ReleaseOrderManager) GetApplicationRollbackCapability(
 	ctx context.Context,
 	applicationID string,
@@ -307,6 +313,7 @@ func (uc *ReleaseOrderManager) GetApplicationRollbackCapability(
 	}
 }
 
+// CreateApplicationRollbackOrder 创建业务资源并返回处理结果。
 func (uc *ReleaseOrderManager) CreateApplicationRollbackOrder(
 	ctx context.Context,
 	applicationID string,
@@ -343,6 +350,7 @@ func (uc *ReleaseOrderManager) CreateApplicationRollbackOrder(
 	}
 }
 
+// toRollbackStateView 将领域对象转换为接口响应结构。
 func toRollbackStateView(state domain.AppReleaseState) ApplicationRollbackStateView {
 	return ApplicationRollbackStateView{
 		StateID:        state.ID,
@@ -360,6 +368,7 @@ func toRollbackStateView(state domain.AppReleaseState) ApplicationRollbackStateV
 	}
 }
 
+// GetApplicationRollbackPrecheck 查询并返回指定资源数据。
 func (uc *ReleaseOrderManager) GetApplicationRollbackPrecheck(
 	ctx context.Context,
 	applicationID string,
@@ -655,6 +664,7 @@ type applicationRollbackGuard struct {
 	Item            ReleaseOrderPrecheckItem
 }
 
+// evaluateApplicationRollbackGuard 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) evaluateApplicationRollbackGuard(
 	ctx context.Context,
 	applicationID string,
@@ -700,6 +710,7 @@ func (uc *ReleaseOrderManager) evaluateApplicationRollbackGuard(
 	return guard, nil
 }
 
+// toApplicationRollbackPrecheckParams 将领域对象转换为接口响应结构。
 func toApplicationRollbackPrecheckParams(items []domain.ReleaseOrderParam) []ApplicationRollbackPrecheckParam {
 	result := make([]ApplicationRollbackPrecheckParam, 0, len(items))
 	sort.SliceStable(items, func(i, j int) bool {
@@ -733,6 +744,7 @@ func toApplicationRollbackPrecheckParams(items []domain.ReleaseOrderParam) []App
 	return result
 }
 
+// rollbackSupportedActionLabel 封装当前模块的业务处理逻辑。
 func rollbackSupportedActionLabel(action RollbackSupportedAction) string {
 	switch action {
 	case RollbackSupportedActionRollback:
@@ -744,6 +756,7 @@ func rollbackSupportedActionLabel(action RollbackSupportedAction) string {
 	}
 }
 
+// releaseOrderFinishedAtOrCreatedAt 创建业务资源并返回处理结果。
 func releaseOrderFinishedAtOrCreatedAt(order domain.ReleaseOrder) time.Time {
 	if order.FinishedAt != nil {
 		return order.FinishedAt.UTC()

@@ -24,10 +24,12 @@ type ReleaseStore struct {
 	configPath string
 }
 
+// NewReleaseStore 创建并返回对应组件实例。
 func NewReleaseStore(configPath string) *ReleaseStore {
 	return &ReleaseStore{configPath: strings.TrimSpace(configPath)}
 }
 
+// LoadEnvOptions 封装当前模块的业务处理逻辑。
 func (s *ReleaseStore) LoadEnvOptions(_ context.Context) ([]string, error) {
 	path := strings.TrimSpace(s.configPath)
 	if path == "" {
@@ -55,6 +57,7 @@ func (s *ReleaseStore) LoadEnvOptions(_ context.Context) ([]string, error) {
 	return options, nil
 }
 
+// LoadConcurrencySettings 封装当前模块的业务处理逻辑。
 func (s *ReleaseStore) LoadConcurrencySettings(_ context.Context) (usecase.ReleaseConcurrencySettingsOutput, error) {
 	path := strings.TrimSpace(s.configPath)
 	if path == "" {
@@ -96,6 +99,7 @@ func (s *ReleaseStore) LoadConcurrencySettings(_ context.Context) (usecase.Relea
 	}, nil
 }
 
+// SaveEnvOptions 封装当前模块的业务处理逻辑。
 func (s *ReleaseStore) SaveEnvOptions(_ context.Context, values []string) error {
 	path := strings.TrimSpace(s.configPath)
 	if path == "" {
@@ -136,6 +140,7 @@ func (s *ReleaseStore) SaveEnvOptions(_ context.Context, values []string) error 
 	return nil
 }
 
+// SaveConcurrencySettings 封装当前模块的业务处理逻辑。
 func (s *ReleaseStore) SaveConcurrencySettings(_ context.Context, input usecase.ReleaseConcurrencySettingsInput) error {
 	path := strings.TrimSpace(s.configPath)
 	if path == "" {
@@ -176,6 +181,7 @@ func (s *ReleaseStore) SaveConcurrencySettings(_ context.Context, input usecase.
 	return nil
 }
 
+// LoadGitOpsConfig 封装当前模块的业务处理逻辑。
 func (s *ReleaseStore) LoadGitOpsConfig(_ context.Context) (usecase.ReleaseGitOpsConfigOutput, error) {
 	path := strings.TrimSpace(s.configPath)
 	if path == "" {
@@ -208,6 +214,7 @@ func (s *ReleaseStore) LoadGitOpsConfig(_ context.Context) (usecase.ReleaseGitOp
 	return result, nil
 }
 
+// SaveGitOpsConfig 封装当前模块的业务处理逻辑。
 func (s *ReleaseStore) SaveGitOpsConfig(_ context.Context, input usecase.ReleaseGitOpsConfigInput) error {
 	path := strings.TrimSpace(s.configPath)
 	if path == "" {
@@ -246,6 +253,7 @@ func (s *ReleaseStore) SaveGitOpsConfig(_ context.Context, input usecase.Release
 	return nil
 }
 
+// defaultReleaseGitOpsConfig 封装当前模块的业务处理逻辑。
 func defaultReleaseGitOpsConfig() usecase.ReleaseGitOpsConfigOutput {
 	return usecase.ReleaseGitOpsConfigOutput{
 		HelmScanPath:      "apps/helm",
@@ -253,6 +261,7 @@ func defaultReleaseGitOpsConfig() usecase.ReleaseGitOpsConfigOutput {
 	}
 }
 
+// readMapNode 封装当前模块的业务处理逻辑。
 func readMapNode(payload map[string]interface{}, key string) map[string]interface{} {
 	if payload == nil {
 		return map[string]interface{}{}
@@ -263,6 +272,7 @@ func readMapNode(payload map[string]interface{}, key string) map[string]interfac
 	return map[string]interface{}{}
 }
 
+// boolFromAny 封装当前模块的业务处理逻辑。
 func boolFromAny(raw interface{}) bool {
 	switch value := raw.(type) {
 	case bool:
@@ -274,6 +284,7 @@ func boolFromAny(raw interface{}) bool {
 	}
 }
 
+// intFromAny 封装当前模块的业务处理逻辑。
 func intFromAny(raw interface{}) int {
 	switch value := raw.(type) {
 	case float64:
@@ -297,6 +308,7 @@ func intFromAny(raw interface{}) int {
 	}
 }
 
+// normalizeStringListFromAny 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeStringListFromAny(raw interface{}) []string {
 	items, ok := raw.([]interface{})
 	if !ok {
@@ -309,6 +321,7 @@ func normalizeStringListFromAny(raw interface{}) []string {
 	return normalizeStringList(values)
 }
 
+// normalizeStringList 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeStringList(values []string) []string {
 	result := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
@@ -326,6 +339,7 @@ func normalizeStringList(values []string) []string {
 	return result
 }
 
+// cloneStringList 查询并返回列表数据。
 func cloneStringList(values []string) []string {
 	if len(values) == 0 {
 		return nil

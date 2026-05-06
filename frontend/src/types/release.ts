@@ -63,16 +63,32 @@ export type ReleaseExecutionStatus =
   | "failed"
   | "cancelled"
   | "skipped";
+export type ReleaseOrderScheduleMode = "build" | "deploy" | "build_deploy" | "execute";
+export type ReleaseOrderScheduleStatus =
+  | "pending_approval"
+  | "approving"
+  | "scheduled"
+  | "dispatching"
+  | "dispatched"
+  | "expired"
+  | "blocked"
+  | "failed"
+  | "skipped"
+  | "cancelled"
+  | "rejected";
+export type ReleaseOrderScheduleApprovalAction = "submit" | "approve" | "reject";
 
 export interface ReleaseOrder {
   id: string;
   order_no: string;
+  release_name: string;
   previous_order_no: string;
   operation_type: ReleaseOperationType;
   source_order_id: string;
   source_order_no: string;
   is_concurrent: boolean;
   concurrent_batch_no: string;
+  concurrent_batch_name: string;
   concurrent_batch_seq: number;
   cd_provider: string;
   has_ci_execution: boolean;
@@ -288,6 +304,8 @@ export interface ReleaseOrderListParams {
   application_id?: string;
   approval_approver_user_id?: string;
   keyword?: string;
+  concurrent_batch_no?: string;
+  concurrent_batch_name?: string;
   triggered_by?: string;
   env_code?: string;
   operation_type?: ReleaseOperationType;
@@ -319,6 +337,98 @@ export interface ReleaseOrderDataResponse {
   data: ReleaseOrder;
 }
 
+export interface ReleaseOrderSchedule {
+  id: string;
+  schedule_no: string;
+  release_order_id: string;
+  release_order_no: string;
+  application_id: string;
+  application_name: string;
+  env_code: string;
+  template_id: string;
+  template_name: string;
+  schedule_mode: ReleaseOrderScheduleMode;
+  build_scheduled_at: string | null;
+  deploy_scheduled_at: string | null;
+  execute_scheduled_at: string | null;
+  cd_conflict_at: string | null;
+  timezone: string;
+  status: ReleaseOrderScheduleStatus;
+  approval_required: boolean;
+  approval_mode: ReleaseTemplateApprovalMode | "";
+  approval_approver_ids: string[];
+  approval_approver_names: string[];
+  approved_at: string | null;
+  approved_by: string;
+  rejected_at: string | null;
+  rejected_by: string;
+  rejected_reason: string;
+  build_dispatched_at: string | null;
+  deploy_dispatched_at: string | null;
+  execute_dispatched_at: string | null;
+  expired_at: string | null;
+  cancelled_at: string | null;
+  cancelled_by: string;
+  last_error: string;
+  remark: string;
+  creator_user_id: string;
+  creator_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReleaseOrderScheduleListParams {
+  application_id?: string;
+  release_order_id?: string;
+  keyword?: string;
+  env_code?: string;
+  schedule_mode?: ReleaseOrderScheduleMode;
+  status?: ReleaseOrderScheduleStatus;
+  approval_approver_user_id?: string;
+  scheduled_at_from?: string;
+  scheduled_at_to?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface ReleaseOrderScheduleListResponse {
+  data: ReleaseOrderSchedule[];
+  page: number;
+  page_size: number;
+  total: number;
+}
+
+export interface ReleaseOrderScheduleDataResponse {
+  data: ReleaseOrderSchedule;
+}
+
+export interface ReleaseOrderSchedulePayload {
+  schedule_mode: ReleaseOrderScheduleMode;
+  build_scheduled_at?: string;
+  deploy_scheduled_at?: string;
+  execute_scheduled_at?: string;
+  timezone: string;
+  remark?: string;
+}
+
+export interface ReleaseOrderScheduleApprovalActionPayload {
+  comment?: string;
+}
+
+export interface ReleaseOrderScheduleApprovalRecord {
+  id: string;
+  schedule_id: string;
+  action: ReleaseOrderScheduleApprovalAction;
+  operator_user_id: string;
+  operator_name: string;
+  comment: string;
+  created_at: string;
+}
+
+export interface ReleaseOrderScheduleApprovalRecordListResponse {
+  data: ReleaseOrderScheduleApprovalRecord[];
+}
+
 export type ReleaseOrderConcurrentBatchQueueState =
   | "pending"
   | "queued"
@@ -331,6 +441,7 @@ export type BatchExecuteStagedDispatchMode = "execute" | "build";
 
 export interface BatchExecuteReleaseOrdersPayload {
   order_ids: string[];
+  batch_name: string;
   staged_dispatch_mode?: BatchExecuteStagedDispatchMode;
 }
 
@@ -358,6 +469,7 @@ export interface ReleaseOrderConcurrentBatchProgress {
   order_id: string;
   order_no: string;
   batch_no: string;
+  batch_name: string;
   is_concurrent: boolean;
   total: number;
   queued: number;
@@ -374,6 +486,7 @@ export interface ReleaseOrderConcurrentBatchProgressResponse {
 
 export interface ReleaseOrderBatchExecuteResult {
   batch_no: string;
+  batch_name: string;
   orders: ReleaseOrder[];
   dispatch_errors: string[];
 }
@@ -486,6 +599,7 @@ export interface CreateReleaseOrderStepPayload {
 export interface CreateReleaseOrderPayload {
   application_id: string;
   template_id: string;
+  release_name?: string;
   env_code?: string;
   project_name?: string;
   son_service?: string;

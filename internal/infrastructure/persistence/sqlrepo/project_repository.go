@@ -18,10 +18,12 @@ type ProjectRepository struct {
 	dbDriver string
 }
 
+// NewProjectRepository 创建并返回对应组件实例。
 func NewProjectRepository(db *sql.DB, dbDriver string) *ProjectRepository {
 	return &ProjectRepository{db: db, dbDriver: strings.ToLower(strings.TrimSpace(dbDriver))}
 }
 
+// InitSchema 封装当前模块的业务处理逻辑。
 func (r *ProjectRepository) InitSchema(ctx context.Context) error {
 	var schema string
 	switch r.dbDriver {
@@ -55,6 +57,7 @@ CREATE TABLE IF NOT EXISTS projects (
 	return err
 }
 
+// Create 创建业务资源并返回处理结果。
 func (r *ProjectRepository) Create(ctx context.Context, item projectdomain.Project) error {
 	const q = `
 INSERT INTO projects (id, name, project_key, description, status, created_at, updated_at)
@@ -77,6 +80,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?);`
 	return nil
 }
 
+// GetByID 查询并返回指定资源数据。
 func (r *ProjectRepository) GetByID(ctx context.Context, id string) (projectdomain.Project, error) {
 	const q = `
 SELECT id, name, project_key, description, status, created_at, updated_at
@@ -93,6 +97,7 @@ WHERE id = ?;`
 	return item, nil
 }
 
+// List 查询并返回列表数据。
 func (r *ProjectRepository) List(ctx context.Context, filter projectdomain.ListFilter) ([]projectdomain.Project, int64, error) {
 	args := make([]any, 0, 4)
 	where := make([]string, 0, 3)
@@ -150,6 +155,7 @@ FROM projects`)
 	return items, total, nil
 }
 
+// Update 更新业务资源并返回处理结果。
 func (r *ProjectRepository) Update(ctx context.Context, id string, input projectdomain.UpdateInput, updatedAt time.Time) (projectdomain.Project, error) {
 	const q = `
 UPDATE projects
@@ -179,6 +185,7 @@ WHERE id = ?;`
 	return r.GetByID(ctx, id)
 }
 
+// Delete 删除业务资源并返回处理结果。
 func (r *ProjectRepository) Delete(ctx context.Context, id string) error {
 	const countQ = `SELECT COUNT(1) FROM applications WHERE project_id = ?;`
 	var refs int64
@@ -206,6 +213,7 @@ func (r *ProjectRepository) Delete(ctx context.Context, id string) error {
 
 type projectScanner interface{ Scan(dest ...any) error }
 
+// scanProject 封装当前模块的业务处理逻辑。
 func scanProject(s projectScanner) (projectdomain.Project, error) {
 	var item projectdomain.Project
 	var statusRaw string
@@ -220,6 +228,7 @@ func scanProject(s projectScanner) (projectdomain.Project, error) {
 	return item, nil
 }
 
+// isProjectDuplicateKeyError 封装当前模块的业务处理逻辑。
 func isProjectDuplicateKeyError(dbDriver string, err error) bool {
 	switch dbDriver {
 	case "mysql":

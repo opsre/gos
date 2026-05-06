@@ -25,6 +25,7 @@ type CreatePipelineBindingInput struct {
 	Status      domain.Status
 }
 
+// NewPipelineBindingManager 创建并返回对应组件实例。
 func NewPipelineBindingManager(repo domain.Repository, appRepo appdomain.Repository) *PipelineBindingManager {
 	return &PipelineBindingManager{
 		repo:    repo,
@@ -35,6 +36,7 @@ func NewPipelineBindingManager(repo domain.Repository, appRepo appdomain.Reposit
 	}
 }
 
+// Create 创建业务资源并返回处理结果。
 func (uc *PipelineBindingManager) Create(ctx context.Context, applicationID string, input CreatePipelineBindingInput) (domain.PipelineBinding, error) {
 	applicationID = strings.TrimSpace(applicationID)
 	if applicationID == "" {
@@ -110,6 +112,7 @@ func (uc *PipelineBindingManager) Create(ctx context.Context, applicationID stri
 	return uc.repo.GetBindingByID(ctx, binding.ID)
 }
 
+// ListByApplication 查询并返回列表数据。
 func (uc *PipelineBindingManager) ListByApplication(ctx context.Context, filter domain.BindingListFilter) ([]domain.PipelineBinding, int64, error) {
 	const (
 		defaultPage     = 1
@@ -145,6 +148,7 @@ func (uc *PipelineBindingManager) ListByApplication(ctx context.Context, filter 
 	return uc.repo.ListBindingsByApplication(ctx, filter)
 }
 
+// GetByID 查询并返回指定资源数据。
 func (uc *PipelineBindingManager) GetByID(ctx context.Context, id string) (domain.PipelineBinding, error) {
 	if strings.TrimSpace(id) == "" {
 		return domain.PipelineBinding{}, ErrInvalidID
@@ -152,6 +156,7 @@ func (uc *PipelineBindingManager) GetByID(ctx context.Context, id string) (domai
 	return uc.repo.GetBindingByID(ctx, id)
 }
 
+// Update 更新业务资源并返回处理结果。
 func (uc *PipelineBindingManager) Update(ctx context.Context, id string, input domain.BindingUpdateInput) (domain.PipelineBinding, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -232,6 +237,7 @@ func (uc *PipelineBindingManager) Update(ctx context.Context, id string, input d
 	}, uc.now())
 }
 
+// Delete 删除业务资源并返回处理结果。
 func (uc *PipelineBindingManager) Delete(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return ErrInvalidID
@@ -239,6 +245,7 @@ func (uc *PipelineBindingManager) Delete(ctx context.Context, id string) error {
 	return uc.repo.DeleteBinding(ctx, id)
 }
 
+// ensurePipelineProvider 校验前置条件，不满足时写入对应错误响应。
 func (uc *PipelineBindingManager) ensurePipelineProvider(ctx context.Context, pipelineID string, expectProvider domain.Provider) error {
 	pipeline, err := uc.repo.GetPipelineByID(ctx, pipelineID)
 	if err != nil {
@@ -253,6 +260,7 @@ func (uc *PipelineBindingManager) ensurePipelineProvider(ctx context.Context, pi
 	return nil
 }
 
+// normalizeBindingTarget 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeBindingTarget(
 	bindingType domain.BindingType,
 	provider domain.Provider,
@@ -306,6 +314,7 @@ func normalizeBindingTarget(
 	}
 }
 
+// shouldAutoFillArgoCDExternalRef 封装当前模块的业务处理逻辑。
 func shouldAutoFillArgoCDExternalRef(bindingType domain.BindingType, provider domain.Provider) bool {
 	if bindingType != domain.BindingTypeCD {
 		return false
@@ -313,6 +322,7 @@ func shouldAutoFillArgoCDExternalRef(bindingType domain.BindingType, provider do
 	return provider == "" || provider == domain.ProviderArgoCD
 }
 
+// deriveArgoCDExternalRef 封装当前模块的业务处理逻辑。
 func deriveArgoCDExternalRef(app appdomain.Application) (string, error) {
 	appKey := strings.TrimSpace(app.Key)
 	if appKey == "" {
@@ -321,6 +331,7 @@ func deriveArgoCDExternalRef(app appdomain.Application) (string, error) {
 	return "apps/" + appKey, nil
 }
 
+// defaultBindingName 封装当前模块的业务处理逻辑。
 func (uc *PipelineBindingManager) defaultBindingName(
 	ctx context.Context,
 	provider domain.Provider,
@@ -360,6 +371,7 @@ func (uc *PipelineBindingManager) defaultBindingName(
 	}
 }
 
+// bindingTypeExists 封装当前模块的业务处理逻辑。
 func (uc *PipelineBindingManager) bindingTypeExists(ctx context.Context, applicationID string, bindingType domain.BindingType) (bool, error) {
 	items, total, err := uc.repo.ListBindingsByApplication(ctx, domain.BindingListFilter{
 		ApplicationID: applicationID,

@@ -16,6 +16,7 @@ type PlatformParamRepository struct {
 	dbDriver string
 }
 
+// NewPlatformParamRepository 创建并返回对应组件实例。
 func NewPlatformParamRepository(db *sql.DB, dbDriver string) *PlatformParamRepository {
 	return &PlatformParamRepository{
 		db:       db,
@@ -23,6 +24,7 @@ func NewPlatformParamRepository(db *sql.DB, dbDriver string) *PlatformParamRepos
 	}
 }
 
+// InitSchema 封装当前模块的业务处理逻辑。
 func (r *PlatformParamRepository) InitSchema(ctx context.Context) error {
 	var schema string
 	switch r.dbDriver {
@@ -79,6 +81,7 @@ CREATE TABLE IF NOT EXISTS platform_param_dict (
 	return r.ensureBuiltinParams(ctx)
 }
 
+// migrateSchema 封装当前模块的业务处理逻辑。
 func (r *PlatformParamRepository) migrateSchema(ctx context.Context) error {
 	switch r.dbDriver {
 	case "mysql":
@@ -133,6 +136,7 @@ func (r *PlatformParamRepository) migrateSchema(ctx context.Context) error {
 	return nil
 }
 
+// ensureBuiltinParams 校验前置条件，不满足时写入对应错误响应。
 func (r *PlatformParamRepository) ensureBuiltinParams(ctx context.Context) error {
 	now := time.Now().UTC()
 	items := []domain.PlatformParamDict{
@@ -176,6 +180,7 @@ func (r *PlatformParamRepository) ensureBuiltinParams(ctx context.Context) error
 	return r.normalizeBuiltinFlags(ctx, []string{"app_key", "image_version"}, now)
 }
 
+// upsertBuiltinParam 封装当前模块的业务处理逻辑。
 func (r *PlatformParamRepository) upsertBuiltinParam(ctx context.Context, item domain.PlatformParamDict) error {
 	switch r.dbDriver {
 	case "mysql":
@@ -247,6 +252,7 @@ ON CONFLICT(param_key) DO UPDATE SET
 	}
 }
 
+// normalizeBuiltinFlags 标准化输入值，保证后续逻辑使用统一格式。
 func (r *PlatformParamRepository) normalizeBuiltinFlags(ctx context.Context, builtinKeys []string, now time.Time) error {
 	if len(builtinKeys) == 0 {
 		return nil
@@ -270,6 +276,7 @@ func (r *PlatformParamRepository) normalizeBuiltinFlags(ctx context.Context, bui
 	return err
 }
 
+// Create 创建业务资源并返回处理结果。
 func (r *PlatformParamRepository) Create(ctx context.Context, item domain.PlatformParamDict) error {
 	const q = `
 INSERT INTO platform_param_dict (
@@ -301,6 +308,7 @@ INSERT INTO platform_param_dict (
 	return nil
 }
 
+// GetByID 查询并返回指定资源数据。
 func (r *PlatformParamRepository) GetByID(ctx context.Context, id string) (domain.PlatformParamDict, error) {
 	const q = `
 SELECT id, param_key, name, description, param_type, required, gitops_locator, cd_self_fill, builtin, status, created_at, updated_at
@@ -318,6 +326,7 @@ WHERE id = ?;`
 	return item, nil
 }
 
+// GetByParamKey 查询并返回指定资源数据。
 func (r *PlatformParamRepository) GetByParamKey(ctx context.Context, paramKey string) (domain.PlatformParamDict, error) {
 	const q = `
 SELECT id, param_key, name, description, param_type, required, gitops_locator, cd_self_fill, builtin, status, created_at, updated_at
@@ -335,6 +344,7 @@ WHERE param_key = ?;`
 	return item, nil
 }
 
+// List 查询并返回列表数据。
 func (r *PlatformParamRepository) List(ctx context.Context, filter domain.ListFilter) ([]domain.PlatformParamDict, int64, error) {
 	where := make([]string, 0, 4)
 	args := make([]any, 0, 4)
@@ -402,6 +412,7 @@ FROM platform_param_dict`
 	return items, total, nil
 }
 
+// Update 更新业务资源并返回处理结果。
 func (r *PlatformParamRepository) Update(ctx context.Context, id string, input domain.UpdateInput, updatedAt time.Time) (domain.PlatformParamDict, error) {
 	const q = `
 UPDATE platform_param_dict
@@ -439,6 +450,7 @@ WHERE id = ?;`
 	return r.GetByID(ctx, id)
 }
 
+// Delete 删除业务资源并返回处理结果。
 func (r *PlatformParamRepository) Delete(ctx context.Context, id string) error {
 	const q = `DELETE FROM platform_param_dict WHERE id = ?;`
 	res, err := r.db.ExecContext(ctx, q, id)
@@ -455,6 +467,7 @@ func (r *PlatformParamRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// scanPlatformParam 封装当前模块的业务处理逻辑。
 func scanPlatformParam(s scanner) (domain.PlatformParamDict, error) {
 	var (
 		item          domain.PlatformParamDict
@@ -496,6 +509,7 @@ func scanPlatformParam(s scanner) (domain.PlatformParamDict, error) {
 	return item, nil
 }
 
+// mysqlColumnExists 封装当前模块的业务处理逻辑。
 func (r *PlatformParamRepository) mysqlColumnExists(ctx context.Context, table, column string) (bool, error) {
 	const q = `
 SELECT COUNT(1)
@@ -510,6 +524,7 @@ WHERE TABLE_SCHEMA = DATABASE()
 	return count > 0, nil
 }
 
+// sqliteTableColumns 封装当前模块的业务处理逻辑。
 func (r *PlatformParamRepository) sqliteTableColumns(ctx context.Context, table string) (map[string]string, error) {
 	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(`PRAGMA table_info(%s);`, table))
 	if err != nil {
@@ -538,6 +553,7 @@ func (r *PlatformParamRepository) sqliteTableColumns(ctx context.Context, table 
 	return columns, nil
 }
 
+// boolToInt 封装当前模块的业务处理逻辑。
 func boolToInt(v bool) int {
 	if v {
 		return 1

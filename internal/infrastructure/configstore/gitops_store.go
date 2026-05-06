@@ -15,6 +15,7 @@ type GitOpsStore struct {
 	configPath string
 }
 
+// NewGitOpsStore 创建并返回对应组件实例。
 func NewGitOpsStore(configPath string) *GitOpsStore {
 	return &GitOpsStore{configPath: strings.TrimSpace(configPath)}
 }

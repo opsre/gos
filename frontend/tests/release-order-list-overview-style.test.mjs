@@ -126,8 +126,8 @@ test('release overview current focus fetches default latest orders without statu
   )
   assert.match(
     source,
-    /await loadSpotlightOrders\(\{ silent: options\?\.silent \}\)/,
-    'overview refresh should refresh the latest focused order links after stats determine the default focus',
+    /void loadSpotlightOrders\(\{ silent: true \}\)/,
+    'spotlight order links should refresh concurrently with the main release order list',
   )
 })
 
@@ -139,12 +139,17 @@ test('release order list keeps staged build action labeled as only-build', () =>
   )
   assert.match(
     source,
-    /v-if="canBuild\(record\)"[\s\S]*@click="openExecutePreviewModal\(record, 'build'\)"[\s\S]*>\s*仅构建\s*<\/a-button>/,
-    'single release order action should render the only-build button for staged orders',
+    /function rowPrimaryAction\(record: ReleaseOrder\): ReleaseOrderDispatchAction \| "" \{[\s\S]*if \(canBuild\(record\)\) \{\s*return "build";\s*\}/,
+    'staged orders should still resolve the row primary action to only-build',
+  )
+  assert.match(
+    source,
+    /class="release-row-action-primary"[\s\S]*\{\{ rowPrimaryActionText\(record\) \}\}/,
+    'single release order action should render the primary action label through the compact action button',
   )
   assert.doesNotMatch(
     source,
-    /v-if="canBuild\(record\)"[\s\S]*@click="openExecutePreviewModal\(record, 'build'\)"[\s\S]*>\s*构建\s*<\/a-button>/,
+    /case "build":\s*return "构建";/,
     'single release order action should not regress to the ambiguous build label',
   )
 })
@@ -157,19 +162,179 @@ test('release order list uses publish label to continue cd after only-build', ()
   )
   assert.match(
     source,
-    /v-else-if="canDeploy\(record\)"[\s\S]*@click="openExecutePreviewModal\(record, 'deploy'\)"[\s\S]*>\s*发布\s*<\/a-button>/,
-    'built-waiting-deploy orders should render a publish button that dispatches deploy/CD',
+    /function rowPrimaryAction\(record: ReleaseOrder\): ReleaseOrderDispatchAction \| "" \{[\s\S]*if \(canDeploy\(record\)\) \{\s*return "deploy";\s*\}[\s\S]*if \(canExecute\(record\)\) \{\s*return "execute";\s*\}/,
+    'built-waiting-deploy orders should resolve to the deploy/CD primary action before normal execute',
   )
   assert.doesNotMatch(
     source,
-    /v-else-if="canDeploy\(record\)"[\s\S]*@click="openExecutePreviewModal\(record, 'deploy'\)"[\s\S]*>\s*部署\s*<\/a-button>/,
+    /case "deploy":\s*return "部署";/,
     'CD continuation should not show a separate deploy wording in the row action',
   )
   assert.match(
     source,
-    /v-else-if="canExecute\(record\)"[\s\S]*@click="openExecutePreviewModal\(record\)"[\s\S]*>\s*发布\s*<\/a-button>/,
+    /function handleRowPrimaryAction\(record: ReleaseOrder\)[\s\S]*if \(action === "execute"\) \{\s*void openExecutePreviewModal\(record\);[\s\S]*void openExecutePreviewModal\(record, action\);/,
     'normal publish action should be mutually exclusive with only-build and CD continuation actions',
   )
+})
+
+test('release order list shows order number before status', () => {
+  assert.match(
+    source,
+    /const initialColumns:[\s\S]*\{ title: "发布单号", dataIndex: "order_no", key: "order_no", width: 190 \}[\s\S]*\{ title: "状态", key: "status", width: 100 \}/,
+    'release order number column should render before status',
+  )
+  assert.doesNotMatch(
+    source,
+    /const initialColumns:[\s\S]*\{ title: "状态", key: "status", width: 100 \}[\s\S]*\{ title: "发布单号", dataIndex: "order_no", key: "order_no", width: 190 \}/,
+    'status should not stay before release order number',
+  )
+})
+
+test('release order list renders status directly without realtime progress column', () => {
+  assert.match(
+    source,
+    /<template v-if="column.key === 'status'">[\s\S]*<a-tag[\s\S]*businessStatusColor\(orderBusinessStatus\(record\)\)/,
+    'status column should render a business-status tag directly',
+  )
+  assert.doesNotMatch(
+    source,
+    /<template v-if="column.key === 'progress'">/,
+    'progress column template should not exist',
+  )
+  assert.doesNotMatch(
+    source,
+    /column.key === 'progress'/,
+    'no body cell template should reference the progress key',
+  )
+})
+
+test('release realtime progress badge stays compact instead of stretching across the column', () => {
+  const progressCellRule = extractStyleRule('.release-progress-cell')
+  assert.match(
+    progressCellRule,
+    /align-items:\s*flex-start/,
+    'progress badges should use their content width instead of stretching to the full table column',
+  )
+
+  const progressBadgeRule = extractStyleRule('.release-progress-badge')
+  assert.match(
+    progressBadgeRule,
+    /width:\s*fit-content/,
+    'success and failed progress badges should stay compact',
+  )
+
+  const progressTrackWrapRule = extractStyleRule('.release-progress-track-wrap')
+  assert.match(
+    progressTrackWrapRule,
+    /max-width:\s*150px/,
+    'running progress bars should keep a compact maximum width',
+  )
+})
+
+test('release order list uses standalone status column without realtime progress', () => {
+  assert.match(
+    source,
+    /const initialColumns:[\s\S]*\{ title: "状态", key: "status", width: 100 \}[\s\S]*\{ title: "发布名称", dataIndex: "release_name", key: "release_name", width: 100 \}/,
+    'release order list should place status column before release name',
+  )
+  assert.doesNotMatch(
+    source,
+    /column.key === 'progress'/,
+    'progress body cell branch should not exist',
+  )
+  assert.match(
+    source,
+    /<template v-if="column.key === 'status'">[\s\S]*<a-tag :color="businessStatusColor/,
+    'status cell should render a simple business status tag',
+  )
+  assert.match(
+    source,
+    /<a-button[\s\S]*class="release-row-action-primary"[\s\S]*>\s*\{\{ rowPrimaryActionText\(record\) \}\}\s*<\/a-button>/,
+    'row should expose at most one primary operation button',
+  )
+  assert.match(
+    source,
+    /<a-dropdown[\s\S]*overlay-class-name="release-row-more-menu"[\s\S]*更多/,
+    'secondary row actions should move into a compact more menu',
+  )
+  assert.doesNotMatch(
+    source,
+    /<a-button v-else type="link" size="small" disabled>取消<\/a-button>/,
+    'rows should not render a disabled cancel button just to fill the action area',
+  )
+})
+
+test('release order number truncates and copies on click', () => {
+  assert.match(
+    source,
+    /async function copyReleaseOrderNo\(orderNo: string\)/,
+    'order number should expose a copy handler',
+  )
+  assert.match(
+    source,
+    /class="release-order-no-trigger"[\s\S]*?@click.stop="copyReleaseOrderNo\(record\.order_no\)"/,
+    'order number trigger button should copy on click',
+  )
+  assert.doesNotMatch(
+    source,
+    /overlay-class-name="release-order-no-popover"/,
+    'order number should not use a hover popover',
+  )
+
+  const orderNoCellRule = extractStyleRule('.release-order-no-cell')
+  assert.match(orderNoCellRule, /display:\s*flex/, 'order number cell should control its own single-line layout')
+  assert.match(orderNoCellRule, /min-width:\s*0/, 'order number cell should allow truncation inside the table column')
+  assert.match(orderNoCellRule, /max-width:\s*100%/, 'order number cell should use the resized column width instead of clipping tags at a fixed width')
+
+  const orderNoTextRule = extractStyleRule('.release-order-no-text')
+  assert.match(orderNoTextRule, /overflow:\s*hidden/, 'long order numbers should hide overflow')
+  assert.match(orderNoTextRule, /white-space:\s*nowrap/, 'long order numbers should stay on one line')
+
+  const orderNoTextValueRule = extractStyleRule('.release-order-no-text-value')
+  assert.match(orderNoTextValueRule, /mask-image:\s*linear-gradient/, 'long order number text should be masked so overflow characters are not visible under the cover')
+  assert.match(orderNoTextValueRule, /-webkit-mask-image:\s*linear-gradient/, 'long order number text mask should support webkit browsers')
+
+  const orderNoFadeRule = extractStyleRule('.release-order-no-text::after')
+  assert.match(orderNoFadeRule, /z-index:\s*1/, 'gradient cover should sit above the order number text')
+  assert.match(orderNoFadeRule, /linear-gradient/, 'long order numbers should fade out with a gradient overlay')
+  assert.match(orderNoFadeRule, /rgba\(255,\s*255,\s*255,\s*0\.88\)/, 'gradient cover should be semi-transparent so it blends with row backgrounds')
+  assert.match(orderNoFadeRule, /backdrop-filter:\s*blur\(3px\)/, 'long order numbers should use a blur treatment at the fade edge')
+
+  const orderNoTagsRule = extractStyleRule('.release-order-no-tags')
+  assert.match(orderNoTagsRule, /flex-wrap:\s*wrap/, 'order number tags should wrap instead of being hidden')
+  assert.match(orderNoTagsRule, /overflow:\s*visible/, 'order number tags should remain visible below long order numbers')
+})
+
+test('release order multi-select hover applies full-row glass background', () => {
+  assert.match(
+    source,
+    /:class="\{ 'release-order-table--selecting': multiSelectMode \}"/,
+    'release table should expose a selecting state class for multi-select hover styling',
+  )
+  assert.match(
+    source,
+    /classNames\.push\("release-order-effect-row--selection-enabled"\)/,
+    'multi-select mode should mark rows as selection-enabled',
+  )
+
+  const hoverOverlayRule = extractStyleRule(
+    '.release-order-table--selecting :deep(.ant-table-tbody > tr.release-order-effect-row:hover > td::after),\n.release-order-table--selecting :deep(.ant-table-tbody > tr.release-order-effect-row > td.ant-table-cell-row-hover::after)',
+  )
+  assert.match(hoverOverlayRule, /background:\s*rgba\(255,\s*255,\s*255,\s*0\.72\)/, 'hovered multi-select rows should apply a frosted white overlay over cell content')
+  assert.match(hoverOverlayRule, /backdrop-filter:\s*blur\(5px\)/, 'hovered overlay should blur cell content with backdrop-filter')
+  assert.match(hoverOverlayRule, /-webkit-backdrop-filter:\s*blur\(5px\)/, 'hovered overlay blur should include webkit prefix')
+  assert.match(hoverOverlayRule, /z-index:\s*2/, 'hovered overlay should sit below the floating select button')
+  assert.match(hoverOverlayRule, /pointer-events:\s*none/, 'hovered overlay should not block mouse events')
+
+  const selectedOverlayRule = extractStyleRule(
+    '.release-order-table--selecting :deep(.ant-table-tbody > tr.release-order-effect-row--selected > td::after)',
+  )
+  assert.match(selectedOverlayRule, /background:\s*rgba\(239,\s*246,\s*255,\s*0\.62\)/, 'selected rows should apply a blue-tinted frosted overlay')
+  assert.match(selectedOverlayRule, /pointer-events:\s*none/, 'selected overlay should not block mouse events')
+
+  // button positioned at leftmost edge inside order_no column
+  const selectBtnRule = extractStyleRule('.release-row-select-btn')
+  assert.match(selectBtnRule, /left:\s*-14px/, 'select button should sit at the leftmost edge of the table row')
 })
 
 test('release overview chart removes duplicated total bar and uses compact chart geometry', () => {

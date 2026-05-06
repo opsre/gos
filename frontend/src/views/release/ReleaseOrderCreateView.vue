@@ -45,6 +45,7 @@ interface ChoiceMeta {
 interface CreateFormState {
   application_id: string
   template_id: string
+  release_name: string
   env_code: string
   git_ref: string
   remark: string
@@ -105,6 +106,7 @@ const isEditMode = computed(() => Boolean(editingOrderID.value))
 const formState = reactive<CreateFormState>({
   application_id: '',
   template_id: '',
+  release_name: '',
   env_code: '',
   git_ref: '',
   remark: '',
@@ -113,6 +115,7 @@ const formState = reactive<CreateFormState>({
 const rules: Record<string, Rule[]> = {
   application_id: [{ required: true, message: '请选择应用', trigger: 'change' }],
   template_id: [{ required: true, message: '请选择发布模板', trigger: 'change' }],
+  release_name: [{ required: true, message: '请输入发布名称', trigger: 'blur' }],
   env_code: [{ required: true, message: '请选择环境', trigger: 'change' }],
 }
 
@@ -226,7 +229,7 @@ const advancedParamSummaryHint = computed(() => '高级参数包含 CI/CD 字段
 
 const hasScopeErrors = computed(() => visibleScopes.value.some((scope) => Boolean(scopeStates[scope].error)))
 const isParamLoading = computed(() => loadingTemplateDetail.value || visibleScopes.value.some((scope) => scopeStates[scope].loading))
-const canSubmitRelease = computed(() => Boolean(formState.application_id && formState.template_id && selectedTemplate.value) && !hasScopeErrors.value && !isParamLoading.value && !loadingEditOrder.value)
+const canSubmitRelease = computed(() => Boolean(formState.application_id && formState.template_id && formState.release_name.trim() && selectedTemplate.value) && !hasScopeErrors.value && !isParamLoading.value && !loadingEditOrder.value)
 const fastReleaseDisabledReason = computed(() => {
   if (isEditMode.value) {
     return '编辑模式下不支持极速发布'
@@ -396,6 +399,7 @@ async function loadEditingOrderSnapshot() {
     editingParamSnapshot.value = paramsResp.data
     formState.application_id = String(orderResp.data.application_id || '').trim()
     formState.template_id = ''
+    formState.release_name = String(orderResp.data.release_name || '').trim()
     formState.env_code = String(orderResp.data.env_code || '').trim()
     formState.git_ref = String(orderResp.data.git_ref || '').trim()
     formState.remark = String(orderResp.data.remark || '').trim()
@@ -1026,15 +1030,16 @@ async function submitRelease(options?: { fast?: boolean; buildOnly?: boolean }) 
   submittingMode.value = buildOnly ? 'build' : fast ? 'fast' : 'standard'
   try {
     const payload = {
-    application_id: formState.application_id.trim(),
-    template_id: formState.template_id.trim(),
-    env_code: formState.env_code.trim(),
-    git_ref: formState.git_ref.trim() || undefined,
-    trigger_type: 'manual',
-    triggered_by: currentUserDisplayName.value !== '-' ? currentUserDisplayName.value : undefined,
-    remark: formState.remark.trim() || undefined,
-    params: paramsPayload.length > 0 ? paramsPayload : undefined,
-  }
+      application_id: formState.application_id.trim(),
+      template_id: formState.template_id.trim(),
+      release_name: formState.release_name.trim(),
+      env_code: formState.env_code.trim(),
+      git_ref: formState.git_ref.trim() || undefined,
+      trigger_type: 'manual',
+      triggered_by: currentUserDisplayName.value !== '-' ? currentUserDisplayName.value : undefined,
+      remark: formState.remark.trim() || undefined,
+      params: paramsPayload.length > 0 ? paramsPayload : undefined,
+    }
     const response = isEditMode.value
       ? await updateReleaseOrder(editingOrderID.value, payload)
       : await createReleaseOrder(payload)
@@ -1210,6 +1215,23 @@ onMounted(async () => {
                 :loading="loadingTemplates || loadingTemplateDetail"
                 :options="templateOptions"
                 @change="handleTemplateChange"
+              />
+            </a-form-item>
+          </a-col>
+        </a-row>
+
+        <a-row :gutter="12" class="form-row-compact">
+          <a-col :span="24">
+            <a-form-item class="form-item-compact" name="release_name">
+              <template #label>
+                <span class="field-label-with-hint">发布名称 <span class="field-required-hint">必填</span></span>
+              </template>
+              <a-input
+                v-model:value="formState.release_name"
+                maxlength="128"
+                show-count
+                placeholder="例如：生产环境订单服务发布"
+                allow-clear
               />
             </a-form-item>
           </a-col>

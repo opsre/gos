@@ -23,6 +23,7 @@ const (
 	ReleaseConcurrencyLockScopeGitOpsRepoBranch ReleaseConcurrencyLockScope = "gitops_repo_branch"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s ReleaseConcurrencyLockScope) Valid() bool {
 	switch s {
 	case ReleaseConcurrencyLockScopeApplication, ReleaseConcurrencyLockScopeApplicationEnv, ReleaseConcurrencyLockScopeGitOpsRepoBranch:
@@ -39,6 +40,7 @@ const (
 	ReleaseConcurrencyConflictStrategyQueue  ReleaseConcurrencyConflictStrategy = "queue"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s ReleaseConcurrencyConflictStrategy) Valid() bool {
 	switch s {
 	case ReleaseConcurrencyConflictStrategyReject, ReleaseConcurrencyConflictStrategyQueue:
@@ -74,10 +76,12 @@ type QueryReleaseSettings struct {
 	store ReleaseSettingsStore
 }
 
+// NewQueryReleaseSettings 创建并返回对应组件实例。
 func NewQueryReleaseSettings(store ReleaseSettingsStore) *QueryReleaseSettings {
 	return &QueryReleaseSettings{store: store}
 }
 
+// Execute 封装当前模块的业务处理逻辑。
 func (uc *QueryReleaseSettings) Execute(ctx context.Context) (ReleaseSettingsOutput, error) {
 	if uc == nil || uc.store == nil {
 		return ReleaseSettingsOutput{}, fmt.Errorf("%w: release settings are not configured", ErrInvalidInput)
@@ -112,10 +116,12 @@ type UpdateReleaseSettings struct {
 	reader *QueryReleaseSettings
 }
 
+// NewUpdateReleaseSettings 创建并返回对应组件实例。
 func NewUpdateReleaseSettings(store ReleaseSettingsStore, reader *QueryReleaseSettings) *UpdateReleaseSettings {
 	return &UpdateReleaseSettings{store: store, reader: reader}
 }
 
+// Execute 封装当前模块的业务处理逻辑。
 func (uc *UpdateReleaseSettings) Execute(ctx context.Context, input UpdateReleaseSettingsInput) (ReleaseSettingsOutput, error) {
 	if uc == nil || uc.store == nil || uc.reader == nil {
 		return ReleaseSettingsOutput{}, fmt.Errorf("%w: release settings are not configured", ErrInvalidInput)
@@ -136,6 +142,7 @@ func (uc *UpdateReleaseSettings) Execute(ctx context.Context, input UpdateReleas
 	return uc.reader.Execute(ctx)
 }
 
+// normalizeReleaseEnvOptions 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeReleaseEnvOptions(values []string) []string {
 	result := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
@@ -153,6 +160,7 @@ func normalizeReleaseEnvOptions(values []string) []string {
 	return result
 }
 
+// normalizeConcurrencySettings 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeConcurrencySettings(input ReleaseConcurrencySettingsInput) ReleaseConcurrencySettingsOutput {
 	scope := ReleaseConcurrencyLockScope(strings.TrimSpace(string(input.LockScope)))
 	if !scope.Valid() {
@@ -188,6 +196,7 @@ const (
 	defaultKustomizeScanPath = "apps/{app_key}/overlays/{env}"
 )
 
+// normalizeGitOpsConfig 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeGitOpsConfig(input ReleaseGitOpsConfigInput) ReleaseGitOpsConfigOutput {
 	helmPath := strings.TrimSpace(input.HelmScanPath)
 	if helmPath == "" {

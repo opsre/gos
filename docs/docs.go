@@ -15,6 +15,2044 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/agent-scripts": {
+            "get": {
+                "description": "查询Scripts列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "查询Scripts列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "创建Script，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "创建Script",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agent-scripts/{id}": {
+            "get": {
+                "description": "获取Script详情，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "获取Script详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "更新Script，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "更新Script",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "删除Script，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "删除Script",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agent-tasks": {
+            "get": {
+                "description": "查询All Tasks列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "查询All Tasks列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "创建Unassigned Task，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "创建Unassigned Task",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agent-tasks/{taskID}": {
+            "put": {
+                "description": "更新Temporary Task，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "更新Temporary Task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "任务 ID",
+                        "name": "taskID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "删除Temporary Task，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "删除Temporary Task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "任务 ID",
+                        "name": "taskID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agent-tasks/{taskID}/execute": {
+            "post": {
+                "description": "执行Standalone Task，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "执行Standalone Task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "任务 ID",
+                        "name": "taskID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agent/heartbeat": {
+            "post": {
+                "description": "处理Heartbeat接口，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "处理Heartbeat接口",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agent/register": {
+            "post": {
+                "description": "处理Register接口，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "处理Register接口",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agent/tasks/poll": {
+            "post": {
+                "description": "处理Poll Task接口，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "处理Poll Task接口",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agent/tasks/{id}/finish": {
+            "post": {
+                "description": "完成Task，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "完成Task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agent/tasks/{id}/start": {
+            "post": {
+                "description": "启动Task，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "启动Task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agents": {
+            "get": {
+                "description": "查询资源列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "查询资源列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "创建资源，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "创建资源",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agents/bootstrap-config": {
+            "get": {
+                "description": "处理Bootstrap Config接口，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "处理Bootstrap Config接口",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agents/bootstrap-token/reset": {
+            "post": {
+                "description": "重置Bootstrap Token，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "重置Bootstrap Token",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agents/{id}": {
+            "get": {
+                "description": "获取资源详情，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "获取资源详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "更新资源，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "更新资源",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "删除资源，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "删除资源",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agents/{id}/config": {
+            "get": {
+                "description": "处理Config接口，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "处理Config接口",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agents/{id}/disable": {
+            "post": {
+                "description": "处理Disable接口，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "处理Disable接口",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agents/{id}/enable": {
+            "post": {
+                "description": "处理Enable接口，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "处理Enable接口",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agents/{id}/maintenance": {
+            "post": {
+                "description": "处理Maintenance接口，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "处理Maintenance接口",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agents/{id}/reset-token": {
+            "post": {
+                "description": "重置Token，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "重置Token",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agents/{id}/tasks": {
+            "get": {
+                "description": "查询Tasks列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "查询Tasks列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "创建Task，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "创建Task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agents/{id}/tasks/{taskID}": {
+            "put": {
+                "description": "更新Task，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "更新Task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "任务 ID",
+                        "name": "taskID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "删除Task，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "删除Task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "任务 ID",
+                        "name": "taskID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agents/{id}/tasks/{taskID}/execute": {
+            "post": {
+                "description": "执行Task，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "执行Task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "任务 ID",
+                        "name": "taskID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agents/{id}/tasks/{taskID}/resume": {
+            "post": {
+                "description": "恢复Task，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "恢复Task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "任务 ID",
+                        "name": "taskID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/agents/{id}/tasks/{taskID}/stop": {
+            "post": {
+                "description": "停止Task，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "停止Task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "任务 ID",
+                        "name": "taskID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/app-release-states/summaries": {
+            "get": {
+                "description": "查询App Release State Summaries列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "查询App Release State Summaries列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/applications": {
             "get": {
                 "produces": [
@@ -27,6 +2065,12 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "Application keyword (name or key)",
+                        "name": "keyword",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Application key",
                         "name": "key",
                         "in": "query"
@@ -35,6 +2079,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Application name",
                         "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "project_id",
                         "in": "query"
                     },
                     {
@@ -60,19 +2110,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ApplicationListResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ApplicationListResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -95,7 +2145,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/httpapi.CreateApplicationRequest"
+                            "$ref": "#/definitions/internal_interfaces_http.CreateApplicationRequest"
                         }
                     }
                 ],
@@ -103,25 +2153,75 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ApplicationDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ApplicationDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/applications/options": {
+            "get": {
+                "description": "查询Options列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "applications"
+                ],
+                "summary": "查询Options列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -149,25 +2249,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ApplicationDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ApplicationDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -197,7 +2297,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/httpapi.UpdateApplicationRequest"
+                            "$ref": "#/definitions/internal_interfaces_http.UpdateApplicationRequest"
                         }
                     }
                 ],
@@ -205,31 +2305,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ApplicationDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ApplicationDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -261,19 +2361,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -337,25 +2437,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ExecutorParamDefListResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ExecutorParamDefListResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -413,25 +2513,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.PipelineBindingListResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.PipelineBindingListResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -461,7 +2561,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/httpapi.CreateBindingRequest"
+                            "$ref": "#/definitions/internal_interfaces_http.CreateBindingRequest"
                         }
                     }
                 ],
@@ -469,31 +2569,31 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.PipelineBindingDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.PipelineBindingDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -521,31 +2621,217 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ReleaseOrderDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/applications/{id}/rollback-capability": {
+            "post": {
+                "description": "获取Application Rollback Capability详情，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "获取Application Rollback Capability详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/applications/{id}/rollback-orders": {
+            "post": {
+                "description": "创建Application Rollback Order，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "创建Application Rollback Order",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/applications/{id}/rollback-precheck": {
+            "post": {
+                "description": "获取Application Rollback Precheck详情，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "获取Application Rollback Precheck详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -553,41 +2839,700 @@ const docTemplate = `{
         },
         "/argocd/applications": {
             "get": {
+                "description": "查询Applications列表，并按统一响应结构返回处理结果。",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "argocd"
                 ],
-                "summary": "List ArgoCD applications",
+                "summary": "查询Applications列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/argocd/applications/sync": {
+            "post": {
+                "description": "同步Applications，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "argocd"
+                ],
+                "summary": "同步Applications",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/argocd/applications/{id}": {
+            "get": {
+                "description": "获取Application By ID详情，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "argocd"
+                ],
+                "summary": "获取Application By ID详情",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Application name",
-                        "name": "app_name",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/argocd/applications/{id}/original-link": {
+            "get": {
+                "description": "获取Original Link详情，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "argocd"
+                ],
+                "summary": "获取Original Link详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/argocd/env-bindings": {
+            "get": {
+                "description": "查询Env Bindings列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "argocd"
+                ],
+                "summary": "查询Env Bindings列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "更新Env Bindings，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "argocd"
+                ],
+                "summary": "更新Env Bindings",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/argocd/instances": {
+            "get": {
+                "description": "查询Instances列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "argocd"
+                ],
+                "summary": "查询Instances列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "创建Instance，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "argocd"
+                ],
+                "summary": "创建Instance",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/argocd/instances/{id}": {
+            "put": {
+                "description": "更新Instance，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "argocd"
+                ],
+                "summary": "更新Instance",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/argocd/instances/{id}/check": {
+            "post": {
+                "description": "检查Instance，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "argocd"
+                ],
+                "summary": "检查Instance",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/login": {
+            "post": {
+                "description": "登录系统，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "登录系统",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/logout": {
+            "post": {
+                "description": "退出登录，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "退出登录",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/executor-param-defs": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "executor-param-defs"
+                ],
+                "summary": "List executor param definitions across applications",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Application ID",
+                        "name": "application_id",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "ArgoCD project",
-                        "name": "project",
+                        "description": "Application name, application key, or platform key",
+                        "name": "keyword",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Sync status",
-                        "name": "sync_status",
+                        "description": "Binding type, default ci",
+                        "name": "binding_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Visible flag",
+                        "name": "visible",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Editable flag",
+                        "name": "editable",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Health status",
-                        "name": "health_status",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Record status",
+                        "description": "Status",
                         "name": "status",
                         "in": "query"
                     },
@@ -608,136 +3553,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ArgoCDApplicationListResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ExecutorParamDefListResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/argocd/applications/sync": {
-            "post": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "argocd"
-                ],
-                "summary": "Sync ArgoCD applications metadata",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/httpapi.ArgoCDApplicationSyncResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/argocd/applications/{id}": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "argocd"
-                ],
-                "summary": "Get ArgoCD application detail",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Application ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/httpapi.ArgoCDApplicationDataResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/argocd/applications/{id}/original-link": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "argocd"
-                ],
-                "summary": "Get ArgoCD application original link",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Application ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/httpapi.ArgoCDOriginalLinkDataResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -765,25 +3593,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ExecutorParamDefDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ExecutorParamDefDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -813,7 +3641,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/httpapi.UpdateExecutorParamDefRequest"
+                            "$ref": "#/definitions/internal_interfaces_http.UpdateExecutorParamDefRequest"
                         }
                     }
                 ],
@@ -821,32 +3649,121 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ExecutorParamDefDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ExecutorParamDefDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
             }
         },
-        "/gitops/settings/commit-message-template": {
-            "put": {
+        "/gitops/field-candidates": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gitops"
+                ],
+                "summary": "List GitOps YAML field candidates",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "application id",
+                        "name": "application_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GitOpsFieldCandidatesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/gitops/instances": {
+            "get": {
+                "description": "查询Instances列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gitops"
+                ],
+                "summary": "查询Instances列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "创建Instance，并按统一响应结构返回处理结果。",
                 "consumes": [
                     "application/json"
                 ],
@@ -856,97 +3773,213 @@ const docTemplate = `{
                 "tags": [
                     "gitops"
                 ],
-                "summary": "Update GitOps commit message template",
+                "summary": "创建Instance",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/gitops/instances/{id}": {
+            "put": {
+                "description": "更新Instance，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gitops"
+                ],
+                "summary": "更新Instance",
                 "parameters": [
                     {
-                        "description": "commit message template",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/httpapi.UpdateGitOpsCommitTemplateRequest"
-                        }
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.GitOpsStatusDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
             }
         },
-        "/gitops/status": {
+        "/gitops/instances/{id}/status": {
             "get": {
+                "description": "获取Instance Status详情，并按统一响应结构返回处理结果。",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "gitops"
                 ],
-                "summary": "Get GitOps workspace status",
+                "summary": "获取Instance Status详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.GitOpsStatusDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
             }
         },
-        "/gitops/targets": {
+        "/gitops/scan-path-status": {
             "get": {
+                "description": "检查Scan Path，并按统一响应结构返回处理结果。",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "gitops"
                 ],
-                "summary": "List GitOps binding targets",
+                "summary": "检查Scan Path",
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.GitOpsBindingTargetsResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -965,19 +3998,59 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.GitOpsTemplateFieldsResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.GitOpsTemplateFieldsResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/gitops/values-candidates": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gitops"
+                ],
+                "summary": "List GitOps Helm values candidates",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "application id",
+                        "name": "application_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GitOpsValuesCandidatesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -996,13 +4069,119 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.SyncExecutorParamDefsResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.SyncExecutorParamDefsResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/jenkins/pipelines/raw": {
+            "post": {
+                "description": "创建Raw Pipeline，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "pipelines"
+                ],
+                "summary": "创建Raw Pipeline",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/jenkins/pipelines/raw/preview-config-xml": {
+            "post": {
+                "description": "处理Preview Raw Pipeline Config XML接口，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "pipelines"
+                ],
+                "summary": "处理Preview Raw Pipeline Config XML接口",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1021,13 +4200,944 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.SyncPipelinesResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.SyncPipelinesResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/me": {
+            "get": {
+                "description": "获取当前用户信息，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "获取当前用户信息",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/notification-hooks": {
+            "get": {
+                "description": "查询Hooks列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "查询Hooks列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "创建Hook，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "创建Hook",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/notification-hooks/{id}": {
+            "get": {
+                "description": "获取Hook详情，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "获取Hook详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "更新Hook，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "更新Hook",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "删除Hook，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "删除Hook",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/notification-markdown-templates": {
+            "get": {
+                "description": "查询Markdown Templates列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "查询Markdown Templates列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "创建Markdown Template，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "创建Markdown Template",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/notification-markdown-templates/{id}": {
+            "get": {
+                "description": "获取Markdown Template详情，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "获取Markdown Template详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "更新Markdown Template，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "更新Markdown Template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "删除Markdown Template，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "删除Markdown Template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/notification-sources": {
+            "get": {
+                "description": "查询Sources列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "查询Sources列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "创建Source，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "创建Source",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/notification-sources/{id}": {
+            "get": {
+                "description": "获取Source详情，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "获取Source详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "更新Source，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "更新Source",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "删除Source，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "删除Source",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/permissions": {
+            "get": {
+                "description": "查询Permissions列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "查询Permissions列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1055,25 +5165,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.PipelineBindingDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.PipelineBindingDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1103,7 +5213,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/httpapi.UpdateBindingRequest"
+                            "$ref": "#/definitions/internal_interfaces_http.UpdateBindingRequest"
                         }
                     }
                 ],
@@ -1111,25 +5221,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.PipelineBindingDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.PipelineBindingDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1161,19 +5271,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1224,19 +5334,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.PipelineListResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.PipelineListResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1264,25 +5374,143 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.PipelineDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.PipelineDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/pipelines/{id}/config-xml": {
+            "get": {
+                "description": "获取Pipeline Config XML详情，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "pipelines"
+                ],
+                "summary": "获取Pipeline Config XML详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/pipelines/{id}/original-link": {
+            "get": {
+                "description": "获取Pipeline Original Link详情，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "pipelines"
+                ],
+                "summary": "获取Pipeline Original Link详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1346,25 +5574,144 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ExecutorParamDefListResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ExecutorParamDefListResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/pipelines/{id}/raw": {
+            "put": {
+                "description": "更新Raw Pipeline，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "pipelines"
+                ],
+                "summary": "更新Raw Pipeline",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "删除Raw Pipeline，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "pipelines"
+                ],
+                "summary": "删除Raw Pipeline",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1392,25 +5739,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.PipelineRawScriptDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.PipelineRawScriptDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1438,25 +5785,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.VerifyPipelineResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.VerifyPipelineResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1513,19 +5860,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.PlatformParamDictListResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.PlatformParamDictListResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1548,7 +5895,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/httpapi.CreatePlatformParamDictRequest"
+                            "$ref": "#/definitions/internal_interfaces_http.CreatePlatformParamDictRequest"
                         }
                     }
                 ],
@@ -1556,25 +5903,25 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.PlatformParamDictDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.PlatformParamDictDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1602,25 +5949,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.PlatformParamDictDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.PlatformParamDictDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1650,7 +5997,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/httpapi.UpdatePlatformParamDictRequest"
+                            "$ref": "#/definitions/internal_interfaces_http.UpdatePlatformParamDictRequest"
                         }
                     }
                 ],
@@ -1658,31 +6005,31 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.PlatformParamDictDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.PlatformParamDictDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1714,25 +6061,352 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects": {
+            "get": {
+                "description": "查询资源列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "查询资源列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "创建资源，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "创建资源",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/projects/{id}": {
+            "get": {
+                "description": "获取By ID详情，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "获取By ID详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "更新资源，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "更新资源",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "删除资源，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "projects"
+                ],
+                "summary": "删除资源",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-approval-records": {
+            "get": {
+                "description": "查询Approval Record Summaries列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "查询Approval Record Summaries列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1756,14 +6430,26 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Pipeline binding ID",
-                        "name": "binding_id",
+                        "description": "Order keyword",
+                        "name": "keyword",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Triggered by",
+                        "name": "triggered_by",
                         "in": "query"
                     },
                     {
                         "type": "string",
                         "description": "Environment code",
                         "name": "env_code",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Operation type",
+                        "name": "operation_type",
                         "in": "query"
                     },
                     {
@@ -1776,6 +6462,18 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Trigger type",
                         "name": "trigger_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Created at from (RFC3339)",
+                        "name": "created_at_from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Created at to (RFC3339)",
+                        "name": "created_at_to",
                         "in": "query"
                     },
                     {
@@ -1795,19 +6493,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ReleaseOrderListResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderListResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1830,7 +6528,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/httpapi.CreateReleaseOrderRequest"
+                            "$ref": "#/definitions/internal_interfaces_http.CreateReleaseOrderRequest"
                         }
                     }
                 ],
@@ -1838,31 +6536,187 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ReleaseOrderDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/batch-delete": {
+            "post": {
+                "description": "批量处理Delete，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "批量处理Delete",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/batch-execute": {
+            "post": {
+                "description": "批量处理Execute，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "批量处理Execute",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/stats": {
+            "get": {
+                "description": "处理Stats接口，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "处理Stats接口",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1890,25 +6744,333 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ReleaseOrderDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "Update editable release order",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Release order id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Update release order request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.CreateReleaseOrderRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderDataResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "删除资源，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "删除资源",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/{id}/approval-records": {
+            "get": {
+                "description": "查询Approval Records列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "查询Approval Records列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/{id}/approve": {
+            "post": {
+                "description": "审批通过发布单，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "审批通过发布单",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/{id}/build": {
+            "post": {
+                "description": "处理Build接口，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "处理Build接口",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1936,25 +7098,208 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ReleaseOrderDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/{id}/concurrent-batch-progress": {
+            "get": {
+                "description": "获取Concurrent Batch Progress详情，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "获取Concurrent Batch Progress详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/{id}/confirm-live": {
+            "post": {
+                "description": "处理Confirm Live接口，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "处理Confirm Live接口",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/{id}/deploy": {
+            "post": {
+                "description": "处理Deploy接口，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "处理Deploy接口",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -1982,25 +7327,84 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ReleaseOrderDataResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderDataResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/{id}/executions": {
+            "get": {
+                "description": "查询Executions列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "查询Executions列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -2037,19 +7441,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -2077,25 +7481,395 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ReleaseOrderParamListResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderParamListResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/{id}/pipeline-stages": {
+            "get": {
+                "description": "查询发布单 CI/CD 流水线阶段状态，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "查询发布单流水线阶段列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderPipelineStageListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/{id}/pipeline-stages/{stage_id}/log": {
+            "get": {
+                "description": "获取指定发布单阶段的构建日志内容，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "获取发布单流水线阶段日志",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "阶段 ID",
+                        "name": "stage_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderPipelineStageLogResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/{id}/precheck": {
+            "get": {
+                "description": "获取Precheck详情，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "获取Precheck详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/{id}/reject": {
+            "post": {
+                "description": "驳回发布单，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "驳回发布单",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/{id}/replay": {
+            "post": {
+                "description": "创建Replay By Order，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "创建Replay By Order",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/{id}/rollback": {
+            "post": {
+                "description": "创建Rollback By Order，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "创建Rollback By Order",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -2123,25 +7897,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ReleaseOrderStepListResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderStepListResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -2179,7 +7953,7 @@ const docTemplate = `{
                         "name": "request",
                         "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.FinishReleaseOrderStepRequest"
+                            "$ref": "#/definitions/internal_interfaces_http.FinishReleaseOrderStepRequest"
                         }
                     }
                 ],
@@ -2187,25 +7961,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ReleaseOrderStepActionResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderStepActionResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -2243,7 +8017,7 @@ const docTemplate = `{
                         "name": "request",
                         "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.StartReleaseOrderStepRequest"
+                            "$ref": "#/definitions/internal_interfaces_http.StartReleaseOrderStepRequest"
                         }
                     }
                 ],
@@ -2251,25 +8025,87 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ReleaseOrderStepActionResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderStepActionResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/{id}/submit-approval": {
+            "post": {
+                "description": "处理Submit Approval接口，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "处理Submit Approval接口",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -2288,25 +8124,1277 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ReleaseOrderValueProgressListResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderValueProgressListResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/httpapi.ErrorResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-templates": {
+            "get": {
+                "description": "查询资源列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-templates"
+                ],
+                "summary": "查询资源列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "创建资源，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-templates"
+                ],
+                "summary": "创建资源",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-templates/{id}": {
+            "get": {
+                "description": "获取By ID详情，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-templates"
+                ],
+                "summary": "获取By ID详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "更新资源，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-templates"
+                ],
+                "summary": "更新资源",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "删除资源，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-templates"
+                ],
+                "summary": "删除资源",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/resident-tasks/{taskID}": {
+            "put": {
+                "description": "更新Resident Task，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "更新Resident Task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "任务 ID",
+                        "name": "taskID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "删除Resident Task，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agents"
+                ],
+                "summary": "删除Resident Task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "任务 ID",
+                        "name": "taskID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/system/settings/release": {
+            "get": {
+                "description": "获取Release Settings详情，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system-settings"
+                ],
+                "summary": "获取Release Settings详情",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "更新Release Settings，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system-settings"
+                ],
+                "summary": "更新Release Settings",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users": {
+            "get": {
+                "description": "查询Users列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "查询Users列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "创建User，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "创建User",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/options": {
+            "get": {
+                "description": "查询User Options列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "查询User Options列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}": {
+            "get": {
+                "description": "获取User By ID详情，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "获取User By ID详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "更新User，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "更新User",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "删除User，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "删除User",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/param-permissions": {
+            "get": {
+                "description": "查询User Param Permissions列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "查询User Param Permissions列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "处理Upsert User Param Permission接口，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "处理Upsert User Param Permission接口",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/param-permissions/{permission_id}": {
+            "put": {
+                "description": "处理Upsert User Param Permission接口，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "处理Upsert User Param Permission接口",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "参数权限 ID",
+                        "name": "permission_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "删除User Param Permission，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "删除User Param Permission",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "参数权限 ID",
+                        "name": "permission_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/permissions": {
+            "get": {
+                "description": "查询User Permissions列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "查询User Permissions列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "处理Grant User Permissions接口，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "处理Grant User Permissions接口",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "处理Revoke User Permissions接口，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "处理Revoke User Permissions接口",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
                     }
                 }
@@ -2314,21 +9402,149 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "httpapi.ApplicationDataResponse": {
+        "gos_internal_application_usecase.QueryGitOpsFieldCandidateOutput": {
             "type": "object",
             "properties": {
-                "data": {
-                    "$ref": "#/definitions/httpapi.ApplicationResponse"
+                "display_name": {
+                    "type": "string"
+                },
+                "document_kind": {
+                    "type": "string"
+                },
+                "document_name": {
+                    "type": "string"
+                },
+                "file_path_template": {
+                    "type": "string"
+                },
+                "sample_value": {
+                    "type": "string"
+                },
+                "target_path": {
+                    "type": "string"
+                },
+                "value_type": {
+                    "type": "string"
                 }
             }
         },
-        "httpapi.ApplicationListResponse": {
+        "gos_internal_application_usecase.QueryGitOpsTemplateFieldOutput": {
+            "type": "object",
+            "properties": {
+                "builtin": {
+                    "type": "boolean"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "param_key": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "gos_internal_application_usecase.QueryGitOpsValuesCandidateOutput": {
+            "type": "object",
+            "properties": {
+                "display_name": {
+                    "type": "string"
+                },
+                "file_path_template": {
+                    "type": "string"
+                },
+                "sample_value": {
+                    "type": "string"
+                },
+                "target_path": {
+                    "type": "string"
+                },
+                "value_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "gos_internal_application_usecase.SyncExecutorParamDefsOutput": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "type": "integer"
+                },
+                "inactivated": {
+                    "type": "integer"
+                },
+                "skipped": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "updated": {
+                    "type": "integer"
+                }
+            }
+        },
+        "gos_internal_application_usecase.SyncPipelinesOutput": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "type": "integer"
+                },
+                "inactivated": {
+                    "type": "integer"
+                },
+                "skipped": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "updated": {
+                    "type": "integer"
+                }
+            }
+        },
+        "gos_internal_domain_application.GitOpsBranchMapping": {
+            "type": "object",
+            "properties": {
+                "branch": {
+                    "type": "string"
+                },
+                "env_code": {
+                    "type": "string"
+                }
+            }
+        },
+        "gos_internal_domain_application.ReleaseBranchOption": {
+            "type": "object",
+            "properties": {
+                "branch": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_interfaces_http.ApplicationDataResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_interfaces_http.ApplicationResponse"
+                }
+            }
+        },
+        "internal_interfaces_http.ApplicationListResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/httpapi.ApplicationResponse"
+                        "$ref": "#/definitions/internal_interfaces_http.ApplicationResponse"
                     }
                 },
                 "page": {
@@ -2342,7 +9558,7 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.ApplicationResponse": {
+        "internal_interfaces_http.ApplicationResponse": {
             "type": "object",
             "properties": {
                 "artifact_type": {
@@ -2353,6 +9569,12 @@ const docTemplate = `{
                 },
                 "description": {
                     "type": "string"
+                },
+                "gitops_branch_mappings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gos_internal_domain_application.GitOpsBranchMapping"
+                    }
                 },
                 "id": {
                     "type": "string"
@@ -2372,94 +9594,25 @@ const docTemplate = `{
                 "owner_user_id": {
                     "type": "string"
                 },
-                "repo_url": {
+                "project_id": {
                     "type": "string"
                 },
-                "status": {
+                "project_key": {
                     "type": "string"
                 },
-                "updated_at": {
+                "project_name": {
                     "type": "string"
-                }
-            }
-        },
-        "httpapi.ArgoCDApplicationDataResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/httpapi.ArgoCDApplicationResponse"
-                }
-            }
-        },
-        "httpapi.ArgoCDApplicationListResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
+                },
+                "release_branches": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/httpapi.ArgoCDApplicationResponse"
+                        "$ref": "#/definitions/gos_internal_domain_application.ReleaseBranchOption"
                     }
-                },
-                "page": {
-                    "type": "integer"
-                },
-                "page_size": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "httpapi.ArgoCDApplicationResponse": {
-            "type": "object",
-            "properties": {
-                "app_name": {
-                    "type": "string"
-                },
-                "argocd_url": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "dest_namespace": {
-                    "type": "string"
-                },
-                "dest_server": {
-                    "type": "string"
-                },
-                "health_status": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "last_synced_at": {
-                    "type": "string"
-                },
-                "operation_phase": {
-                    "type": "string"
-                },
-                "project": {
-                    "type": "string"
-                },
-                "raw_meta": {
-                    "type": "string"
                 },
                 "repo_url": {
                     "type": "string"
                 },
-                "source_path": {
-                    "type": "string"
-                },
                 "status": {
-                    "type": "string"
-                },
-                "sync_status": {
-                    "type": "string"
-                },
-                "target_revision": {
                     "type": "string"
                 },
                 "updated_at": {
@@ -2467,31 +9620,7 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.ArgoCDApplicationSyncResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/usecase.SyncArgoCDApplicationsOutput"
-                }
-            }
-        },
-        "httpapi.ArgoCDOriginalLinkDataResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "object",
-                    "properties": {
-                        "application": {
-                            "$ref": "#/definitions/httpapi.ArgoCDApplicationResponse"
-                        },
-                        "original_link": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "httpapi.CreateApplicationRequest": {
+        "internal_interfaces_http.CreateApplicationRequest": {
             "type": "object",
             "properties": {
                 "artifact_type": {
@@ -2499,6 +9628,12 @@ const docTemplate = `{
                 },
                 "description": {
                     "type": "string"
+                },
+                "gitops_branch_mappings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gos_internal_domain_application.GitOpsBranchMapping"
+                    }
                 },
                 "key": {
                     "type": "string"
@@ -2515,6 +9650,15 @@ const docTemplate = `{
                 "owner_user_id": {
                     "type": "string"
                 },
+                "project_id": {
+                    "type": "string"
+                },
+                "release_branches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gos_internal_domain_application.ReleaseBranchOption"
+                    }
+                },
                 "repo_url": {
                     "type": "string"
                 },
@@ -2523,7 +9667,7 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.CreateBindingRequest": {
+        "internal_interfaces_http.CreateBindingRequest": {
             "type": "object",
             "properties": {
                 "binding_type": {
@@ -2546,11 +9690,17 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.CreatePlatformParamDictRequest": {
+        "internal_interfaces_http.CreatePlatformParamDictRequest": {
             "type": "object",
             "properties": {
+                "cd_self_fill": {
+                    "type": "boolean"
+                },
                 "description": {
                     "type": "string"
+                },
+                "gitops_locator": {
+                    "type": "boolean"
                 },
                 "name": {
                     "type": "string"
@@ -2569,7 +9719,7 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.CreateReleaseOrderParamRequest": {
+        "internal_interfaces_http.CreateReleaseOrderParamRequest": {
             "type": "object",
             "properties": {
                 "executor_param_name": {
@@ -2589,7 +9739,7 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.CreateReleaseOrderRequest": {
+        "internal_interfaces_http.CreateReleaseOrderRequest": {
             "type": "object",
             "properties": {
                 "application_id": {
@@ -2607,7 +9757,7 @@ const docTemplate = `{
                 "params": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/httpapi.CreateReleaseOrderParamRequest"
+                        "$ref": "#/definitions/internal_interfaces_http.CreateReleaseOrderParamRequest"
                     }
                 },
                 "project_name": {
@@ -2622,7 +9772,7 @@ const docTemplate = `{
                 "steps": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/httpapi.CreateReleaseOrderStepRequest"
+                        "$ref": "#/definitions/internal_interfaces_http.CreateReleaseOrderStepRequest"
                     }
                 },
                 "template_id": {
@@ -2636,7 +9786,7 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.CreateReleaseOrderStepRequest": {
+        "internal_interfaces_http.CreateReleaseOrderStepRequest": {
             "type": "object",
             "properties": {
                 "sort_no": {
@@ -2650,7 +9800,7 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.ErrorResponse": {
+        "internal_interfaces_http.ErrorResponse": {
             "type": "object",
             "properties": {
                 "error": {
@@ -2658,21 +9808,21 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.ExecutorParamDefDataResponse": {
+        "internal_interfaces_http.ExecutorParamDefDataResponse": {
             "type": "object",
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/httpapi.ExecutorParamDefResponse"
+                    "$ref": "#/definitions/internal_interfaces_http.ExecutorParamDefResponse"
                 }
             }
         },
-        "httpapi.ExecutorParamDefListResponse": {
+        "internal_interfaces_http.ExecutorParamDefListResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/httpapi.ExecutorParamDefResponse"
+                        "$ref": "#/definitions/internal_interfaces_http.ExecutorParamDefResponse"
                     }
                 },
                 "page": {
@@ -2686,9 +9836,21 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.ExecutorParamDefResponse": {
+        "internal_interfaces_http.ExecutorParamDefResponse": {
             "type": "object",
             "properties": {
+                "application_id": {
+                    "type": "string"
+                },
+                "application_key": {
+                    "type": "string"
+                },
+                "application_name": {
+                    "type": "string"
+                },
+                "binding_type": {
+                    "type": "string"
+                },
                 "can_edit": {
                     "type": "boolean"
                 },
@@ -2725,6 +9887,9 @@ const docTemplate = `{
                 "pipeline_id": {
                     "type": "string"
                 },
+                "pipeline_name": {
+                    "type": "string"
+                },
                 "raw_meta": {
                     "type": "string"
                 },
@@ -2751,7 +9916,7 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.FinishReleaseOrderStepRequest": {
+        "internal_interfaces_http.FinishReleaseOrderStepRequest": {
             "type": "object",
             "properties": {
                 "message": {
@@ -2762,51 +9927,63 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.GitOpsBindingTargetsResponse": {
+        "internal_interfaces_http.GenericResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            }
+        },
+        "internal_interfaces_http.GitOpsFieldCandidatesResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/usecase.QueryGitOpsBindingTargetOutput"
+                        "$ref": "#/definitions/gos_internal_application_usecase.QueryGitOpsFieldCandidateOutput"
                     }
                 }
             }
         },
-        "httpapi.GitOpsStatusDataResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/usecase.QueryGitOpsStatusOutput"
-                }
-            }
-        },
-        "httpapi.GitOpsTemplateFieldsResponse": {
+        "internal_interfaces_http.GitOpsTemplateFieldsResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/usecase.QueryGitOpsTemplateFieldOutput"
+                        "$ref": "#/definitions/gos_internal_application_usecase.QueryGitOpsTemplateFieldOutput"
                     }
                 }
             }
         },
-        "httpapi.PipelineBindingDataResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/httpapi.PipelineBindingResponse"
-                }
-            }
-        },
-        "httpapi.PipelineBindingListResponse": {
+        "internal_interfaces_http.GitOpsValuesCandidatesResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/httpapi.PipelineBindingResponse"
+                        "$ref": "#/definitions/gos_internal_application_usecase.QueryGitOpsValuesCandidateOutput"
+                    }
+                }
+            }
+        },
+        "internal_interfaces_http.PipelineBindingDataResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_interfaces_http.PipelineBindingResponse"
+                }
+            }
+        },
+        "internal_interfaces_http.PipelineBindingListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_interfaces_http.PipelineBindingResponse"
                     }
                 },
                 "page": {
@@ -2820,7 +9997,7 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.PipelineBindingResponse": {
+        "internal_interfaces_http.PipelineBindingResponse": {
             "type": "object",
             "properties": {
                 "application_id": {
@@ -2861,21 +10038,21 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.PipelineDataResponse": {
+        "internal_interfaces_http.PipelineDataResponse": {
             "type": "object",
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/httpapi.PipelineResponse"
+                    "$ref": "#/definitions/internal_interfaces_http.PipelineResponse"
                 }
             }
         },
-        "httpapi.PipelineListResponse": {
+        "internal_interfaces_http.PipelineListResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/httpapi.PipelineResponse"
+                        "$ref": "#/definitions/internal_interfaces_http.PipelineResponse"
                     }
                 },
                 "page": {
@@ -2889,7 +10066,7 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.PipelineRawScriptDataResponse": {
+        "internal_interfaces_http.PipelineRawScriptDataResponse": {
             "type": "object",
             "properties": {
                 "data": {
@@ -2905,7 +10082,7 @@ const docTemplate = `{
                             "type": "boolean"
                         },
                         "pipeline": {
-                            "$ref": "#/definitions/httpapi.PipelineResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.PipelineResponse"
                         },
                         "sandbox": {
                             "type": "boolean"
@@ -2920,7 +10097,7 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.PipelineResponse": {
+        "internal_interfaces_http.PipelineResponse": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -2964,21 +10141,21 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.PlatformParamDictDataResponse": {
+        "internal_interfaces_http.PlatformParamDictDataResponse": {
             "type": "object",
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/httpapi.PlatformParamDictResponse"
+                    "$ref": "#/definitions/internal_interfaces_http.PlatformParamDictResponse"
                 }
             }
         },
-        "httpapi.PlatformParamDictListResponse": {
+        "internal_interfaces_http.PlatformParamDictListResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/httpapi.PlatformParamDictResponse"
+                        "$ref": "#/definitions/internal_interfaces_http.PlatformParamDictResponse"
                     }
                 },
                 "page": {
@@ -2992,10 +10169,13 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.PlatformParamDictResponse": {
+        "internal_interfaces_http.PlatformParamDictResponse": {
             "type": "object",
             "properties": {
                 "builtin": {
+                    "type": "boolean"
+                },
+                "cd_self_fill": {
                     "type": "boolean"
                 },
                 "created_at": {
@@ -3003,6 +10183,9 @@ const docTemplate = `{
                 },
                 "description": {
                     "type": "string"
+                },
+                "gitops_locator": {
+                    "type": "boolean"
                 },
                 "id": {
                     "type": "string"
@@ -3027,21 +10210,21 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.ReleaseOrderDataResponse": {
+        "internal_interfaces_http.ReleaseOrderDataResponse": {
             "type": "object",
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/httpapi.ReleaseOrderResponse"
+                    "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderResponse"
                 }
             }
         },
-        "httpapi.ReleaseOrderListResponse": {
+        "internal_interfaces_http.ReleaseOrderListResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/httpapi.ReleaseOrderResponse"
+                        "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderResponse"
                     }
                 },
                 "page": {
@@ -3055,18 +10238,18 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.ReleaseOrderParamListResponse": {
+        "internal_interfaces_http.ReleaseOrderParamListResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/httpapi.ReleaseOrderParamResponse"
+                        "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderParamResponse"
                     }
                 }
             }
         },
-        "httpapi.ReleaseOrderParamResponse": {
+        "internal_interfaces_http.ReleaseOrderParamResponse": {
             "type": "object",
             "properties": {
                 "binding_id": {
@@ -3098,7 +10281,96 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.ReleaseOrderResponse": {
+        "internal_interfaces_http.ReleaseOrderPipelineStageListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderPipelineStageResponse"
+                    }
+                },
+                "executor_type": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "show_module": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_interfaces_http.ReleaseOrderPipelineStageLogResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "content": {
+                            "type": "string"
+                        },
+                        "fetched_at": {
+                            "type": "string"
+                        },
+                        "has_more": {
+                            "type": "boolean"
+                        },
+                        "raw_status": {
+                            "type": "string"
+                        },
+                        "stage": {
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderPipelineStageResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "internal_interfaces_http.ReleaseOrderPipelineStageResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "duration_millis": {
+                    "type": "integer"
+                },
+                "executor_type": {
+                    "type": "string"
+                },
+                "finished_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "pipeline_scope": {
+                    "type": "string"
+                },
+                "raw_status": {
+                    "type": "string"
+                },
+                "release_order_id": {
+                    "type": "string"
+                },
+                "sort_no": {
+                    "type": "integer"
+                },
+                "stage_name": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_interfaces_http.ReleaseOrderResponse": {
             "type": "object",
             "properties": {
                 "application_id": {
@@ -3107,8 +10379,44 @@ const docTemplate = `{
                 "application_name": {
                     "type": "string"
                 },
+                "approval_approver_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "approval_approver_names": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "approval_mode": {
+                    "type": "string"
+                },
+                "approval_required": {
+                    "type": "boolean"
+                },
+                "approved_at": {
+                    "type": "string"
+                },
+                "approved_by": {
+                    "type": "string"
+                },
                 "binding_id": {
                     "type": "string"
+                },
+                "business_status": {
+                    "type": "string"
+                },
+                "cd_provider": {
+                    "type": "string"
+                },
+                "concurrent_batch_no": {
+                    "type": "string"
+                },
+                "concurrent_batch_seq": {
+                    "type": "integer"
                 },
                 "created_at": {
                     "type": "string"
@@ -3125,10 +10433,37 @@ const docTemplate = `{
                 "git_ref": {
                     "type": "string"
                 },
+                "has_cd_execution": {
+                    "type": "boolean"
+                },
+                "has_ci_execution": {
+                    "type": "boolean"
+                },
                 "id": {
                     "type": "string"
                 },
                 "image_tag": {
+                    "type": "string"
+                },
+                "is_concurrent": {
+                    "type": "boolean"
+                },
+                "live_state_can_confirm": {
+                    "type": "boolean"
+                },
+                "live_state_confirmed_at": {
+                    "type": "string"
+                },
+                "live_state_confirmed_by": {
+                    "type": "string"
+                },
+                "live_state_is_current": {
+                    "type": "boolean"
+                },
+                "live_state_status": {
+                    "type": "string"
+                },
+                "operation_type": {
                     "type": "string"
                 },
                 "order_no": {
@@ -3143,10 +10478,31 @@ const docTemplate = `{
                 "project_name": {
                     "type": "string"
                 },
+                "queue_position": {
+                    "type": "integer"
+                },
+                "queued_reason": {
+                    "type": "string"
+                },
+                "rejected_at": {
+                    "type": "string"
+                },
+                "rejected_by": {
+                    "type": "string"
+                },
+                "rejected_reason": {
+                    "type": "string"
+                },
                 "remark": {
                     "type": "string"
                 },
                 "son_service": {
+                    "type": "string"
+                },
+                "source_order_id": {
+                    "type": "string"
+                },
+                "source_order_no": {
                     "type": "string"
                 },
                 "started_at": {
@@ -3172,37 +10528,40 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.ReleaseOrderStepActionResponse": {
+        "internal_interfaces_http.ReleaseOrderStepActionResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "object",
                     "properties": {
                         "order": {
-                            "$ref": "#/definitions/httpapi.ReleaseOrderResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderResponse"
                         },
                         "step": {
-                            "$ref": "#/definitions/httpapi.ReleaseOrderStepResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderStepResponse"
                         }
                     }
                 }
             }
         },
-        "httpapi.ReleaseOrderStepListResponse": {
+        "internal_interfaces_http.ReleaseOrderStepListResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/httpapi.ReleaseOrderStepResponse"
+                        "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderStepResponse"
                     }
                 }
             }
         },
-        "httpapi.ReleaseOrderStepResponse": {
+        "internal_interfaces_http.ReleaseOrderStepResponse": {
             "type": "object",
             "properties": {
                 "created_at": {
+                    "type": "string"
+                },
+                "detail_log": {
                     "type": "string"
                 },
                 "execution_id": {
@@ -3215,6 +10574,18 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "message": {
+                    "type": "string"
+                },
+                "related_task_count": {
+                    "type": "integer"
+                },
+                "related_task_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "related_task_summary": {
                     "type": "string"
                 },
                 "release_order_id": {
@@ -3240,18 +10611,18 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.ReleaseOrderValueProgressListResponse": {
+        "internal_interfaces_http.ReleaseOrderValueProgressListResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/httpapi.ReleaseOrderValueProgressResponse"
+                        "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderValueProgressResponse"
                     }
                 }
             }
         },
-        "httpapi.ReleaseOrderValueProgressResponse": {
+        "internal_interfaces_http.ReleaseOrderValueProgressResponse": {
             "type": "object",
             "properties": {
                 "executor_param_name": {
@@ -3289,7 +10660,7 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.StartReleaseOrderStepRequest": {
+        "internal_interfaces_http.StartReleaseOrderStepRequest": {
             "type": "object",
             "properties": {
                 "message": {
@@ -3297,23 +10668,23 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.SyncExecutorParamDefsResponse": {
+        "internal_interfaces_http.SyncExecutorParamDefsResponse": {
             "type": "object",
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/usecase.SyncExecutorParamDefsOutput"
+                    "$ref": "#/definitions/gos_internal_application_usecase.SyncExecutorParamDefsOutput"
                 }
             }
         },
-        "httpapi.SyncPipelinesResponse": {
+        "internal_interfaces_http.SyncPipelinesResponse": {
             "type": "object",
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/usecase.SyncPipelinesOutput"
+                    "$ref": "#/definitions/gos_internal_application_usecase.SyncPipelinesOutput"
                 }
             }
         },
-        "httpapi.UpdateApplicationRequest": {
+        "internal_interfaces_http.UpdateApplicationRequest": {
             "type": "object",
             "properties": {
                 "artifact_type": {
@@ -3321,6 +10692,12 @@ const docTemplate = `{
                 },
                 "description": {
                     "type": "string"
+                },
+                "gitops_branch_mappings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gos_internal_domain_application.GitOpsBranchMapping"
+                    }
                 },
                 "key": {
                     "type": "string"
@@ -3337,6 +10714,15 @@ const docTemplate = `{
                 "owner_user_id": {
                     "type": "string"
                 },
+                "project_id": {
+                    "type": "string"
+                },
+                "release_branches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gos_internal_domain_application.ReleaseBranchOption"
+                    }
+                },
                 "repo_url": {
                     "type": "string"
                 },
@@ -3345,7 +10731,7 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.UpdateBindingRequest": {
+        "internal_interfaces_http.UpdateBindingRequest": {
             "type": "object",
             "properties": {
                 "external_ref": {
@@ -3365,7 +10751,7 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.UpdateExecutorParamDefRequest": {
+        "internal_interfaces_http.UpdateExecutorParamDefRequest": {
             "type": "object",
             "properties": {
                 "param_key": {
@@ -3373,19 +10759,17 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.UpdateGitOpsCommitTemplateRequest": {
+        "internal_interfaces_http.UpdatePlatformParamDictRequest": {
             "type": "object",
             "properties": {
-                "template": {
-                    "type": "string"
-                }
-            }
-        },
-        "httpapi.UpdatePlatformParamDictRequest": {
-            "type": "object",
-            "properties": {
+                "cd_self_fill": {
+                    "type": "boolean"
+                },
                 "description": {
                     "type": "string"
+                },
+                "gitops_locator": {
+                    "type": "boolean"
                 },
                 "name": {
                     "type": "string"
@@ -3404,7 +10788,7 @@ const docTemplate = `{
                 }
             }
         },
-        "httpapi.VerifyPipelineResponse": {
+        "internal_interfaces_http.VerifyPipelineResponse": {
             "type": "object",
             "properties": {
                 "data": {
@@ -3417,177 +10801,12 @@ const docTemplate = `{
                             "type": "string"
                         },
                         "pipeline": {
-                            "$ref": "#/definitions/httpapi.PipelineResponse"
+                            "$ref": "#/definitions/internal_interfaces_http.PipelineResponse"
                         },
                         "verified": {
                             "type": "boolean"
                         }
                     }
-                }
-            }
-        },
-        "usecase.QueryGitOpsBindingTargetOutput": {
-            "type": "object",
-            "properties": {
-                "app_directory": {
-                    "type": "string"
-                },
-                "available_environments": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "display_name": {
-                    "type": "string"
-                },
-                "hierarchy_hint": {
-                    "type": "string"
-                },
-                "path": {
-                    "type": "string"
-                }
-            }
-        },
-        "usecase.QueryGitOpsStatusOutput": {
-            "type": "object",
-            "properties": {
-                "author_email": {
-                    "type": "string"
-                },
-                "author_name": {
-                    "type": "string"
-                },
-                "command_timeout_sec": {
-                    "type": "integer"
-                },
-                "commit_message_template": {
-                    "type": "string"
-                },
-                "current_branch": {
-                    "type": "string"
-                },
-                "default_branch": {
-                    "type": "string"
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "head_commit": {
-                    "type": "string"
-                },
-                "head_commit_short": {
-                    "type": "string"
-                },
-                "head_commit_subject": {
-                    "type": "string"
-                },
-                "is_git_repo": {
-                    "type": "boolean"
-                },
-                "local_root": {
-                    "type": "string"
-                },
-                "mode": {
-                    "type": "string"
-                },
-                "path_exists": {
-                    "type": "boolean"
-                },
-                "remote_origin": {
-                    "type": "string"
-                },
-                "remote_reachable": {
-                    "type": "boolean"
-                },
-                "status_summary": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "username": {
-                    "type": "string"
-                },
-                "worktree_dirty": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "usecase.QueryGitOpsTemplateFieldOutput": {
-            "type": "object",
-            "properties": {
-                "builtin": {
-                    "type": "boolean"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "param_key": {
-                    "type": "string"
-                },
-                "required": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "usecase.SyncArgoCDApplicationsOutput": {
-            "type": "object",
-            "properties": {
-                "created": {
-                    "type": "integer"
-                },
-                "inactivated": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
-                },
-                "updated": {
-                    "type": "integer"
-                }
-            }
-        },
-        "usecase.SyncExecutorParamDefsOutput": {
-            "type": "object",
-            "properties": {
-                "created": {
-                    "type": "integer"
-                },
-                "inactivated": {
-                    "type": "integer"
-                },
-                "skipped": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
-                },
-                "updated": {
-                    "type": "integer"
-                }
-            }
-        },
-        "usecase.SyncPipelinesOutput": {
-            "type": "object",
-            "properties": {
-                "created": {
-                    "type": "integer"
-                },
-                "inactivated": {
-                    "type": "integer"
-                },
-                "skipped": {
-                    "type": "integer"
-                },
-                "total": {
-                    "type": "integer"
-                },
-                "updated": {
-                    "type": "integer"
                 }
             }
         }

@@ -113,6 +113,7 @@ func (uc *ReleaseOrderManager) ListValueProgress(
 	return items, nil
 }
 
+// applyRollbackSnapshotValueProgress 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) applyRollbackSnapshotValueProgress(
 	ctx context.Context,
 	order domain.ReleaseOrder,
@@ -163,6 +164,7 @@ func (uc *ReleaseOrderManager) applyRollbackSnapshotValueProgress(
 	return nil
 }
 
+// resolveReleaseOrderValueProgressItem 解析上下文数据，得到后续流程需要的结果。
 func resolveReleaseOrderValueProgressItem(
 	order domain.ReleaseOrder,
 	param domain.ReleaseTemplateParam,
@@ -275,6 +277,7 @@ func (uc *ReleaseOrderManager) buildBuiltinValueProgress(
 	return generated, nil
 }
 
+// listEnabledBuiltinPlatformParams 查询并返回列表数据。
 func (uc *ReleaseOrderManager) listEnabledBuiltinPlatformParams(
 	ctx context.Context,
 ) (map[string]platformparamdomain.PlatformParamDict, error) {
@@ -300,6 +303,7 @@ func (uc *ReleaseOrderManager) listEnabledBuiltinPlatformParams(
 	return result, nil
 }
 
+// templateUsesArgoCDForCD 封装当前模块的业务处理逻辑。
 func templateUsesArgoCDForCD(bindings []domain.ReleaseTemplateBinding) bool {
 	for _, item := range bindings {
 		if item.PipelineScope != domain.PipelineScopeCD {
@@ -312,6 +316,7 @@ func templateUsesArgoCDForCD(bindings []domain.ReleaseTemplateBinding) bool {
 	return false
 }
 
+// buildMirroredBuiltinMessage 组装业务执行所需的输入数据。
 func buildMirroredBuiltinMessage(item ReleaseOrderValueProgressItem) string {
 	switch item.Status {
 	case ReleaseOrderValueProgressResolved:
@@ -327,6 +332,7 @@ func buildMirroredBuiltinMessage(item ReleaseOrderValueProgressItem) string {
 	}
 }
 
+// buildBuiltinProgressItem 组装业务执行所需的输入数据。
 func buildBuiltinProgressItem(
 	order domain.ReleaseOrder,
 	appKey string,
@@ -396,6 +402,7 @@ func buildBuiltinProgressItem(
 	return progress, true
 }
 
+// normalizeBuiltinProgressSortNo 标准化输入值，保证后续逻辑使用统一格式。
 func normalizeBuiltinProgressSortNo(paramKey string) int {
 	key := strings.ToLower(strings.TrimSpace(paramKey))
 	if key == "app_key" {
@@ -407,6 +414,7 @@ func normalizeBuiltinProgressSortNo(paramKey string) int {
 	return 9100
 }
 
+// max 封装当前模块的业务处理逻辑。
 func max(a int, b int) int {
 	if a > b {
 		return a
@@ -420,6 +428,7 @@ type indexedReleaseParam struct {
 	CreatedAt   time.Time
 }
 
+// indexReleaseOrderParams 封装当前模块的业务处理逻辑。
 func indexReleaseOrderParams(items []domain.ReleaseOrderParam) map[string]indexedReleaseParam {
 	result := make(map[string]indexedReleaseParam, len(items))
 	for _, item := range items {
@@ -437,6 +446,7 @@ func indexReleaseOrderParams(items []domain.ReleaseOrderParam) map[string]indexe
 	return result
 }
 
+// findIndexedReleaseParam 封装当前模块的业务处理逻辑。
 func findIndexedReleaseParam(
 	items map[string]indexedReleaseParam,
 	scope domain.PipelineScope,
@@ -446,6 +456,7 @@ func findIndexedReleaseParam(
 	return item, ok
 }
 
+// buildValueProgressScopeKey 组装业务执行所需的输入数据。
 func buildValueProgressScopeKey(scope domain.PipelineScope, paramKey string) string {
 	return strings.ToLower(strings.TrimSpace(string(scope))) + "::" + strings.ToLower(strings.TrimSpace(paramKey))
 }
@@ -457,6 +468,7 @@ type derivedProgressValue struct {
 	UpdatedAt *time.Time
 }
 
+// deriveReleaseProgressValue 封装当前模块的业务处理逻辑。
 func deriveReleaseProgressValue(
 	order domain.ReleaseOrder,
 	item ReleaseOrderValueProgressItem,
@@ -524,6 +536,7 @@ func deriveReleaseProgressValue(
 	return derivedProgressValue{}, false
 }
 
+// parseJenkinsBuildNumber 解析输入内容并返回结构化结果。
 func parseJenkinsBuildNumber(buildURL string) string {
 	text := strings.Trim(strings.TrimSpace(buildURL), "/")
 	if text == "" {
@@ -542,6 +555,7 @@ func parseJenkinsBuildNumber(buildURL string) string {
 	return last
 }
 
+// buildResolvedMessage 解析上下文数据，得到后续流程需要的结果。
 func buildResolvedMessage(source string) string {
 	switch strings.ToLower(strings.TrimSpace(source)) {
 	case "release_input":
@@ -562,6 +576,7 @@ func buildResolvedMessage(source string) string {
 	}
 }
 
+// derivePendingProgressState 封装当前模块的业务处理逻辑。
 func derivePendingProgressState(
 	order domain.ReleaseOrder,
 	required bool,
@@ -595,6 +610,7 @@ func derivePendingProgressState(
 	}
 }
 
+// timePointer 封装当前模块的业务处理逻辑。
 func timePointer(value time.Time) *time.Time {
 	if value.IsZero() {
 		return nil

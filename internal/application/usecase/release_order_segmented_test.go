@@ -11,6 +11,7 @@ import (
 	domain "gos/internal/domain/release"
 )
 
+// TestBuildDispatchMarksOrderBuilding 组装业务执行所需的输入数据。
 func TestBuildDispatchMarksOrderBuilding(t *testing.T) {
 	t.Parallel()
 
@@ -41,6 +42,7 @@ func TestBuildDispatchMarksOrderBuilding(t *testing.T) {
 	}
 }
 
+// TestBuildRequiresCDExecution 组装业务执行所需的输入数据。
 func TestBuildRequiresCDExecution(t *testing.T) {
 	t.Parallel()
 
@@ -63,6 +65,7 @@ func TestBuildRequiresCDExecution(t *testing.T) {
 	}
 }
 
+// TestBuildSuccessTransitionsToBuiltWaitingDeploy 组装业务执行所需的输入数据。
 func TestBuildSuccessTransitionsToBuiltWaitingDeploy(t *testing.T) {
 	t.Parallel()
 
@@ -108,6 +111,7 @@ func TestBuildSuccessTransitionsToBuiltWaitingDeploy(t *testing.T) {
 	}
 }
 
+// TestTrackerDoesNotAutoDeployAfterBuildSuccess 组装业务执行所需的输入数据。
 func TestTrackerDoesNotAutoDeployAfterBuildSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -165,6 +169,7 @@ func TestTrackerDoesNotAutoDeployAfterBuildSuccess(t *testing.T) {
 	}
 }
 
+// TestSyncFailedOrderClosesRunningCDAndKeepsHooksPending 同步外部或内部状态数据。
 func TestSyncFailedOrderClosesRunningCDAndKeepsHooksPending(t *testing.T) {
 	t.Parallel()
 
@@ -261,6 +266,7 @@ func TestSyncFailedOrderClosesRunningCDAndKeepsHooksPending(t *testing.T) {
 	}
 }
 
+// TestSyncFailedOrderExecutesPostReleaseFailureHooks 同步外部或内部状态数据。
 func TestSyncFailedOrderExecutesPostReleaseFailureHooks(t *testing.T) {
 	t.Parallel()
 
@@ -412,6 +418,7 @@ func TestSyncFailedOrderExecutesPostReleaseFailureHooks(t *testing.T) {
 	}
 }
 
+// TestDeployDispatchFromBuiltWaitingDeploy 封装当前模块的业务处理逻辑。
 func TestDeployDispatchFromBuiltWaitingDeploy(t *testing.T) {
 	t.Parallel()
 
@@ -444,6 +451,7 @@ func TestDeployDispatchFromBuiltWaitingDeploy(t *testing.T) {
 	}
 }
 
+// TestDeployReturnsSuccessWhenReloadFailsAfterDispatch 封装当前模块的业务处理逻辑。
 func TestDeployReturnsSuccessWhenReloadFailsAfterDispatch(t *testing.T) {
 	t.Parallel()
 
@@ -485,6 +493,7 @@ func TestDeployReturnsSuccessWhenReloadFailsAfterDispatch(t *testing.T) {
 	}
 }
 
+// TestStartNextPendingExecutionClaimsPendingExecutionOnce 封装当前模块的业务处理逻辑。
 func TestStartNextPendingExecutionClaimsPendingExecutionOnce(t *testing.T) {
 	t.Parallel()
 
@@ -538,6 +547,7 @@ func TestStartNextPendingExecutionClaimsPendingExecutionOnce(t *testing.T) {
 	}
 }
 
+// TestDeployReturnsSuccessWhenUpdateStatusReloadFails 更新业务资源并返回处理结果。
 func TestDeployReturnsSuccessWhenUpdateStatusReloadFails(t *testing.T) {
 	t.Parallel()
 
@@ -574,6 +584,7 @@ func TestDeployReturnsSuccessWhenUpdateStatusReloadFails(t *testing.T) {
 	}
 }
 
+// TestDeployReturnsSuccessWhenUpdateExecutorReloadFails 更新业务资源并返回处理结果。
 func TestDeployReturnsSuccessWhenUpdateExecutorReloadFails(t *testing.T) {
 	t.Parallel()
 
@@ -613,6 +624,7 @@ func TestDeployReturnsSuccessWhenUpdateExecutorReloadFails(t *testing.T) {
 	}
 }
 
+// TestBuildSuccessWaitsForBuildCompleteHook 组装业务执行所需的输入数据。
 func TestBuildSuccessWaitsForBuildCompleteHook(t *testing.T) {
 	t.Parallel()
 
@@ -708,6 +720,7 @@ func TestBuildSuccessWaitsForBuildCompleteHook(t *testing.T) {
 	}
 }
 
+// TestDefaultReleaseOrderStepsCreatesHookStepForEachSelectedStage 创建业务资源并返回处理结果。
 func TestDefaultReleaseOrderStepsCreatesHookStepForEachSelectedStage(t *testing.T) {
 	t.Parallel()
 
@@ -760,20 +773,25 @@ type segmentedReleaseCountingJenkinsExecutor struct {
 
 type segmentedReleasePipelineRepo struct{}
 
+// InitSchema 封装当前模块的业务处理逻辑。
 func (segmentedReleasePipelineRepo) InitSchema(context.Context) error { return nil }
 
+// UpsertPipelines 封装当前模块的业务处理逻辑。
 func (segmentedReleasePipelineRepo) UpsertPipelines(context.Context, []pipelinedomain.Pipeline) (int, int, error) {
 	return 0, 0, nil
 }
 
+// MarkMissingPipelinesInactive 封装当前模块的业务处理逻辑。
 func (segmentedReleasePipelineRepo) MarkMissingPipelinesInactive(context.Context, pipelinedomain.Provider, []string, time.Time) (int, error) {
 	return 0, nil
 }
 
+// ListPipelines 查询并返回列表数据。
 func (segmentedReleasePipelineRepo) ListPipelines(context.Context, pipelinedomain.PipelineListFilter) ([]pipelinedomain.Pipeline, int64, error) {
 	return nil, 0, nil
 }
 
+// GetPipelineByID 查询并返回指定资源数据。
 func (segmentedReleasePipelineRepo) GetPipelineByID(context.Context, string) (pipelinedomain.Pipeline, error) {
 	return pipelinedomain.Pipeline{
 		ID:          "pipeline-ci",
@@ -783,26 +801,32 @@ func (segmentedReleasePipelineRepo) GetPipelineByID(context.Context, string) (pi
 	}, nil
 }
 
+// MarkPipelineVerified 封装当前模块的业务处理逻辑。
 func (segmentedReleasePipelineRepo) MarkPipelineVerified(context.Context, string, time.Time, time.Time) (pipelinedomain.Pipeline, error) {
 	return pipelinedomain.Pipeline{}, nil
 }
 
+// CreateBinding 创建业务资源并返回处理结果。
 func (segmentedReleasePipelineRepo) CreateBinding(context.Context, pipelinedomain.PipelineBinding) error {
 	return nil
 }
 
+// ListBindingsByApplication 查询并返回列表数据。
 func (segmentedReleasePipelineRepo) ListBindingsByApplication(context.Context, pipelinedomain.BindingListFilter) ([]pipelinedomain.PipelineBinding, int64, error) {
 	return nil, 0, nil
 }
 
+// GetBindingByID 查询并返回指定资源数据。
 func (segmentedReleasePipelineRepo) GetBindingByID(context.Context, string) (pipelinedomain.PipelineBinding, error) {
 	return pipelinedomain.PipelineBinding{}, pipelinedomain.ErrBindingNotFound
 }
 
+// UpdateBinding 更新业务资源并返回处理结果。
 func (segmentedReleasePipelineRepo) UpdateBinding(context.Context, string, pipelinedomain.BindingUpdateInput, time.Time) (pipelinedomain.PipelineBinding, error) {
 	return pipelinedomain.PipelineBinding{}, nil
 }
 
+// DeleteBinding 删除业务资源并返回处理结果。
 func (segmentedReleasePipelineRepo) DeleteBinding(context.Context, string) error { return nil }
 
 type segmentedReleaseFlakyGetByIDRepo struct {
@@ -811,6 +835,7 @@ type segmentedReleaseFlakyGetByIDRepo struct {
 	failOnCall   int
 }
 
+// GetByID 查询并返回指定资源数据。
 func (r *segmentedReleaseFlakyGetByIDRepo) GetByID(ctx context.Context, id string) (domain.ReleaseOrder, error) {
 	r.getByIDCalls++
 	if r.failOnCall > 0 && r.getByIDCalls == r.failOnCall {
@@ -825,6 +850,7 @@ type segmentedReleaseDispatchFallbackRepo struct {
 	failUpdateExecutorHit bool
 }
 
+// UpdateStatus 更新业务资源并返回处理结果。
 func (r *segmentedReleaseDispatchFallbackRepo) UpdateStatus(
 	ctx context.Context,
 	id string,
@@ -844,6 +870,7 @@ func (r *segmentedReleaseDispatchFallbackRepo) UpdateStatus(
 	return item, nil
 }
 
+// UpdateExecutor 更新业务资源并返回处理结果。
 func (r *segmentedReleaseDispatchFallbackRepo) UpdateExecutor(
 	ctx context.Context,
 	id string,
@@ -862,51 +889,63 @@ func (r *segmentedReleaseDispatchFallbackRepo) UpdateExecutor(
 	return item, nil
 }
 
+// TriggerBuild 组装业务执行所需的输入数据。
 func (segmentedReleaseNoopJenkinsExecutor) TriggerBuild(context.Context, string, map[string]string) (string, error) {
 	return "", nil
 }
 
+// TriggerBuild 组装业务执行所需的输入数据。
 func (e *segmentedReleaseCountingJenkinsExecutor) TriggerBuild(context.Context, string, map[string]string) (string, error) {
 	e.triggerCount++
 	return "queue-1", nil
 }
 
+// GetQueueItem 查询并返回指定资源数据。
 func (segmentedReleaseNoopJenkinsExecutor) GetQueueItem(context.Context, string) (string, bool, string, error) {
 	return "", false, "", nil
 }
 
+// GetQueueItem 查询并返回指定资源数据。
 func (*segmentedReleaseCountingJenkinsExecutor) GetQueueItem(context.Context, string) (string, bool, string, error) {
 	return "", false, "", nil
 }
 
+// AbortQueueItem 封装当前模块的业务处理逻辑。
 func (segmentedReleaseNoopJenkinsExecutor) AbortQueueItem(context.Context, string) error {
 	return nil
 }
 
+// AbortQueueItem 封装当前模块的业务处理逻辑。
 func (*segmentedReleaseCountingJenkinsExecutor) AbortQueueItem(context.Context, string) error {
 	return nil
 }
 
+// AbortBuild 组装业务执行所需的输入数据。
 func (segmentedReleaseNoopJenkinsExecutor) AbortBuild(context.Context, string) error {
 	return nil
 }
 
+// AbortBuild 组装业务执行所需的输入数据。
 func (*segmentedReleaseCountingJenkinsExecutor) AbortBuild(context.Context, string) error {
 	return nil
 }
 
+// GetBuildStages 组装业务执行所需的输入数据。
 func (segmentedReleaseNoopJenkinsExecutor) GetBuildStages(context.Context, string) ([]domain.ReleaseOrderPipelineStage, error) {
 	return nil, nil
 }
 
+// GetBuildStages 组装业务执行所需的输入数据。
 func (*segmentedReleaseCountingJenkinsExecutor) GetBuildStages(context.Context, string) ([]domain.ReleaseOrderPipelineStage, error) {
 	return nil, nil
 }
 
+// GetBuildStageLog 组装业务执行所需的输入数据。
 func (segmentedReleaseNoopJenkinsExecutor) GetBuildStageLog(context.Context, string, string) (domain.ReleaseOrderPipelineStageLog, error) {
 	return domain.ReleaseOrderPipelineStageLog{}, nil
 }
 
+// GetBuildStageLog 组装业务执行所需的输入数据。
 func (*segmentedReleaseCountingJenkinsExecutor) GetBuildStageLog(context.Context, string, string) (domain.ReleaseOrderPipelineStageLog, error) {
 	return domain.ReleaseOrderPipelineStageLog{}, nil
 }

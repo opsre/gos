@@ -11,6 +11,7 @@ const (
 	ParamTypeNumber ParamType = "number"
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (t ParamType) Valid() bool {
 	switch t {
 	case ParamTypeString, ParamTypeChoice, ParamTypeBool, ParamTypeNumber:
@@ -27,6 +28,7 @@ const (
 	StatusEnabled  Status = 1
 )
 
+// Valid 封装当前模块的业务处理逻辑。
 func (s Status) Valid() bool {
 	return s == StatusDisabled || s == StatusEnabled
 }

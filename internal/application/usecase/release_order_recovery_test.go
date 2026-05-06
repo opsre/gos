@@ -8,6 +8,7 @@ import (
 	domain "gos/internal/domain/release"
 )
 
+// TestCreateStandardRollbackByOrderPreservesTemplateHooks 创建业务资源并返回处理结果。
 func TestCreateStandardRollbackByOrderPreservesTemplateHooks(t *testing.T) {
 	t.Parallel()
 
@@ -122,6 +123,7 @@ func TestCreateStandardRollbackByOrderPreservesTemplateHooks(t *testing.T) {
 	}
 }
 
+// TestCreateStandardRollbackByOrderAllowsDeployFailedSource 创建业务资源并返回处理结果。
 func TestCreateStandardRollbackByOrderAllowsDeployFailedSource(t *testing.T) {
 	t.Parallel()
 
@@ -194,6 +196,7 @@ func TestCreateStandardRollbackByOrderAllowsDeployFailedSource(t *testing.T) {
 	}
 }
 
+// TestCreatePipelineReplayByOrderAllowsDeployFailedSource 创建业务资源并返回处理结果。
 func TestCreatePipelineReplayByOrderAllowsDeployFailedSource(t *testing.T) {
 	t.Parallel()
 

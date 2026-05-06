@@ -30,7 +30,7 @@ type Repository interface {
 	IsLatestOrderByApplicationEnv(ctx context.Context, applicationID string, envCode string, releaseOrderID string) (bool, error)
 	ConfirmAppReleaseState(ctx context.Context, releaseOrderID string, confirmedBy string, confirmedAt time.Time) (AppReleaseState, error)
 	ListCurrentAppReleaseStateSummaries(ctx context.Context, applicationIDs []string) ([]AppReleaseStateSummary, error)
-	UpdateConcurrentBatch(ctx context.Context, orderIDs []string, batchNo string, isConcurrent bool) error
+	UpdateConcurrentBatch(ctx context.Context, orderIDs []string, batchNo string, batchName string, isConcurrent bool) error
 	ListByConcurrentBatchNo(ctx context.Context, batchNo string) ([]ReleaseOrder, error)
 	FindActiveOrderByApplicationEnv(ctx context.Context, applicationID string, envCode string, excludeReleaseOrderID string) (ReleaseOrder, error)
 	CountActiveOrdersByApplicationEnv(ctx context.Context, applicationID string, envCode string, excludeReleaseOrderID string) (int, error)
@@ -121,6 +121,16 @@ type Repository interface {
 	CreateApprovalRecord(ctx context.Context, item ReleaseOrderApprovalRecord) error
 	ListApprovalRecords(ctx context.Context, releaseOrderID string) ([]ReleaseOrderApprovalRecord, error)
 	ListApprovalRecordSummaries(ctx context.Context, filter ApprovalRecordListFilter) ([]ReleaseOrderApprovalRecordSummary, int64, error)
+	CreateSchedule(ctx context.Context, item ReleaseOrderSchedule) error
+	UpdateSchedule(ctx context.Context, item ReleaseOrderSchedule) error
+	GetScheduleByID(ctx context.Context, id string) (ReleaseOrderSchedule, error)
+	GetActiveScheduleByOrderID(ctx context.Context, releaseOrderID string) (ReleaseOrderSchedule, error)
+	FindActiveScheduleCDConflict(ctx context.Context, applicationID string, envCode string, cdConflictAt time.Time, excludeScheduleID string) (ReleaseOrderSchedule, error)
+	ListSchedules(ctx context.Context, filter ScheduleListFilter) ([]ReleaseOrderSchedule, int64, error)
+	ListDueSchedules(ctx context.Context, now time.Time, limit int) ([]ReleaseOrderSchedule, error)
+	UpdateScheduleStatus(ctx context.Context, id string, status ScheduleStatus, lastError string, updatedAt time.Time) (ReleaseOrderSchedule, error)
+	CreateScheduleApprovalRecord(ctx context.Context, item ReleaseOrderScheduleApprovalRecord) error
+	ListScheduleApprovalRecords(ctx context.Context, scheduleID string) ([]ReleaseOrderScheduleApprovalRecord, error)
 }
 
 type ReleaseOrderStats struct {
@@ -140,6 +150,8 @@ type ListFilter struct {
 	ApprovalApproverUserID      string
 	CreatorUserID               string
 	Keyword                     string
+	ConcurrentBatchNo           string
+	ConcurrentBatchName         string
 	TriggeredBy                 string
 	BindingID                   string
 	EnvCode                     string
@@ -186,6 +198,22 @@ type ApprovalRecordListFilter struct {
 	OperatorUserID              string
 	Page                        int
 	PageSize                    int
+}
+
+type ScheduleListFilter struct {
+	ApplicationID          string
+	ApplicationIDs         []string
+	VisibleToUserID        string
+	ApprovalApproverUserID string
+	CreatorUserID          string
+	Keyword                string
+	EnvCode                string
+	ScheduleMode           ScheduleMode
+	Status                 ScheduleStatus
+	ScheduledAtFrom        *time.Time
+	ScheduledAtTo          *time.Time
+	Page                   int
+	PageSize               int
 }
 
 type ApplicationEnvScope struct {

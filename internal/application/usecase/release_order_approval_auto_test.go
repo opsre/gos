@@ -6,6 +6,7 @@ import (
 	domain "gos/internal/domain/release"
 )
 
+// TestShouldAutoApproveOnCreate 创建业务资源并返回处理结果。
 func TestShouldAutoApproveOnCreate(t *testing.T) {
 	t.Run("disabled approval does not auto approve", func(t *testing.T) {
 		if shouldAutoApproveOnCreate(false, []string{"u-1"}, "u-1") {
@@ -38,6 +39,7 @@ func TestShouldAutoApproveOnCreate(t *testing.T) {
 	})
 }
 
+// TestResolveInitialReleaseOrderStatus 解析上下文数据，得到后续流程需要的结果。
 func TestResolveInitialReleaseOrderStatus(t *testing.T) {
 	template := domain.ReleaseTemplate{
 		ApprovalEnabled:     true,

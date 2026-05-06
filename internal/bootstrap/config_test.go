@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// TestLoadConfigFromPathDoesNotUseEnvOverrides 封装当前模块的业务处理逻辑。
 func TestLoadConfigFromPathDoesNotUseEnvOverrides(t *testing.T) {
 	t.Setenv("MYSQL_DSN", "env-dsn-should-not-be-used")
 	t.Setenv("AUTH_ADMIN_PASSWORD", "env-admin-password")
@@ -45,6 +46,7 @@ func TestLoadConfigFromPathDoesNotUseEnvOverrides(t *testing.T) {
 	}
 }
 
+// TestResolveConfigPathUsesDefaultWhenEmpty 解析上下文数据，得到后续流程需要的结果。
 func TestResolveConfigPathUsesDefaultWhenEmpty(t *testing.T) {
 	if got := ResolveConfigPath(""); got != "configs/config.local.json" {
 		t.Fatalf("ResolveConfigPath(\"\") = %q, want %q", got, "configs/config.local.json")
