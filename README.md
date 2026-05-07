@@ -249,30 +249,15 @@ docker run -d \
   -e GOS_JENKINS_BASE_URL='http://jenkins.example.com/' \
   -e GOS_JENKINS_USERNAME='admin' \
   -e GOS_JENKINS_API_TOKEN='your-token' \
+  -e GOS_JENKINS_AUTO_SYNC_ENABLED=true \
+  -e GOS_JENKINS_AUTO_SYNC_INTERVAL_SEC=5 \
   -e GOS_AUTH_ADMIN_USERNAME='admin' \
   -e GOS_AUTH_ADMIN_PASSWORD='your-admin-password' \
   -e GOS_SECURITY_ENCRYPTION_KEY='replace-with-a-strong-key' \
-  -v /data/deploy-manifests:/gitops/deploy-manifests \
-  -e GOS_GITOPS_PATH_MAPS='/data/deploy-manifests=/gitops/deploy-manifests' \
   yl10115658529/gos-release:latest
 ```
 
-SQLite 演示模式：
-
-```bash
-docker run -d \
-  --name gos-release \
-  -p 5174:5174 \
-  -p 8081:8081 \
-  -v gos_release_data:/app/data \
-  -e GOS_DB_DRIVER=sqlite \
-  -e GOS_SQLITE_PATH='/app/data/demo.db' \
-  -e GOS_JENKINS_ENABLED=false \
-  -e GOS_AUTH_ADMIN_USERNAME='admin' \
-  -e GOS_AUTH_ADMIN_PASSWORD='your-admin-password' \
-  -e GOS_SECURITY_ENCRYPTION_KEY='gos-release-local-key' \
-  gos-release:latest
-```
+> **说明**：GOS_SECURITY_ENCRYPTION_KEY 用于加密数据，请自定义 。
 
 访问地址：
 
@@ -283,7 +268,7 @@ docker run -d \
 首次部署 MySQL 时，可先导入仓库内表结构：
 
 ```bash
-mysql -h mysql-host -P 3306 -u user -p < ./deploy_platform-20260323.sql
+mysql -h mysql-host -P 3306 -u user -p < ./deploy_platform.sql
 ```
 
 ### 方式二：源码开发
