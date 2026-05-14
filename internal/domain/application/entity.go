@@ -44,6 +44,8 @@ type Application struct {
 	Owner                string
 	Status               Status
 	ArtifactType         string
+	ArtifactRepositoryID string
+	ArtifactDirectory    string
 	GitOpsBranchMappings []GitOpsBranchMapping
 	ReleaseBranches      []ReleaseBranchOption
 	language             string

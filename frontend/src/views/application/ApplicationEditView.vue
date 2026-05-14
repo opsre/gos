@@ -4,6 +4,7 @@ import { message } from 'ant-design-vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getApplicationByID, updateApplication } from '../../api/application'
+import { listArtifactRepositories } from '../../api/artifact-repository'
 import { listProjects } from '../../api/project'
 import { listUserOptions } from '../../api/user'
 import type { ApplicationPayload } from '../../types/application'
@@ -20,6 +21,11 @@ interface ProjectOption {
   value: string
 }
 
+interface ArtifactRepositoryOption {
+  label: string
+  value: string
+}
+
 const route = useRoute()
 const router = useRouter()
 
@@ -27,8 +33,10 @@ const loading = ref(false)
 const submitting = ref(false)
 const ownerLoading = ref(false)
 const projectLoading = ref(false)
+const artifactRepositoryLoading = ref(false)
 const ownerOptions = ref<OwnerOption[]>([])
 const projectOptions = ref<ProjectOption[]>([])
+const artifactRepositoryOptions = ref<ArtifactRepositoryOption[]>([])
 const initialValues = ref<Partial<ApplicationPayload>>({})
 const formRef = ref<InstanceType<typeof ApplicationForm> | null>(null)
 
@@ -46,6 +54,21 @@ async function loadOwnerOptions() {
     message.error(extractHTTPErrorMessage(error, '负责人下拉加载失败'))
   } finally {
     ownerLoading.value = false
+  }
+}
+
+async function loadArtifactRepositoryOptions() {
+  artifactRepositoryLoading.value = true
+  try {
+    const response = await listArtifactRepositories({ page: 1, page_size: 100 })
+    artifactRepositoryOptions.value = response.data.map((item) => ({
+      label: `${item.name} (${item.bucket})`,
+      value: item.id,
+    }))
+  } catch (error) {
+    message.error(extractHTTPErrorMessage(error, '制品库下拉加载失败'))
+  } finally {
+    artifactRepositoryLoading.value = false
   }
 }
 
@@ -84,6 +107,8 @@ async function loadDetail() {
       owner_user_id: app.owner_user_id,
       status: app.status,
       artifact_type: app.artifact_type,
+      artifact_repository_id: app.artifact_repository_id,
+      artifact_directory: app.artifact_directory,
       language: app.language,
       gitops_branch_mappings: app.gitops_branch_mappings || [],
       release_branches: app.release_branches || [],
@@ -123,7 +148,7 @@ function handleSubmitFromToolbar() {
 }
 
 onMounted(async () => {
-  await Promise.all([loadOwnerOptions(), loadProjectOptions(), loadDetail()])
+  await Promise.all([loadOwnerOptions(), loadProjectOptions(), loadArtifactRepositoryOptions(), loadDetail()])
 })
 </script>
 
@@ -154,23 +179,23 @@ onMounted(async () => {
     <a-skeleton v-if="loading" active :paragraph="{ rows: 10 }" />
     <div v-else class="create-layout">
       <div class="create-main">
-        <section class="create-main-card">
-          <ApplicationForm
-            ref="formRef"
-            :initial-values="initialValues"
-            :owner-options="ownerOptions"
-            :project-options="projectOptions"
-            :owner-loading="ownerLoading"
-            :project-loading="projectLoading"
-            :loading="submitting"
-            :show-actions="false"
-            surface="plain"
-            submit-text="保存修改"
-            cancel-text="返回"
-            @submit="handleSubmit"
-            @cancel="goBack"
-          />
-        </section>
+        <ApplicationForm
+          ref="formRef"
+          :initial-values="initialValues"
+          :owner-options="ownerOptions"
+          :project-options="projectOptions"
+          :artifact-repository-options="artifactRepositoryOptions"
+          :owner-loading="ownerLoading"
+          :project-loading="projectLoading"
+          :artifact-repository-loading="artifactRepositoryLoading"
+          :loading="submitting"
+          :show-actions="false"
+          surface="plain"
+          submit-text="保存修改"
+          cancel-text="返回"
+          @submit="handleSubmit"
+          @cancel="goBack"
+        />
       </div>
 
       <aside class="create-sidebar">
@@ -275,7 +300,7 @@ onMounted(async () => {
   gap: 8px;
   height: 42px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
   background: rgba(255, 255, 255, 0.42) !important;
   color: #0f172a !important;
   box-shadow:
@@ -306,16 +331,10 @@ onMounted(async () => {
   min-width: 0;
 }
 
-.create-main-card,
 .create-side-card {
   border: 1px solid var(--pipeline-binding-surface-border);
   background: var(--pipeline-binding-surface-background);
   box-shadow: var(--pipeline-binding-surface-shadow);
-}
-
-.create-main-card {
-  padding: 24px 22px;
-  border-radius: 24px;
 }
 
 .create-sidebar {

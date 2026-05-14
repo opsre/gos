@@ -72,6 +72,7 @@ func (h *ReleaseOrderHandler) RegisterRoutes(router gin.IRouter) {
 	router.DELETE("/release-orders/:id", h.Delete)
 	router.POST("/release-orders/batch-execute", h.BatchExecute)
 	router.POST("/release-orders/batch-delete", h.BatchDelete)
+	router.GET("/artifacts/release-order-metadata", h.ListArtifactMetadataSummaries)
 	router.POST("/release-orders/:id/rollback", h.CreateRollbackByOrder)
 	router.POST("/release-orders/:id/replay", h.CreateReplayByOrder)
 	router.GET("/release-orders", h.List)
@@ -104,9 +105,16 @@ func (h *ReleaseOrderHandler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/release-orders/:id/params", h.ListParams)
 	router.GET("/release-orders/:id/value-progress", h.ListValueProgress)
 	router.GET("/release-orders/:id/executions", h.ListExecutions)
+	router.GET("/release-orders/:id/artifact-metadata", h.ListArtifactMetadata)
+	router.POST("/release-orders/:id/artifact-metadata", h.RecordArtifactMetadata)
+	router.DELETE("/release-orders/:id/artifact-metadata/:artifact_id", h.DeleteArtifactMetadata)
 	router.GET("/release-orders/:id/steps", h.ListSteps)
 	router.GET("/release-orders/:id/pipeline-stages", h.ListPipelineStages)
 	router.GET("/release-orders/:id/pipeline-stages/:stage_id/log", h.GetPipelineStageLog)
+	router.POST("/release-orders/:id/pipeline-stages/:stage_id/diagnoses", h.CreatePipelineStageDiagnosis)
+	router.GET("/release-orders/:id/pipeline-stages/:stage_id/diagnoses/latest", h.GetLatestPipelineStageDiagnosis)
+	router.POST("/release-orders/:id/pipeline-stages/:stage_id/diagnoses/:diagnosis_id/follow-up", h.FollowUpPipelineStageDiagnosis)
+	router.GET("/release-orders/:id/pipeline-stage-diagnoses/:diagnosis_id", h.GetPipelineStageDiagnosis)
 	router.POST("/release-orders/:id/steps/:step_code/start", h.StartStep)
 	router.POST("/release-orders/:id/steps/:step_code/finish", h.FinishStep)
 }
@@ -148,6 +156,24 @@ type StartReleaseOrderStepRequest struct {
 type FinishReleaseOrderStepRequest struct {
 	Status  string `json:"status"`
 	Message string `json:"message"`
+}
+
+type RecordReleaseOrderArtifactMetadataRequest struct {
+	ExecutionID      string         `json:"execution_id"`
+	PipelineScope    string         `json:"pipeline_scope"`
+	ArtifactName     string         `json:"artifact_name"`
+	ArtifactType     string         `json:"artifact_type"`
+	ArtifactVersion  string         `json:"artifact_version"`
+	ArtifactURL      string         `json:"artifact_url"`
+	RepositoryID     string         `json:"repository_id"`
+	RepositoryName   string         `json:"repository_name"`
+	Bucket           string         `json:"bucket"`
+	ObjectKey        string         `json:"object_key"`
+	Checksum         string         `json:"checksum"`
+	ChecksumType     string         `json:"checksum_type"`
+	SizeBytes        int64          `json:"size_bytes"`
+	BuildNumber      string         `json:"build_number"`
+	AdditionalFields map[string]any `json:"metadata"`
 }
 
 type ApplicationRollbackRequest struct {
@@ -294,6 +320,57 @@ type ReleaseOrderExecutionResponse struct {
 
 type ReleaseOrderExecutionListResponse struct {
 	Data []ReleaseOrderExecutionResponse `json:"data"`
+}
+
+type ReleaseOrderArtifactMetadataResponse struct {
+	ID               string         `json:"id"`
+	ReleaseOrderID   string         `json:"release_order_id"`
+	ExecutionID      string         `json:"execution_id"`
+	PipelineScope    string         `json:"pipeline_scope"`
+	ArtifactName     string         `json:"artifact_name"`
+	ArtifactType     string         `json:"artifact_type"`
+	ArtifactVersion  string         `json:"artifact_version"`
+	ArtifactURL      string         `json:"artifact_url"`
+	RepositoryID     string         `json:"repository_id"`
+	RepositoryName   string         `json:"repository_name"`
+	Bucket           string         `json:"bucket"`
+	ObjectKey        string         `json:"object_key"`
+	Checksum         string         `json:"checksum"`
+	ChecksumType     string         `json:"checksum_type"`
+	SizeBytes        int64          `json:"size_bytes"`
+	BuildNumber      string         `json:"build_number"`
+	AdditionalFields map[string]any `json:"metadata"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+}
+
+type ReleaseOrderArtifactMetadataDataResponse struct {
+	Data ReleaseOrderArtifactMetadataResponse `json:"data"`
+}
+
+type ReleaseOrderArtifactMetadataListResponse struct {
+	Data []ReleaseOrderArtifactMetadataResponse `json:"data"`
+}
+
+type ReleaseOrderArtifactMetadataSummaryResponse struct {
+	ReleaseOrderArtifactMetadataResponse
+	ReleaseOrderNo     string `json:"release_order_no"`
+	ReleaseName        string `json:"release_name"`
+	ReleaseDisplayName string `json:"release_display_name"`
+	ApplicationID      string `json:"application_id"`
+	ApplicationName    string `json:"application_name"`
+	ProjectID          string `json:"project_id"`
+	ProjectName        string `json:"project_name"`
+	ProjectKey         string `json:"project_key"`
+	EnvCode            string `json:"env_code"`
+	OrderStatus        string `json:"order_status"`
+}
+
+type ReleaseOrderArtifactMetadataSummaryListResponse struct {
+	Data     []ReleaseOrderArtifactMetadataSummaryResponse `json:"data"`
+	Page     int                                           `json:"page"`
+	PageSize int                                           `json:"page_size"`
+	Total    int64                                         `json:"total"`
 }
 
 type ReleaseOrderStepListResponse struct {
@@ -2276,6 +2353,205 @@ func (h *ReleaseOrderHandler) ListExecutions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": resp})
 }
 
+// ListArtifactMetadata 查询发布单制品元信息列表。
+// @Summary      查询发布单制品元信息列表
+// @Description  查询发布单制品元信息列表，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Produce      json
+// @Param        id  path  string  true  "资源 ID"
+// @Success      200  {object}  ReleaseOrderArtifactMetadataListResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /release-orders/{id}/artifact-metadata [get]
+func (h *ReleaseOrderHandler) ListArtifactMetadata(c *gin.Context) {
+	if !ensureAnyReleaseOrderDisplayPermission(c, h.authz) {
+		return
+	}
+	order, err := h.manager.GetByID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	if !ensureReleaseOrderVisible(c, h.authz, order) {
+		return
+	}
+	items, err := h.manager.ListArtifactMetadata(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	resp := make([]ReleaseOrderArtifactMetadataResponse, 0, len(items))
+	for _, item := range items {
+		resp = append(resp, toReleaseOrderArtifactMetadataResponse(item))
+	}
+	c.JSON(http.StatusOK, gin.H{"data": resp})
+}
+
+// ListArtifactMetadataSummaries 查询制品中心发布单制品列表。
+// @Summary      查询制品中心发布单制品列表
+// @Description  按项目、应用、发布单和制品字段聚合查询制品元信息。
+// @Tags         artifacts
+// @Produce      json
+// @Param        project_id        query  string  false  "Project ID"
+// @Param        application_id    query  string  false  "Application ID"
+// @Param        release_order_id  query  string  false  "Release order ID"
+// @Param        keyword           query  string  false  "Keyword"
+// @Param        artifact_name     query  string  false  "Artifact name"
+// @Param        artifact_type     query  string  false  "Artifact type"
+// @Param        pipeline_scope    query  string  false  "Pipeline scope"
+// @Param        repository_id     query  string  false  "Repository ID"
+// @Param        created_at_from   query  string  false  "Created at from (RFC3339)"
+// @Param        created_at_to     query  string  false  "Created at to (RFC3339)"
+// @Param        page              query  int     false  "Page number"
+// @Param        page_size         query  int     false  "Page size"
+// @Success      200  {object}  ReleaseOrderArtifactMetadataSummaryListResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /artifacts/release-order-metadata [get]
+func (h *ReleaseOrderHandler) ListArtifactMetadataSummaries(c *gin.Context) {
+	if !ensureAnyReleaseOrderDisplayPermission(c, h.authz) {
+		return
+	}
+	currentUser, ok := getCurrentUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	page, err := parsePositiveInt(c, "page")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	pageSize, err := parsePositiveInt(c, "page_size")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	allowAll, visibleApplicationIDs, visibleEnvScopes, ok := resolveVisibleReleaseOrderApplicationIDs(c, h.authz)
+	if !ok {
+		return
+	}
+	visibleToUserID := ""
+	if !allowAll {
+		visibleToUserID = currentUser.ID
+	}
+
+	items, total, err := h.manager.ListArtifactMetadataSummaries(c.Request.Context(), usecase.ListReleaseOrderArtifactMetadataInput{
+		ProjectID:                   strings.TrimSpace(c.Query("project_id")),
+		ApplicationID:               strings.TrimSpace(c.Query("application_id")),
+		ApplicationIDs:              resolveReleaseListApplicationIDs(strings.TrimSpace(c.Query("application_id")), allowAll, visibleApplicationIDs),
+		VisibleApplicationEnvScopes: visibleEnvScopes,
+		VisibleToUserID:             visibleToUserID,
+		ReleaseOrderID:              strings.TrimSpace(c.Query("release_order_id")),
+		Keyword:                     strings.TrimSpace(c.Query("keyword")),
+		ArtifactName:                strings.TrimSpace(c.Query("artifact_name")),
+		ArtifactType:                strings.TrimSpace(c.Query("artifact_type")),
+		PipelineScope:               strings.TrimSpace(c.Query("pipeline_scope")),
+		RepositoryID:                strings.TrimSpace(c.Query("repository_id")),
+		CreatedAtFrom:               parseOptionalTime(c.Query("created_at_from")),
+		CreatedAtTo:                 parseOptionalTime(c.Query("created_at_to")),
+		Page:                        page,
+		PageSize:                    pageSize,
+	})
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+
+	resp := make([]ReleaseOrderArtifactMetadataSummaryResponse, 0, len(items))
+	for _, item := range items {
+		resp = append(resp, toReleaseOrderArtifactMetadataSummaryResponse(item))
+	}
+	c.JSON(http.StatusOK, ReleaseOrderArtifactMetadataSummaryListResponse{
+		Data:     resp,
+		Page:     resolvedPage(page),
+		PageSize: resolvedPageSize(pageSize),
+		Total:    total,
+	})
+}
+
+// RecordArtifactMetadata 接收发布单制品元信息。
+// @Summary      接收发布单制品元信息
+// @Description  接收发布单制品元信息，并按统一响应结构返回处理结果。
+// @Tags         release-orders
+// @Accept       json
+// @Produce      json
+// @Param        id       path      string                                     true  "资源 ID"
+// @Param        request  body      RecordReleaseOrderArtifactMetadataRequest  true  "制品元信息"
+// @Success      200      {object}  ReleaseOrderArtifactMetadataDataResponse
+// @Failure      400      {object}  ErrorResponse
+// @Failure      401      {object}  ErrorResponse
+// @Failure      403      {object}  ErrorResponse
+// @Failure      404      {object}  ErrorResponse
+// @Failure      500      {object}  ErrorResponse
+// @Router       /release-orders/{id}/artifact-metadata [post]
+func (h *ReleaseOrderHandler) RecordArtifactMetadata(c *gin.Context) {
+	existing, err := h.manager.GetByID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	if !ensureReleaseOrderVisible(c, h.authz, existing) {
+		return
+	}
+	if !ensureReleaseApplicationPermission(c, h.authz, "release.execute", existing.ApplicationID, existing.EnvCode) {
+		return
+	}
+
+	var req RecordReleaseOrderArtifactMetadataRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	output, err := h.manager.RecordArtifactMetadata(c.Request.Context(), c.Param("id"), usecase.RecordReleaseOrderArtifactMetadataInput{
+		ExecutionID:      req.ExecutionID,
+		PipelineScope:    req.PipelineScope,
+		ArtifactName:     req.ArtifactName,
+		ArtifactType:     req.ArtifactType,
+		ArtifactVersion:  req.ArtifactVersion,
+		ArtifactURL:      req.ArtifactURL,
+		RepositoryID:     req.RepositoryID,
+		RepositoryName:   req.RepositoryName,
+		Bucket:           req.Bucket,
+		ObjectKey:        req.ObjectKey,
+		Checksum:         req.Checksum,
+		ChecksumType:     req.ChecksumType,
+		SizeBytes:        req.SizeBytes,
+		BuildNumber:      req.BuildNumber,
+		AdditionalFields: req.AdditionalFields,
+	})
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": toReleaseOrderArtifactMetadataResponse(output)})
+}
+
+// DeleteArtifactMetadata 删除手动添加的发布单制品元信息。
+func (h *ReleaseOrderHandler) DeleteArtifactMetadata(c *gin.Context) {
+	existing, err := h.manager.GetByID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	if !ensureReleaseOrderVisible(c, h.authz, existing) {
+		return
+	}
+	if !ensureReleaseApplicationPermission(c, h.authz, "release.execute", existing.ApplicationID, existing.EnvCode) {
+		return
+	}
+	if err := h.manager.DeleteArtifactMetadata(c.Request.Context(), c.Param("id"), c.Param("artifact_id")); err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 // ListSteps godoc
 // @Summary      List release order steps
 // @Tags         release-orders
@@ -2890,6 +3166,49 @@ func toReleaseOrderExecutionResponse(item domain.ReleaseOrderExecution) ReleaseO
 	}
 }
 
+// toReleaseOrderArtifactMetadataResponse 将业务输出转换为接口响应结构。
+func toReleaseOrderArtifactMetadataResponse(item usecase.ReleaseOrderArtifactMetadataOutput) ReleaseOrderArtifactMetadataResponse {
+	return ReleaseOrderArtifactMetadataResponse{
+		ID:               item.ID,
+		ReleaseOrderID:   item.ReleaseOrderID,
+		ExecutionID:      item.ExecutionID,
+		PipelineScope:    item.PipelineScope,
+		ArtifactName:     item.ArtifactName,
+		ArtifactType:     item.ArtifactType,
+		ArtifactVersion:  item.ArtifactVersion,
+		ArtifactURL:      item.ArtifactURL,
+		RepositoryID:     item.RepositoryID,
+		RepositoryName:   item.RepositoryName,
+		Bucket:           item.Bucket,
+		ObjectKey:        item.ObjectKey,
+		Checksum:         item.Checksum,
+		ChecksumType:     item.ChecksumType,
+		SizeBytes:        item.SizeBytes,
+		BuildNumber:      item.BuildNumber,
+		AdditionalFields: item.AdditionalFields,
+		CreatedAt:        item.CreatedAt,
+		UpdatedAt:        item.UpdatedAt,
+	}
+}
+
+func toReleaseOrderArtifactMetadataSummaryResponse(
+	item usecase.ReleaseOrderArtifactMetadataSummaryOutput,
+) ReleaseOrderArtifactMetadataSummaryResponse {
+	return ReleaseOrderArtifactMetadataSummaryResponse{
+		ReleaseOrderArtifactMetadataResponse: toReleaseOrderArtifactMetadataResponse(item.ReleaseOrderArtifactMetadataOutput),
+		ReleaseOrderNo:                       item.ReleaseOrderNo,
+		ReleaseName:                          item.ReleaseName,
+		ReleaseDisplayName:                   item.ReleaseDisplayName,
+		ApplicationID:                        item.ApplicationID,
+		ApplicationName:                      item.ApplicationName,
+		ProjectID:                            item.ProjectID,
+		ProjectName:                          item.ProjectName,
+		ProjectKey:                           item.ProjectKey,
+		EnvCode:                              item.EnvCode,
+		OrderStatus:                          item.OrderStatus,
+	}
+}
+
 // toReleaseOrderApprovalRecordResponse 将领域对象转换为接口响应结构。
 func toReleaseOrderApprovalRecordResponse(item domain.ReleaseOrderApprovalRecord) ReleaseOrderApprovalRecordResponse {
 	return ReleaseOrderApprovalRecordResponse{
@@ -2942,6 +3261,7 @@ func writeReleaseOrderHTTPError(c *gin.Context, err error) {
 		errors.Is(err, domain.ErrTemplateNotFound),
 		errors.Is(err, domain.ErrScheduleNotFound),
 		errors.Is(err, domain.ErrDeploySnapshotNotFound),
+		errors.Is(err, domain.ErrArtifactMetadataNotFound),
 		errors.Is(err, domain.ErrAppReleaseStateNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 
@@ -2967,6 +3287,9 @@ func normalizeReleaseOrderErrorMessage(err error) string {
 	if message == "" {
 		return "invalid input"
 	}
+	if errors.Is(err, usecase.ErrInvalidInput) {
+		message = stripReleaseOrderErrorPrefix(message, usecase.ErrInvalidInput.Error(), "请求参数无效")
+	}
 
 	lower := strings.ToLower(message)
 	const triggerPrefix = "trigger jenkins failed:"
@@ -2986,6 +3309,26 @@ func normalizeReleaseOrderErrorMessage(err error) string {
 
 	if len(message) > 220 {
 		return message[:220] + "..."
+	}
+	return message
+}
+
+// stripReleaseOrderErrorPrefix 移除对用户无意义的内部错误分类前缀。
+func stripReleaseOrderErrorPrefix(message string, prefix string, fallback string) string {
+	message = strings.TrimSpace(message)
+	prefix = strings.TrimSpace(prefix)
+	if message == "" || prefix == "" {
+		return message
+	}
+	if strings.EqualFold(message, prefix) {
+		return fallback
+	}
+	colonPrefix := prefix + ":"
+	if strings.HasPrefix(strings.ToLower(message), strings.ToLower(colonPrefix)) {
+		message = strings.TrimSpace(message[len(colonPrefix):])
+	}
+	if message == "" {
+		return fallback
 	}
 	return message
 }

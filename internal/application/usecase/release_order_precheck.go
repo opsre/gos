@@ -2,12 +2,14 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	argocddomain "gos/internal/domain/argocdapp"
+	pipelineparamdomain "gos/internal/domain/executorparam"
 	pipelinedomain "gos/internal/domain/pipeline"
 	domain "gos/internal/domain/release"
 )
@@ -127,6 +129,27 @@ func (uc *ReleaseOrderManager) buildOrderPrecheck(
 	}
 	output.Items = append(output.Items, executionItem)
 
+	templateBindings, templateParams, templateLoaded, templateItem, err := uc.buildTemplateCompliancePrecheckItem(ctx, order)
+	if err != nil {
+		return ReleaseOrderPrecheckOutput{}, err
+	}
+	if templateItem.Key != "" {
+		if templateItem.Status == ReleaseOrderPrecheckItemStatusBlocked {
+			output.Executable = false
+		}
+		output.Items = append(output.Items, templateItem)
+	}
+	if templateLoaded {
+		paramMappingItem, err := uc.buildTemplateParamMappingPrecheckItem(ctx, templateBindings, templateParams, executions, action)
+		if err != nil {
+			return ReleaseOrderPrecheckOutput{}, err
+		}
+		if paramMappingItem.Status == ReleaseOrderPrecheckItemStatusBlocked {
+			output.Executable = false
+		}
+		output.Items = append(output.Items, paramMappingItem)
+	}
+
 	if pendingExecution != nil {
 		if referenceItem, ok, err := uc.buildExecutionReferencePrecheckItem(ctx, *pendingExecution); err != nil {
 			return ReleaseOrderPrecheckOutput{}, err
@@ -190,6 +213,333 @@ func (uc *ReleaseOrderManager) buildOrderPrecheck(
 	}
 
 	return output, nil
+}
+
+func (uc *ReleaseOrderManager) buildTemplateCompliancePrecheckItem(
+	ctx context.Context,
+	order domain.ReleaseOrder,
+) ([]domain.ReleaseTemplateBinding, []domain.ReleaseTemplateParam, bool, ReleaseOrderPrecheckItem, error) {
+	templateID := strings.TrimSpace(order.TemplateID)
+	item := ReleaseOrderPrecheckItem{
+		Key:     "template_compliance",
+		Name:    "发布模板规范",
+		Status:  ReleaseOrderPrecheckItemStatusPass,
+		Message: "发布模板未检测到管线规范违规",
+	}
+	if templateID == "" {
+		return nil, nil, false, ReleaseOrderPrecheckItem{}, nil
+	}
+	template, bindings, params, _, _, err := uc.repo.GetTemplateByID(ctx, templateID)
+	if err != nil {
+		if errors.Is(err, domain.ErrTemplateNotFound) {
+			return nil, nil, false, ReleaseOrderPrecheckItem{}, nil
+		}
+		return nil, nil, false, ReleaseOrderPrecheckItem{}, err
+	}
+	if template.Status != domain.TemplateStatusActive {
+		item.Status = ReleaseOrderPrecheckItemStatusBlocked
+		item.Message = fmt.Sprintf("发布模板 %s 已禁用，请先更新发布单模板", firstNonEmpty(template.Name, templateID))
+		return bindings, params, true, item, nil
+	}
+	compliance := evaluateReleaseTemplateCompliance(ctx, uc.pipelineScanRepo, bindings)
+	switch compliance.Status {
+	case domain.TemplateComplianceStatusViolated:
+		item.Status = ReleaseOrderPrecheckItemStatusBlocked
+		item.Message = fmt.Sprintf("发布模板 %s 违反管线规范，%s", firstNonEmpty(template.Name, templateID), firstNonEmpty(compliance.Summary, "请先修复模板绑定管线"))
+	case domain.TemplateComplianceStatusUnknown:
+		item.Status = ReleaseOrderPrecheckItemStatusWarn
+		item.Message = firstNonEmpty(compliance.Summary, "发布模板规范状态暂不可用")
+	default:
+		item.Message = fmt.Sprintf("发布模板 %s 未检测到管线规范违规", firstNonEmpty(template.Name, templateID))
+	}
+	return bindings, params, true, item, nil
+}
+
+func (uc *ReleaseOrderManager) buildTemplateParamMappingPrecheckItem(
+	ctx context.Context,
+	bindings []domain.ReleaseTemplateBinding,
+	templateParams []domain.ReleaseTemplateParam,
+	executions []domain.ReleaseOrderExecution,
+	action ReleaseOrderDispatchAction,
+) (ReleaseOrderPrecheckItem, error) {
+	item := ReleaseOrderPrecheckItem{
+		Key:     "template_param_mapping",
+		Name:    "CI/CD 参数映射",
+		Status:  ReleaseOrderPrecheckItemStatusPass,
+		Message: "待执行 CI/CD 参数映射完整",
+	}
+	scopes := precheckParamMappingScopes(executions, action)
+	if len(scopes) == 0 {
+		item.Message = "当前没有待执行的 CI/CD 单元"
+		return item, nil
+	}
+
+	bindingByScope := make(map[domain.PipelineScope]domain.ReleaseTemplateBinding, len(bindings))
+	for _, binding := range bindings {
+		if binding.Enabled {
+			bindingByScope[binding.PipelineScope] = binding
+		}
+	}
+
+	liveParamsByScope, liveParamErrors := uc.loadLiveJenkinsParamSnapshots(ctx, bindingByScope, scopes)
+	missing := make([]string, 0)
+	missing = append(missing, liveParamErrors...)
+	for _, param := range templateParams {
+		if !scopes[param.PipelineScope] {
+			continue
+		}
+		binding := bindingByScope[param.PipelineScope]
+		if strings.ToLower(strings.TrimSpace(binding.Provider)) != string(pipelinedomain.ProviderJenkins) {
+			continue
+		}
+		missing = append(missing, uc.validateSingleTemplateParamMapping(ctx, param, liveParamsByScope[param.PipelineScope])...)
+	}
+
+	if len(missing) > 0 {
+		item.Status = ReleaseOrderPrecheckItemStatusBlocked
+		item.Message = "参数映射不完整：" + strings.Join(missing, "；")
+	}
+	return item, nil
+}
+
+func (uc *ReleaseOrderManager) validateSingleTemplateParamMapping(
+	ctx context.Context,
+	param domain.ReleaseTemplateParam,
+	liveParams map[string]pipelineparamdomain.JenkinsParamSnapshot,
+) []string {
+	scopeLabel := strings.ToUpper(string(param.PipelineScope))
+	paramLabel := executorParamNameOrKey(param.ExecutorParamName, firstNonEmpty(param.ParamName, param.ParamKey, param.ID))
+	missing := make([]string, 0, 3)
+	if strings.TrimSpace(param.ExecutorParamName) == "" {
+		missing = append(missing, fmt.Sprintf("%s 参数 %s 缺少管线参数名称", scopeLabel, paramLabel))
+	}
+	if strings.TrimSpace(param.ParamKey) == "" {
+		missing = append(missing, fmt.Sprintf("%s 参数 %s 未映射平台字段", scopeLabel, paramLabel))
+	}
+	if param.ValueSource != "" && !param.ValueSource.Valid() {
+		missing = append(missing, fmt.Sprintf("%s 参数 %s 取值方式无效", scopeLabel, paramLabel))
+	}
+	switch param.ValueSource {
+	case domain.TemplateParamValueSourceFixed:
+		if strings.TrimSpace(param.FixedValue) == "" {
+			missing = append(missing, fmt.Sprintf("%s 参数 %s 固定值为空", scopeLabel, paramLabel))
+		}
+	case domain.TemplateParamValueSourceCIParam, domain.TemplateParamValueSourceBuiltin:
+		if strings.TrimSpace(param.SourceParamKey) == "" {
+			missing = append(missing, fmt.Sprintf("%s 参数 %s 缺少来源字段", scopeLabel, paramLabel))
+		}
+	}
+	var paramDef pipelineparamdomain.ExecutorParamDef
+	hasParamDef := false
+	if uc.paramRepo != nil && strings.TrimSpace(param.ExecutorParamDefID) != "" {
+		var err error
+		paramDef, err = uc.paramRepo.GetByID(ctx, strings.TrimSpace(param.ExecutorParamDefID))
+		if err != nil {
+			missing = append(missing, fmt.Sprintf("%s 参数 %s 对应的管线参数定义不存在", scopeLabel, paramLabel))
+			return missing
+		}
+		hasParamDef = true
+		if paramDef.Status != "" && paramDef.Status != pipelineparamdomain.StatusActive {
+			missing = append(missing, fmt.Sprintf("%s 参数 %s 对应的管线参数定义已失效", scopeLabel, paramLabel))
+		}
+		if strings.TrimSpace(paramDef.ExecutorParamName) == "" {
+			missing = append(missing, fmt.Sprintf("%s 参数 %s 当前管线参数名称为空", scopeLabel, paramLabel))
+		}
+		if strings.TrimSpace(paramDef.ParamKey) == "" {
+			missing = append(missing, fmt.Sprintf("%s 参数 %s 当前未映射平台字段", scopeLabel, paramLabel))
+		}
+	}
+	if liveParams != nil {
+		paramName := strings.ToLower(strings.TrimSpace(param.ExecutorParamName))
+		liveParam, ok := liveParams[paramName]
+		if !ok && paramName != "" {
+			missing = append(missing, fmt.Sprintf("%s 参数 %s 在 Jenkins 真实管线中不存在", scopeLabel, paramLabel))
+		} else if ok && hasParamDef {
+			missing = append(missing, compareJenkinsChoiceCandidates(scopeLabel, paramLabel, paramDef, liveParam)...)
+		}
+	}
+	return missing
+}
+
+func (uc *ReleaseOrderManager) loadLiveJenkinsParamSnapshots(
+	ctx context.Context,
+	bindingByScope map[domain.PipelineScope]domain.ReleaseTemplateBinding,
+	scopes map[domain.PipelineScope]bool,
+) (map[domain.PipelineScope]map[string]pipelineparamdomain.JenkinsParamSnapshot, []string) {
+	reader, ok := uc.jenkins.(JenkinsReleaseParamReader)
+	if !ok || reader == nil || uc.pipelineRepo == nil {
+		return nil, nil
+	}
+	result := make(map[domain.PipelineScope]map[string]pipelineparamdomain.JenkinsParamSnapshot)
+	failures := make([]string, 0)
+	for scope := range scopes {
+		binding := bindingByScope[scope]
+		if strings.ToLower(strings.TrimSpace(binding.Provider)) != string(pipelinedomain.ProviderJenkins) {
+			continue
+		}
+		scopeLabel := strings.ToUpper(string(scope))
+		pipelineID := strings.TrimSpace(binding.PipelineID)
+		if pipelineID == "" {
+			failures = append(failures, fmt.Sprintf("%s 管线未保存 Jenkins 管线 ID，无法校验真实参数", scopeLabel))
+			continue
+		}
+		pipeline, err := uc.pipelineRepo.GetPipelineByID(ctx, pipelineID)
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("%s 管线 %s 不存在，无法校验真实参数", scopeLabel, pipelineID))
+			continue
+		}
+		fullName := strings.TrimSpace(pipeline.JobFullName)
+		if fullName == "" {
+			failures = append(failures, fmt.Sprintf("%s 管线 %s 未保存 Jenkins Job 名称，无法校验真实参数", scopeLabel, pipelineID))
+			continue
+		}
+		jobSet, err := reader.GetJobParamSet(ctx, fullName)
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("%s 管线 %s 读取 Jenkins 真实参数失败", scopeLabel, firstNonEmpty(pipeline.JobName, fullName)))
+			continue
+		}
+		index := make(map[string]pipelineparamdomain.JenkinsParamSnapshot, len(jobSet.Params))
+		for _, item := range jobSet.Params {
+			name := strings.ToLower(strings.TrimSpace(item.Name))
+			if name == "" {
+				continue
+			}
+			index[name] = item
+		}
+		result[scope] = index
+	}
+	return result, failures
+}
+
+func compareJenkinsChoiceCandidates(
+	scopeLabel string,
+	paramLabel string,
+	paramDef pipelineparamdomain.ExecutorParamDef,
+	liveParam pipelineparamdomain.JenkinsParamSnapshot,
+) []string {
+	localChoices := extractChoiceCandidates(paramDef.RawMeta)
+	liveChoices := extractChoiceCandidates(liveParam.RawMeta)
+	localIsChoice := paramDef.ParamType == pipelineparamdomain.ParamTypeChoice || len(localChoices) > 0
+	liveIsChoice := liveParam.ParamType == pipelineparamdomain.ParamTypeChoice || len(liveChoices) > 0
+	if !localIsChoice && !liveIsChoice {
+		return nil
+	}
+	if sameStringSlice(localChoices, liveChoices) {
+		return nil
+	}
+	return []string{
+		fmt.Sprintf(
+			"%s 参数 %s 候选值与 Jenkins 真实管线不一致，平台=%s，Jenkins=%s",
+			scopeLabel,
+			paramLabel,
+			formatChoiceCandidates(localChoices),
+			formatChoiceCandidates(liveChoices),
+		),
+	}
+}
+
+func extractChoiceCandidates(rawMeta string) []string {
+	rawMeta = strings.TrimSpace(rawMeta)
+	if rawMeta == "" {
+		return nil
+	}
+	var value any
+	if err := json.Unmarshal([]byte(rawMeta), &value); err != nil {
+		return nil
+	}
+	return normalizeChoiceCandidateValues(value)
+}
+
+func normalizeChoiceCandidateValues(value any) []string {
+	switch typed := value.(type) {
+	case []any:
+		result := make([]string, 0, len(typed))
+		for _, item := range typed {
+			result = append(result, normalizeChoiceCandidateValues(item)...)
+		}
+		return compactChoiceCandidates(result)
+	case map[string]any:
+		for _, key := range []string{"choices", "choiceList", "values", "value", "items", "list"} {
+			if nested, ok := typed[key]; ok {
+				if result := normalizeChoiceCandidateValues(nested); len(result) > 0 {
+					return result
+				}
+			}
+		}
+	case string:
+		delimiter := ","
+		if strings.Contains(typed, "\n") {
+			delimiter = "\n"
+		}
+		parts := strings.Split(typed, delimiter)
+		return compactChoiceCandidates(parts)
+	case float64:
+		return []string{strings.TrimSpace(fmt.Sprintf("%v", typed))}
+	case bool:
+		if typed {
+			return []string{"true"}
+		}
+		return []string{"false"}
+	}
+	return nil
+}
+
+func compactChoiceCandidates(values []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		result = append(result, trimmed)
+	}
+	return result
+}
+
+func sameStringSlice(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for idx := range left {
+		if left[idx] != right[idx] {
+			return false
+		}
+	}
+	return true
+}
+
+func formatChoiceCandidates(values []string) string {
+	if len(values) == 0 {
+		return "[]"
+	}
+	return "[" + strings.Join(values, ",") + "]"
+}
+
+func precheckParamMappingScopes(
+	executions []domain.ReleaseOrderExecution,
+	action ReleaseOrderDispatchAction,
+) map[domain.PipelineScope]bool {
+	result := make(map[domain.PipelineScope]bool)
+	for _, execution := range executions {
+		if execution.Status != domain.ExecutionStatusPending {
+			continue
+		}
+		switch action {
+		case ReleaseOrderDispatchActionBuild:
+			if execution.PipelineScope == domain.PipelineScopeCI {
+				result[domain.PipelineScopeCI] = true
+			}
+		case ReleaseOrderDispatchActionDeploy:
+			if execution.PipelineScope == domain.PipelineScopeCD {
+				result[domain.PipelineScopeCD] = true
+			}
+		default:
+			if execution.PipelineScope.Valid() {
+				result[execution.PipelineScope] = true
+			}
+		}
+	}
+	return result
 }
 
 // resolveDispatchPrecheckItems 解析上下文数据，得到后续流程需要的结果。

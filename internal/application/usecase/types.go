@@ -12,6 +12,8 @@ type CreateInput struct {
 	Owner                string
 	Status               domain.Status
 	ArtifactType         string
+	ArtifactRepositoryID string
+	ArtifactDirectory    string
 	Language             string
 	GitOpsBranchMappings []domain.GitOpsBranchMapping
 	ReleaseBranches      []domain.ReleaseBranchOption

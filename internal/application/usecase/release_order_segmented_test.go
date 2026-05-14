@@ -2,11 +2,14 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	executorparamdomain "gos/internal/domain/executorparam"
 	pipelinedomain "gos/internal/domain/pipeline"
 	domain "gos/internal/domain/release"
 )
@@ -418,6 +421,197 @@ func TestSyncFailedOrderExecutesPostReleaseFailureHooks(t *testing.T) {
 	}
 }
 
+// TestPostReleaseWebhookFailureDoesNotFailOrder 通知类 Webhook Hook 失败不应影响发布整体状态。
+func TestPostReleaseWebhookFailureDoesNotFailOrder(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"notify failed"}`))
+	}))
+	defer server.Close()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	startedAt := now.Add(-2 * time.Minute)
+	manager.now = func() time.Time { return now }
+
+	template := domain.ReleaseTemplate{
+		ID:              "rt-webhook-notify-fail",
+		Name:            "Webhook Notify Fail Template",
+		ApplicationID:   "app-1",
+		ApplicationName: "App 1",
+		BindingID:       "app-1",
+		BindingName:     "App 1",
+		BindingType:     "application",
+		Status:          domain.TemplateStatusActive,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	hooks := []domain.ReleaseTemplateHook{
+		{
+			ID:               "hook-webhook-notify-fail",
+			TemplateID:       template.ID,
+			HookType:         domain.TemplateHookTypeWebhookNotification,
+			Name:             "发布后 Webhook 通知",
+			ExecuteStage:     domain.TemplateHookExecuteStagePostRelease,
+			TriggerCondition: domain.TemplateHookTriggerOnSuccess,
+			FailurePolicy:    domain.TemplateHookFailurePolicyBlockRelease,
+			WebhookMethod:    http.MethodPost,
+			WebhookURL:       server.URL,
+			WebhookBody:      `{"order_no":"{order_no}"}`,
+			SortNo:           1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+	}
+	if err := repo.CreateTemplate(ctx, template, nil, nil, nil, hooks); err != nil {
+		t.Fatalf("CreateTemplate failed: %v", err)
+	}
+
+	order := testReleaseOrder("ro-webhook-notify-fail", "RO-WEBHOOK-NOTIFY-FAIL", domain.OrderStatusRunning, now)
+	order.TemplateID = template.ID
+	order.TemplateName = template.Name
+	order.StartedAt = &startedAt
+	executions := []domain.ReleaseOrderExecution{
+		testReleaseExecution(order.ID, "exec-ci", domain.PipelineScopeCI, domain.ExecutionStatusSuccess, now),
+		testReleaseExecution(order.ID, "exec-cd", domain.PipelineScopeCD, domain.ExecutionStatusSuccess, now),
+	}
+	steps := defaultReleaseOrderSteps(order.ID, executions, now, "", hooks, order.EnvCode)
+	for idx := range steps {
+		switch steps[idx].StepCode {
+		case "hook:post_release:webhook_notification:1", "global:release_finish":
+			// keep pending
+		default:
+			steps[idx].Status = domain.StepStatusSuccess
+			steps[idx].StartedAt = &startedAt
+			steps[idx].FinishedAt = &now
+		}
+	}
+	if err := repo.Create(ctx, order, executions, nil, steps); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	tracker := NewTrackReleaseExecution(manager, nil)
+	tracker.now = func() time.Time { return now }
+	if _, _, err := tracker.finalizeOrder(ctx, order, executions); err != nil {
+		t.Fatalf("finalizeOrder failed: %v", err)
+	}
+
+	stored, err := repo.GetByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	if stored.Status != domain.OrderStatusSuccess {
+		t.Fatalf("stored status = %s, want %s", stored.Status, domain.OrderStatusSuccess)
+	}
+	storedSteps, err := repo.ListSteps(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("ListSteps failed: %v", err)
+	}
+	hookStep := findStepByCode(storedSteps, "hook:post_release:webhook_notification:1")
+	if hookStep == nil || hookStep.Status != domain.StepStatusFailed {
+		t.Fatalf("hook step = %#v, want failed", hookStep)
+	}
+	finishStep := findStepByCode(storedSteps, "global:release_finish")
+	if finishStep == nil || finishStep.Status != domain.StepStatusSuccess {
+		t.Fatalf("finish step = %#v, want success", finishStep)
+	}
+}
+
+// TestPostReleaseNotificationHookFailureDoesNotFailOrder 通知 Hook 失败不应影响发布整体状态。
+func TestPostReleaseNotificationHookFailureDoesNotFailOrder(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	startedAt := now.Add(-2 * time.Minute)
+	manager.now = func() time.Time { return now }
+
+	template := domain.ReleaseTemplate{
+		ID:              "rt-notification-hook-fail",
+		Name:            "Notification Hook Fail Template",
+		ApplicationID:   "app-1",
+		ApplicationName: "App 1",
+		BindingID:       "app-1",
+		BindingName:     "App 1",
+		BindingType:     "application",
+		Status:          domain.TemplateStatusActive,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	hooks := []domain.ReleaseTemplateHook{
+		{
+			ID:               "hook-notification-fail",
+			TemplateID:       template.ID,
+			HookType:         domain.TemplateHookTypeNotificationHook,
+			Name:             "发布后通知",
+			ExecuteStage:     domain.TemplateHookExecuteStagePostRelease,
+			TriggerCondition: domain.TemplateHookTriggerOnSuccess,
+			FailurePolicy:    domain.TemplateHookFailurePolicyBlockRelease,
+			TargetID:         "notify-hook-1",
+			TargetName:       "发布后通知",
+			SortNo:           1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+	}
+	if err := repo.CreateTemplate(ctx, template, nil, nil, nil, hooks); err != nil {
+		t.Fatalf("CreateTemplate failed: %v", err)
+	}
+
+	order := testReleaseOrder("ro-notification-hook-fail", "RO-NOTIFICATION-HOOK-FAIL", domain.OrderStatusRunning, now)
+	order.TemplateID = template.ID
+	order.TemplateName = template.Name
+	order.StartedAt = &startedAt
+	executions := []domain.ReleaseOrderExecution{
+		testReleaseExecution(order.ID, "exec-ci", domain.PipelineScopeCI, domain.ExecutionStatusSuccess, now),
+		testReleaseExecution(order.ID, "exec-cd", domain.PipelineScopeCD, domain.ExecutionStatusSuccess, now),
+	}
+	steps := defaultReleaseOrderSteps(order.ID, executions, now, "", hooks, order.EnvCode)
+	for idx := range steps {
+		switch steps[idx].StepCode {
+		case "hook:post_release:notification_hook:1", "global:release_finish":
+			// keep pending
+		default:
+			steps[idx].Status = domain.StepStatusSuccess
+			steps[idx].StartedAt = &startedAt
+			steps[idx].FinishedAt = &now
+		}
+	}
+	if err := repo.Create(ctx, order, executions, nil, steps); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	tracker := NewTrackReleaseExecution(manager, nil)
+	tracker.now = func() time.Time { return now }
+	if _, _, err := tracker.finalizeOrder(ctx, order, executions); err != nil {
+		t.Fatalf("finalizeOrder failed: %v", err)
+	}
+
+	stored, err := repo.GetByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	if stored.Status != domain.OrderStatusSuccess {
+		t.Fatalf("stored status = %s, want %s", stored.Status, domain.OrderStatusSuccess)
+	}
+	storedSteps, err := repo.ListSteps(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("ListSteps failed: %v", err)
+	}
+	hookStep := findStepByCode(storedSteps, "hook:post_release:notification_hook:1")
+	if hookStep == nil || hookStep.Status != domain.StepStatusFailed {
+		t.Fatalf("hook step = %#v, want failed", hookStep)
+	}
+	finishStep := findStepByCode(storedSteps, "global:release_finish")
+	if finishStep == nil || finishStep.Status != domain.StepStatusSuccess {
+		t.Fatalf("finish step = %#v, want success", finishStep)
+	}
+}
+
 // TestDeployDispatchFromBuiltWaitingDeploy 封装当前模块的业务处理逻辑。
 func TestDeployDispatchFromBuiltWaitingDeploy(t *testing.T) {
 	t.Parallel()
@@ -544,6 +738,108 @@ func TestStartNextPendingExecutionClaimsPendingExecutionOnce(t *testing.T) {
 	}
 	if running.QueueURL != "queue-1" {
 		t.Fatalf("running queue_url = %q, want %q", running.QueueURL, "queue-1")
+	}
+}
+
+// TestStartNextPendingExecutionPersistsChoiceCandidateMismatchReason 封装当前模块的业务处理逻辑。
+func TestStartNextPendingExecutionPersistsChoiceCandidateMismatchReason(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	manager.now = func() time.Time { return now }
+	jenkins := &releaseExecutionChoiceMismatchJenkinsFake{
+		jobSets: map[string]executorparamdomain.JenkinsJobParamSet{
+			"demo/job": {
+				JobFullName: "demo/job",
+				Params: []executorparamdomain.JenkinsParamSnapshot{
+					{
+						Name:      "DEPLOY_TO",
+						ParamType: executorparamdomain.ParamTypeChoice,
+						RawMeta:   `{"choices":["dev","prod"]}`,
+					},
+				},
+			},
+		},
+	}
+	manager.jenkins = jenkins
+	manager.pipelineRepo = segmentedReleasePipelineRepo{}
+	manager.paramRepo = &releasePrecheckParamRepoFake{
+		defs: map[string]executorparamdomain.ExecutorParamDef{
+			"ep-deploy-to": {
+				ID:                "ep-deploy-to",
+				PipelineID:        "pipeline-ci",
+				ExecutorType:      executorparamdomain.ExecutorTypeJenkins,
+				ExecutorParamName: "DEPLOY_TO",
+				ParamKey:          "env",
+				ParamType:         executorparamdomain.ParamTypeChoice,
+				Status:            executorparamdomain.StatusActive,
+				RawMeta:           `{"choices":["dev","prod","trial"]}`,
+			},
+		},
+	}
+
+	order := testReleaseOrder("ro-choice-mismatch-start", "RO-CHOICE-MISMATCH-START", domain.OrderStatusPending, now)
+	order.TemplateID = ""
+	order.TemplateName = ""
+	executions := []domain.ReleaseOrderExecution{
+		{
+			ID:             "exec-ci",
+			ReleaseOrderID: order.ID,
+			PipelineScope:  domain.PipelineScopeCI,
+			Provider:       "jenkins",
+			PipelineID:     "pipeline-ci",
+			Status:         domain.ExecutionStatusPending,
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		},
+	}
+	params := []domain.ReleaseOrderParam{
+		{
+			ID:                "rop-deploy-to",
+			ReleaseOrderID:    order.ID,
+			PipelineScope:     domain.PipelineScopeCI,
+			ParamKey:          "env",
+			ExecutorParamName: "DEPLOY_TO",
+			ParamValue:        "trial",
+			ValueSource:       domain.ValueSourceReleaseInput,
+			CreatedAt:         now,
+		},
+	}
+	steps := defaultReleaseOrderSteps(order.ID, executions, now, "", nil, order.EnvCode)
+	if err := repo.Create(ctx, order, executions, params, steps); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	err := manager.startNextPendingExecution(ctx, order, executions, params)
+	if err == nil {
+		t.Fatal("startNextPendingExecution error = nil, want candidate mismatch error")
+	}
+	if !strings.Contains(err.Error(), "候选值与 Jenkins 真实管线不一致") {
+		t.Fatalf("startNextPendingExecution error = %v, want candidate mismatch reason", err)
+	}
+	if jenkins.triggerCount != 0 {
+		t.Fatalf("triggerCount = %d, want 0 when candidate mismatch is detected before Jenkins trigger", jenkins.triggerCount)
+	}
+
+	storedSteps, err := repo.ListSteps(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("ListSteps failed: %v", err)
+	}
+	triggerStep := findStepByCode(storedSteps, "ci:trigger_pipeline")
+	if triggerStep == nil {
+		t.Fatal("trigger step = nil")
+	}
+	if triggerStep.Status != domain.StepStatusFailed {
+		t.Fatalf("trigger step status = %s, want %s", triggerStep.Status, domain.StepStatusFailed)
+	}
+	if !strings.Contains(triggerStep.Message, "DEPLOY_TO") ||
+		!strings.Contains(triggerStep.Message, "候选值与 Jenkins 真实管线不一致") {
+		t.Fatalf("trigger step message = %q, want concrete candidate mismatch reason", triggerStep.Message)
+	}
+	if strings.Contains(triggerStep.Message, "status=500") {
+		t.Fatalf("trigger step message = %q, should not expose Jenkins 500 as primary reason", triggerStep.Message)
 	}
 }
 
@@ -771,6 +1067,11 @@ type segmentedReleaseCountingJenkinsExecutor struct {
 	triggerCount int
 }
 
+type releaseExecutionChoiceMismatchJenkinsFake struct {
+	triggerCount int
+	jobSets      map[string]executorparamdomain.JenkinsJobParamSet
+}
+
 type segmentedReleasePipelineRepo struct{}
 
 // InitSchema 封装当前模块的业务处理逻辑。
@@ -900,6 +1201,12 @@ func (e *segmentedReleaseCountingJenkinsExecutor) TriggerBuild(context.Context, 
 	return "queue-1", nil
 }
 
+// TriggerBuild 组装业务执行所需的输入数据。
+func (e *releaseExecutionChoiceMismatchJenkinsFake) TriggerBuild(context.Context, string, map[string]string) (string, error) {
+	e.triggerCount++
+	return "", fmt.Errorf("jenkins request failed: status=500 message=Parameter DEPLOY_TO is invalid")
+}
+
 // GetQueueItem 查询并返回指定资源数据。
 func (segmentedReleaseNoopJenkinsExecutor) GetQueueItem(context.Context, string) (string, bool, string, error) {
 	return "", false, "", nil
@@ -907,6 +1214,11 @@ func (segmentedReleaseNoopJenkinsExecutor) GetQueueItem(context.Context, string)
 
 // GetQueueItem 查询并返回指定资源数据。
 func (*segmentedReleaseCountingJenkinsExecutor) GetQueueItem(context.Context, string) (string, bool, string, error) {
+	return "", false, "", nil
+}
+
+// GetQueueItem 查询并返回指定资源数据。
+func (*releaseExecutionChoiceMismatchJenkinsFake) GetQueueItem(context.Context, string) (string, bool, string, error) {
 	return "", false, "", nil
 }
 
@@ -920,6 +1232,11 @@ func (*segmentedReleaseCountingJenkinsExecutor) AbortQueueItem(context.Context, 
 	return nil
 }
 
+// AbortQueueItem 封装当前模块的业务处理逻辑。
+func (*releaseExecutionChoiceMismatchJenkinsFake) AbortQueueItem(context.Context, string) error {
+	return nil
+}
+
 // AbortBuild 组装业务执行所需的输入数据。
 func (segmentedReleaseNoopJenkinsExecutor) AbortBuild(context.Context, string) error {
 	return nil
@@ -927,6 +1244,11 @@ func (segmentedReleaseNoopJenkinsExecutor) AbortBuild(context.Context, string) e
 
 // AbortBuild 组装业务执行所需的输入数据。
 func (*segmentedReleaseCountingJenkinsExecutor) AbortBuild(context.Context, string) error {
+	return nil
+}
+
+// AbortBuild 组装业务执行所需的输入数据。
+func (*releaseExecutionChoiceMismatchJenkinsFake) AbortBuild(context.Context, string) error {
 	return nil
 }
 
@@ -940,6 +1262,11 @@ func (*segmentedReleaseCountingJenkinsExecutor) GetBuildStages(context.Context, 
 	return nil, nil
 }
 
+// GetBuildStages 组装业务执行所需的输入数据。
+func (*releaseExecutionChoiceMismatchJenkinsFake) GetBuildStages(context.Context, string) ([]domain.ReleaseOrderPipelineStage, error) {
+	return nil, nil
+}
+
 // GetBuildStageLog 组装业务执行所需的输入数据。
 func (segmentedReleaseNoopJenkinsExecutor) GetBuildStageLog(context.Context, string, string) (domain.ReleaseOrderPipelineStageLog, error) {
 	return domain.ReleaseOrderPipelineStageLog{}, nil
@@ -948,4 +1275,18 @@ func (segmentedReleaseNoopJenkinsExecutor) GetBuildStageLog(context.Context, str
 // GetBuildStageLog 组装业务执行所需的输入数据。
 func (*segmentedReleaseCountingJenkinsExecutor) GetBuildStageLog(context.Context, string, string) (domain.ReleaseOrderPipelineStageLog, error) {
 	return domain.ReleaseOrderPipelineStageLog{}, nil
+}
+
+// GetBuildStageLog 组装业务执行所需的输入数据。
+func (*releaseExecutionChoiceMismatchJenkinsFake) GetBuildStageLog(context.Context, string, string) (domain.ReleaseOrderPipelineStageLog, error) {
+	return domain.ReleaseOrderPipelineStageLog{}, nil
+}
+
+// GetJobParamSet 查询并返回指定资源数据。
+func (e *releaseExecutionChoiceMismatchJenkinsFake) GetJobParamSet(_ context.Context, fullName string) (executorparamdomain.JenkinsJobParamSet, error) {
+	item, ok := e.jobSets[fullName]
+	if !ok {
+		return executorparamdomain.JenkinsJobParamSet{}, pipelinedomain.ErrPipelineNotFound
+	}
+	return item, nil
 }

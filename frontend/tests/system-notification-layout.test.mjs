@@ -110,3 +110,10 @@ test('notification editors use titlebar save instead of default modal footer', (
     assert.match(modalRule, /backdrop-filter:\s*blur\(18px\) saturate\(180%\)/, `${selector} should use glass treatment`)
   }
 })
+
+test('notification template variables include release name', () => {
+  assert.match(source, /value:\s*'release_name'[\s\S]*type:\s*'内置字段'/, 'release_name should be exposed as a built-in notification variable')
+  assert.match(source, /title_template:\s*'\[\{env\}\] \{app_name\} \{release_name\} \{release_status_rich\}'/, 'default notification title should include release_name')
+  assert.match(source, /'\- \*\*发布名称\*\*：`\{release_name\}`'/, 'default notification body should include release_name')
+  assert.match(source, /release_name:\s*'省公协同后端正式发布'/, 'notification preview should provide a release_name value')
+})

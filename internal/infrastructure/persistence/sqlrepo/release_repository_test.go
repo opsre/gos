@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	appdomain "gos/internal/domain/application"
+	artifactdomain "gos/internal/domain/artifactrepo"
+	projectdomain "gos/internal/domain/project"
 	domain "gos/internal/domain/release"
 
 	_ "modernc.org/sqlite"
@@ -37,6 +40,265 @@ func TestCountActiveOrdersByApplicationEnv_IncludesQueuedAndRunning(t *testing.T
 	}
 	if count != 2 {
 		t.Fatalf("CountActiveOrdersByApplicationEnv = %d, want 2", count)
+	}
+}
+
+func TestReleaseRepositoryInitSchemaCreatesStrategySnapshotColumns(t *testing.T) {
+	t.Parallel()
+
+	repo := newTestReleaseRepository(t)
+	columns, err := repo.sqliteTableColumns(context.Background(), "release_order")
+	if err != nil {
+		t.Fatalf("sqliteTableColumns failed: %v", err)
+	}
+	for _, column := range []string{"delivery_engine", "strategy_snapshot_json"} {
+		if _, ok := columns[column]; !ok {
+			t.Fatalf("release_order missing column %s", column)
+		}
+	}
+
+	now := time.Now().UTC()
+	order := newTestReleaseOrder("ro-strategy-default", "RO-STRATEGY-DEFAULT", "app-1", "prod", domain.OrderStatusPending, now)
+	if err := repo.Create(context.Background(), order, nil, nil, nil); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	got, err := repo.GetByID(context.Background(), order.ID)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	if got.DeliveryEngine != defaultReleaseOrderDeliveryEngine {
+		t.Fatalf("DeliveryEngine = %q, want %q", got.DeliveryEngine, defaultReleaseOrderDeliveryEngine)
+	}
+	if got.StrategySnapshotJSON != defaultReleaseOrderStrategySnapshotJSON {
+		t.Fatalf("StrategySnapshotJSON = %q, want %q", got.StrategySnapshotJSON, defaultReleaseOrderStrategySnapshotJSON)
+	}
+}
+
+func TestReleaseRepositoryListArtifactMetadataSummariesFiltersByProjectApplicationAndOrder(t *testing.T) {
+	t.Parallel()
+
+	repo := newTestReleaseRepository(t)
+	ctx := context.Background()
+	now := time.Date(2026, 5, 12, 15, 11, 21, 0, time.UTC)
+
+	projectRepo := NewProjectRepository(repo.db, "sqlite")
+	if err := projectRepo.InitSchema(ctx); err != nil {
+		t.Fatalf("project InitSchema failed: %v", err)
+	}
+	if err := projectRepo.Create(ctx, projectdomain.Project{
+		ID:        "project-shangxin",
+		Name:      "尚信",
+		Key:       "shangxin",
+		Status:    projectdomain.StatusActive,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("Create project failed: %v", err)
+	}
+
+	applicationRepo := NewApplicationRepository(repo.db, "sqlite")
+	if err := applicationRepo.InitSchema(ctx); err != nil {
+		t.Fatalf("application InitSchema failed: %v", err)
+	}
+	app := appdomain.Application{
+		ID:           "app-notary",
+		Name:         "尚信前端-测试",
+		Key:          "sx-notary",
+		ProjectID:    "project-shangxin",
+		RepoURL:      "https://git.example.com/notary.git",
+		Owner:        "tester",
+		Status:       appdomain.StatusActive,
+		ArtifactType: "zip",
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	app.SetLanguage("nodejs")
+	if err := applicationRepo.Create(ctx, app); err != nil {
+		t.Fatalf("Create application failed: %v", err)
+	}
+
+	order := newTestReleaseOrder("ro-artifact-center", "RO-20260512070847-8C67ECB7", app.ID, "dev", domain.OrderStatusSuccess, now)
+	order.ReleaseName = "尚信前端测试发布"
+	order.ApplicationName = app.Name
+	if err := repo.Create(ctx, order, nil, nil, nil); err != nil {
+		t.Fatalf("Create release order failed: %v", err)
+	}
+	if _, err := repo.UpsertArtifactMetadata(ctx, domain.ReleaseOrderArtifactMetadata{
+		ID:              "roart-artifact-center",
+		ReleaseOrderID:  order.ID,
+		PipelineScope:   domain.PipelineScopeCI,
+		ArtifactName:    "notarybusiness-9.zip",
+		ArtifactType:    "zip",
+		ArtifactVersion: "9",
+		ArtifactURL:     "https://oss.example.com/notarybusiness-9.zip",
+		RepositoryID:    "repo-oss",
+		RepositoryName:  "生产 OSS",
+		Bucket:          "gc-oa",
+		ObjectKey:       "release/notarybusiness-9.zip",
+		BuildNumber:     "9",
+		MetadataJSON:    "{}",
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}); err != nil {
+		t.Fatalf("UpsertArtifactMetadata failed: %v", err)
+	}
+
+	items, total, err := repo.ListArtifactMetadataSummaries(ctx, domain.ArtifactMetadataListFilter{
+		ProjectID:      "project-shangxin",
+		ApplicationID:  app.ID,
+		ReleaseOrderID: order.ID,
+		Keyword:        "前端测试",
+		PipelineScope:  domain.PipelineScopeCI,
+		Page:           1,
+		PageSize:       20,
+	})
+	if err != nil {
+		t.Fatalf("ListArtifactMetadataSummaries failed: %v", err)
+	}
+	if total != 1 || len(items) != 1 {
+		t.Fatalf("total=%d len=%d, want 1", total, len(items))
+	}
+	got := items[0]
+	if got.Artifact.ArtifactName != "notarybusiness-9.zip" {
+		t.Fatalf("ArtifactName = %q", got.Artifact.ArtifactName)
+	}
+	if got.ReleaseName != "尚信前端测试发布" || got.ReleaseOrderNo != "RO-20260512070847-8C67ECB7" {
+		t.Fatalf("release context = %q/%q", got.ReleaseName, got.ReleaseOrderNo)
+	}
+	if got.ApplicationName != app.Name || got.ProjectName != "尚信" {
+		t.Fatalf("application/project context = %q/%q", got.ApplicationName, got.ProjectName)
+	}
+}
+
+func TestReleaseRepositoryDeleteOrdersRemovesArtifactMetadata(t *testing.T) {
+	t.Parallel()
+
+	repo := newTestReleaseRepository(t)
+	ctx := context.Background()
+	now := time.Date(2026, 5, 13, 10, 0, 0, 0, time.UTC)
+
+	order := newTestReleaseOrder("ro-delete-artifacts", "RO-DELETE-ARTIFACTS", "app-delete-artifacts", "dev", domain.OrderStatusSuccess, now)
+	if err := repo.Create(ctx, order, nil, nil, nil); err != nil {
+		t.Fatalf("Create release order failed: %v", err)
+	}
+	if _, err := repo.UpsertArtifactMetadata(ctx, domain.ReleaseOrderArtifactMetadata{
+		ID:             "roart-delete-with-order",
+		ReleaseOrderID: order.ID,
+		PipelineScope:  domain.PipelineScopeCI,
+		ArtifactName:   "pipeline-package.zip",
+		ArtifactURL:    "https://oss.example.com/pipeline-package.zip",
+		ExecutionID:    "exec-ci-delete",
+		MetadataJSON:   "{}",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("UpsertArtifactMetadata failed: %v", err)
+	}
+
+	if err := repo.DeleteOrders(ctx, []string{order.ID}); err != nil {
+		t.Fatalf("DeleteOrders failed: %v", err)
+	}
+	items, err := repo.ListArtifactMetadata(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("ListArtifactMetadata failed: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("artifact metadata count = %d, want 0", len(items))
+	}
+}
+
+func TestReleaseRepositoryListArtifactMetadataSummariesUsesApplicationRepositoryConfig(t *testing.T) {
+	t.Parallel()
+
+	repo := newTestReleaseRepository(t)
+	ctx := context.Background()
+	now := time.Date(2026, 5, 12, 16, 0, 0, 0, time.UTC)
+
+	artifactRepo := NewArtifactRepositoryConfigRepository(repo.db, "sqlite")
+	if err := artifactRepo.InitSchema(ctx); err != nil {
+		t.Fatalf("artifact repository InitSchema failed: %v", err)
+	}
+	if err := NewProjectRepository(repo.db, "sqlite").InitSchema(ctx); err != nil {
+		t.Fatalf("project InitSchema failed: %v", err)
+	}
+	if err := artifactRepo.Create(ctx, artifactdomain.ArtifactRepository{
+		ID:              "repo-app-oss",
+		Name:            "应用绑定 OSS",
+		RepositoryType:  artifactdomain.RepositoryTypeOSS,
+		Endpoint:        "https://oss-cn-shanghai.aliyuncs.com",
+		Bucket:          "app-bucket",
+		Directory:       "release",
+		AccessKeyID:     "ak",
+		AccessKeySecret: "sk",
+		ACL:             artifactdomain.ACLPrivate,
+		Status:          artifactdomain.StatusEnabled,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}); err != nil {
+		t.Fatalf("Create artifact repository failed: %v", err)
+	}
+
+	applicationRepo := NewApplicationRepository(repo.db, "sqlite")
+	if err := applicationRepo.InitSchema(ctx); err != nil {
+		t.Fatalf("application InitSchema failed: %v", err)
+	}
+	app := appdomain.Application{
+		ID:                   "app-bound-repo",
+		Name:                 "绑定制品库应用",
+		Key:                  "bound-repo",
+		RepoURL:              "https://git.example.com/bound.git",
+		Owner:                "tester",
+		Status:               appdomain.StatusActive,
+		ArtifactType:         "zip",
+		ArtifactRepositoryID: "repo-app-oss",
+		CreatedAt:            now,
+		UpdatedAt:            now,
+	}
+	app.SetLanguage("nodejs")
+	if err := applicationRepo.Create(ctx, app); err != nil {
+		t.Fatalf("Create application failed: %v", err)
+	}
+
+	order := newTestReleaseOrder("ro-bound-repo", "RO-BOUND-REPO", app.ID, "dev", domain.OrderStatusSuccess, now)
+	order.ReleaseName = "绑定制品库发布"
+	order.ApplicationName = app.Name
+	if err := repo.Create(ctx, order, nil, nil, nil); err != nil {
+		t.Fatalf("Create release order failed: %v", err)
+	}
+	if _, err := repo.UpsertArtifactMetadata(ctx, domain.ReleaseOrderArtifactMetadata{
+		ID:              "roart-bound-repo",
+		ReleaseOrderID:  order.ID,
+		PipelineScope:   domain.PipelineScopeCI,
+		ArtifactName:    "bound-repo.zip",
+		ArtifactType:    "zip",
+		ArtifactVersion: "1",
+		ArtifactURL:     "https://oss.example.com/bound-repo.zip",
+		MetadataJSON:    "{}",
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}); err != nil {
+		t.Fatalf("UpsertArtifactMetadata failed: %v", err)
+	}
+
+	items, total, err := repo.ListArtifactMetadataSummaries(ctx, domain.ArtifactMetadataListFilter{
+		RepositoryID: "repo-app-oss",
+		Page:         1,
+		PageSize:     20,
+	})
+	if err != nil {
+		t.Fatalf("ListArtifactMetadataSummaries failed: %v", err)
+	}
+	if total != 1 || len(items) != 1 {
+		t.Fatalf("total=%d len=%d, want 1", total, len(items))
+	}
+	if items[0].Artifact.RepositoryID != "repo-app-oss" {
+		t.Fatalf("RepositoryID = %q", items[0].Artifact.RepositoryID)
+	}
+	if items[0].Artifact.RepositoryName != "应用绑定 OSS" {
+		t.Fatalf("RepositoryName = %q", items[0].Artifact.RepositoryName)
+	}
+	if items[0].Artifact.Bucket != "app-bucket" {
+		t.Fatalf("Bucket = %q", items[0].Artifact.Bucket)
 	}
 }
 
@@ -435,6 +697,15 @@ CREATE TABLE IF NOT EXISTS sys_user (
 	repo := NewReleaseRepository(db, "sqlite")
 	if err := repo.InitSchema(context.Background()); err != nil {
 		t.Fatalf("InitSchema failed: %v", err)
+	}
+	if err := NewProjectRepository(db, "sqlite").InitSchema(context.Background()); err != nil {
+		t.Fatalf("project InitSchema failed: %v", err)
+	}
+	if err := NewApplicationRepository(db, "sqlite").InitSchema(context.Background()); err != nil {
+		t.Fatalf("application InitSchema failed: %v", err)
+	}
+	if err := NewArtifactRepositoryConfigRepository(db, "sqlite").InitSchema(context.Background()); err != nil {
+		t.Fatalf("artifact repository InitSchema failed: %v", err)
 	}
 	return repo
 }

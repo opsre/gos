@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { DeleteOutlined, EditOutlined, PlusOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons-vue'
+import { CopyOutlined, DeleteOutlined, EditOutlined, PlusOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons-vue'
 import { Modal, message } from 'ant-design-vue'
 import type { TableColumnsType, UploadProps } from 'ant-design-vue'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { createAgentScript, deleteAgentScript, listAgentScripts, updateAgentScript } from '../../api/agent'
 import { useAuthStore } from '../../stores/auth'
 import type { AgentScript, AgentScriptListParams, AgentScriptTaskType, UpsertAgentScriptPayload } from '../../types/agent'
+import { buildCloneName } from '../../utils/clone-name'
 import { extractHTTPErrorMessage } from '../../utils/http-error'
 
 interface SearchSuggestion {
@@ -20,6 +21,7 @@ const loading = ref(false)
 const saving = ref(false)
 const modalVisible = ref(false)
 const editingID = ref('')
+const cloneSourceID = ref('')
 const dataSource = ref<AgentScript[]>([])
 const total = ref(0)
 const searchDialogVisible = ref(false)
@@ -58,7 +60,7 @@ const columns: TableColumnsType<AgentScript> = [
   { title: '脚本文件', dataIndex: 'script_path', key: 'script_path', width: 180 },
   { title: '说明', dataIndex: 'description', key: 'description', width: 260, ellipsis: true },
   { title: '更新时间', dataIndex: 'updated_at', key: 'updated_at', width: 180 },
-  { title: '操作', key: 'actions', width: 170, fixed: 'right' },
+  { title: '操作', key: 'actions', width: 230, fixed: 'right' },
 ]
 
 const taskTypeFilterValue = computed<AgentScriptTaskType | ''>({
@@ -91,6 +93,7 @@ const modalWrapProps = computed(() => ({
 
 function resetForm() {
   editingID.value = ''
+  cloneSourceID.value = ''
   form.name = ''
   form.description = ''
   form.task_type = 'shell_task'
@@ -264,14 +267,26 @@ function openCreate() {
   modalVisible.value = true
 }
 
-function openEdit(record: AgentScript) {
-  editingID.value = record.id
-  form.name = record.name
+function fillScriptForm(record: AgentScript, name: string) {
+  form.name = name
   form.description = record.description || ''
   form.task_type = record.task_type
   form.shell_type = record.shell_type || 'sh'
   form.script_path = record.script_path || ''
   form.script_text = record.script_text || ''
+}
+
+function openEdit(record: AgentScript) {
+  editingID.value = record.id
+  cloneSourceID.value = ''
+  fillScriptForm(record, record.name)
+  modalVisible.value = true
+}
+
+function openClone(record: AgentScript) {
+  editingID.value = ''
+  cloneSourceID.value = record.id
+  fillScriptForm(record, buildCloneName(record.name))
   modalVisible.value = true
 }
 
@@ -311,12 +326,12 @@ async function handleSave() {
       message.success('脚本已更新')
     } else {
       await createAgentScript(payload)
-      message.success('脚本已创建')
+      message.success(cloneSourceID.value ? '脚本已克隆' : '脚本已创建')
     }
     closeModal()
     await loadScripts()
   } catch (error) {
-    message.error(extractHTTPErrorMessage(error, editingID.value ? '脚本更新失败' : '脚本创建失败'))
+    message.error(extractHTTPErrorMessage(error, editingID.value ? '脚本更新失败' : cloneSourceID.value ? '脚本克隆失败' : '脚本创建失败'))
   } finally {
     saving.value = false
   }
@@ -471,7 +486,7 @@ watch(
             loadScripts()
           },
         }"
-        :scroll="{ x: 1120 }"
+        :scroll="{ x: 1180 }"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'name'">
@@ -496,6 +511,10 @@ watch(
                 <template #icon><EditOutlined /></template>
                 编辑
               </a-button>
+              <a-button v-if="canManage" class="component-row-action-btn" size="small" @click="openClone(record)">
+                <template #icon><CopyOutlined /></template>
+                克隆
+              </a-button>
               <a-button v-if="canManage" class="component-row-action-btn component-row-action-btn--danger" size="small" @click="handleDelete(record)">
                 <template #icon><DeleteOutlined /></template>
                 删除
@@ -519,7 +538,7 @@ watch(
     >
       <template #title>
         <div class="component-instance-modal-titlebar">
-          <span class="component-instance-modal-title">{{ editingID ? '编辑脚本' : '新增脚本' }}</span>
+          <span class="component-instance-modal-title">{{ editingID ? '编辑脚本' : cloneSourceID ? '克隆脚本' : '新增脚本' }}</span>
           <a-button class="application-toolbar-action-btn component-instance-modal-save-btn" :loading="saving" @click="handleSave">
             保存
           </a-button>
@@ -652,7 +671,7 @@ watch(
   gap: 8px;
   height: 42px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
   background: rgba(255, 255, 255, 0.42) !important;
   color: #0f172a !important;
   box-shadow:

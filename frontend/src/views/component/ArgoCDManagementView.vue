@@ -900,9 +900,8 @@ onUnmounted(() => {
   justify-content: center;
   gap: 8px;
   height: 42px;
-  padding-inline: 14px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
   background: rgba(255, 255, 255, 0.42) !important;
   color: #0f172a !important;
   font-weight: 700;
@@ -910,6 +909,11 @@ onUnmounted(() => {
     inset 0 1px 0 rgba(255, 255, 255, 0.68),
     0 10px 22px rgba(15, 23, 42, 0.05) !important;
   backdrop-filter: blur(14px) saturate(135%);
+}
+
+:deep(.application-toolbar-action-btn.ant-btn),
+:deep(.component-toolbar-ghost-btn.ant-btn) {
+  padding-inline: 14px;
 }
 
 :deep(.application-toolbar-action-btn.ant-btn:hover),

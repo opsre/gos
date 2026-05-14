@@ -168,6 +168,118 @@ func (r *PlatformParamRepository) ensureBuiltinParams(ctx context.Context) error
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		},
+		{
+			ID:            "ppd-release-name",
+			ParamKey:      "release_name",
+			Name:          "发布名称",
+			Description:   "发布单内置名称，可用于模板参数、GitOps 替换规则和通知模板",
+			ParamType:     domain.ParamTypeString,
+			Required:      false,
+			GitOpsLocator: false,
+			CDSelfFill:    false,
+			Builtin:       true,
+			Status:        domain.StatusEnabled,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		},
+		{
+			ID:            "ppd-oss-endpoint",
+			ParamKey:      "oss_endpoint",
+			Name:          "OSS Endpoint",
+			Description:   "平台从 App 绑定制品库注入；Jenkins 参数名建议 OSS_ENDPOINT",
+			ParamType:     domain.ParamTypeString,
+			Required:      false,
+			GitOpsLocator: false,
+			CDSelfFill:    false,
+			Builtin:       true,
+			Status:        domain.StatusEnabled,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		},
+		{
+			ID:            "ppd-oss-bucket",
+			ParamKey:      "oss_bucket",
+			Name:          "OSS Bucket",
+			Description:   "平台从 App 绑定制品库注入；Jenkins 参数名建议 OSS_BUCKET",
+			ParamType:     domain.ParamTypeString,
+			Required:      false,
+			GitOpsLocator: false,
+			CDSelfFill:    false,
+			Builtin:       true,
+			Status:        domain.StatusEnabled,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		},
+		{
+			ID:            "ppd-oss-dir",
+			ParamKey:      "oss_dir",
+			Name:          "OSS 目录",
+			Description:   "平台从 App 绑定制品库注入；Jenkins 参数名建议 OSS_DIR",
+			ParamType:     domain.ParamTypeString,
+			Required:      false,
+			GitOpsLocator: false,
+			CDSelfFill:    false,
+			Builtin:       true,
+			Status:        domain.StatusEnabled,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		},
+		{
+			ID:            "ppd-oss-acl",
+			ParamKey:      "oss_acl",
+			Name:          "OSS ACL",
+			Description:   "平台从 App 绑定制品库注入；Jenkins 参数名建议 OSS_ACL",
+			ParamType:     domain.ParamTypeString,
+			Required:      false,
+			GitOpsLocator: false,
+			CDSelfFill:    false,
+			Builtin:       true,
+			Status:        domain.StatusEnabled,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		},
+		{
+			ID:            "ppd-oss-access-key-id",
+			ParamKey:      "oss_access_key_id",
+			Name:          "OSS AccessKey ID",
+			Description:   "平台从 App 绑定制品库注入；Jenkins 参数名建议 OSS_ACCESS_KEY_ID",
+			ParamType:     domain.ParamTypeString,
+			Required:      false,
+			GitOpsLocator: false,
+			CDSelfFill:    false,
+			Builtin:       true,
+			Status:        domain.StatusEnabled,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		},
+		{
+			ID:            "ppd-oss-access-key-secret",
+			ParamKey:      "oss_access_key_secret",
+			Name:          "OSS AccessKey Secret",
+			Description:   "平台从 App 绑定制品库注入；Jenkins 参数名建议 OSS_ACCESS_KEY_SECRET",
+			ParamType:     domain.ParamTypeString,
+			Required:      false,
+			GitOpsLocator: false,
+			CDSelfFill:    false,
+			Builtin:       true,
+			Status:        domain.StatusEnabled,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		},
+		{
+			ID:            "ppd-gos-artifact-url",
+			ParamKey:      "gos_artifact_url",
+			Name:          "GOS_ARTIFACT_URL",
+			Description:   "CI 制品地址标准输出字段；Jenkins 日志需输出 GOS_ARTIFACT_URL=制品下载地址。管线扫描可识别 CI/CD 脚本中的输出格式，但发布单取值、CD 传参、GitOps 和 Hook 变量只沿用 CI 单元产出的 gos_artifact_url，不从 CD 单元取值或覆盖。",
+			ParamType:     domain.ParamTypeString,
+			Required:      false,
+			GitOpsLocator: false,
+			CDSelfFill:    false,
+			Builtin:       true,
+			Status:        domain.StatusEnabled,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		},
 	}
 
 	// Builtin keys are platform-owned metadata. We keep them in sync on startup so the
@@ -177,7 +289,15 @@ func (r *PlatformParamRepository) ensureBuiltinParams(ctx context.Context) error
 			return err
 		}
 	}
-	return r.normalizeBuiltinFlags(ctx, []string{"app_key", "image_version"}, now)
+	return r.normalizeBuiltinFlags(ctx, builtinPlatformParamKeys(items), now)
+}
+
+func builtinPlatformParamKeys(items []domain.PlatformParamDict) []string {
+	keys := make([]string, 0, len(items))
+	for _, item := range items {
+		keys = append(keys, item.ParamKey)
+	}
+	return keys
 }
 
 // upsertBuiltinParam 封装当前模块的业务处理逻辑。

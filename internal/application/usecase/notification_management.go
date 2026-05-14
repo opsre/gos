@@ -3,6 +3,8 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"regexp"
 	"sort"
 	"strings"
@@ -17,6 +19,7 @@ var notificationTemplatePlaceholderPattern = regexp.MustCompile(`\{([a-zA-Z0-9_]
 var notificationBuiltinKeys = map[string]struct{}{
 	"app_key":             {},
 	"app_name":            {},
+	"release_name":        {},
 	"project_name":        {},
 	"env":                 {},
 	"env_code":            {},
@@ -135,6 +138,20 @@ type UpdateNotificationSourceInput struct {
 	UpdatedBy         string `json:"updated_by"`
 }
 
+type TestNotificationSourceWebhookInput struct {
+	SourceID          string `json:"source_id"`
+	Name              string `json:"name"`
+	SourceType        string `json:"source_type"`
+	WebhookURL        string `json:"webhook_url"`
+	VerificationParam string `json:"verification_param"`
+}
+
+type NotificationSourceWebhookTestOutput struct {
+	Success    bool   `json:"success"`
+	Message    string `json:"message"`
+	StatusCode int    `json:"status_code"`
+}
+
 type CreateNotificationMarkdownTemplateInput struct {
 	Name          string                                       `json:"name"`
 	TitleTemplate string                                       `json:"title_template"`
@@ -220,9 +237,6 @@ func (uc *NotificationManager) CreateSource(ctx context.Context, input CreateNot
 	if uc == nil || uc.repo == nil {
 		return NotificationSourceOutput{}, fmt.Errorf("%w: notification manager is not configured", ErrInvalidInput)
 	}
-	if notificationdomain.SourceType(strings.ToLower(strings.TrimSpace(input.SourceType))) == notificationdomain.SourceTypeWeCom {
-		return NotificationSourceOutput{}, fmt.Errorf("%w: 企业微信通知源暂未开放创建", ErrInvalidInput)
-	}
 	item, err := uc.normalizeSourceInput(input.Name, input.SourceType, input.WebhookURL, input.VerificationParam, input.Enabled, input.Remark)
 	if err != nil {
 		return NotificationSourceOutput{}, err
@@ -254,20 +268,19 @@ func (uc *NotificationManager) UpdateSource(ctx context.Context, id string, inpu
 		return NotificationSourceOutput{}, err
 	}
 	requestedType := notificationdomain.SourceType(strings.ToLower(strings.TrimSpace(input.SourceType)))
-	if requestedType == notificationdomain.SourceTypeWeCom && current.SourceType != notificationdomain.SourceTypeWeCom {
-		return NotificationSourceOutput{}, fmt.Errorf("%w: 企业微信通知源暂未开放创建", ErrInvalidInput)
+	verificationParam := input.VerificationParam
+	if (requestedType == notificationdomain.SourceTypeDingTalk || requestedType == notificationdomain.SourceTypeFeishu) && strings.TrimSpace(verificationParam) == "" {
+		verificationParam = current.VerificationParam
 	}
-	item, err := uc.normalizeSourceInput(input.Name, input.SourceType, input.WebhookURL, input.VerificationParam, input.Enabled, input.Remark)
+	item, err := uc.normalizeSourceInput(input.Name, input.SourceType, input.WebhookURL, verificationParam, input.Enabled, input.Remark)
 	if err != nil {
 		return NotificationSourceOutput{}, err
 	}
 	item.ID = current.ID
 	item.CreatedBy = current.CreatedBy
 	item.CreatedAt = current.CreatedAt
-	if item.SourceType != notificationdomain.SourceTypeDingTalk {
+	if item.SourceType != notificationdomain.SourceTypeDingTalk && item.SourceType != notificationdomain.SourceTypeFeishu {
 		item.VerificationParam = ""
-	} else if strings.TrimSpace(input.VerificationParam) == "" {
-		item.VerificationParam = current.VerificationParam
 	}
 	item.UpdatedBy = strings.TrimSpace(input.UpdatedBy)
 	item.UpdatedAt = uc.now()
@@ -288,6 +301,40 @@ func (uc *NotificationManager) DeleteSource(ctx context.Context, id string) erro
 		return ErrInvalidID
 	}
 	return uc.repo.DeleteSource(ctx, id)
+}
+
+// TestSourceWebhook 发送模拟通知，验证通知源 Webhook 是否可达。
+func (uc *NotificationManager) TestSourceWebhook(ctx context.Context, input TestNotificationSourceWebhookInput) (NotificationSourceWebhookTestOutput, error) {
+	if uc == nil {
+		return NotificationSourceWebhookTestOutput{}, fmt.Errorf("%w: notification manager is not configured", ErrInvalidInput)
+	}
+	source, err := uc.normalizeSourceWebhookTestInput(ctx, input)
+	if err != nil {
+		return NotificationSourceWebhookTestOutput{}, err
+	}
+	title, body := uc.buildSourceWebhookTestContent(source)
+	req, err := buildNotificationHookRequest(ctx, source, title, body)
+	if err != nil {
+		return NotificationSourceWebhookTestOutput{}, err
+	}
+	resp, err := sendTemplateWebhook(req)
+	if err != nil {
+		return NotificationSourceWebhookTestOutput{}, err
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		summary := strings.TrimSpace(string(respBody))
+		if summary == "" {
+			summary = http.StatusText(resp.StatusCode)
+		}
+		return NotificationSourceWebhookTestOutput{StatusCode: resp.StatusCode}, fmt.Errorf("%w: webhook returned %d: %s", ErrInvalidInput, resp.StatusCode, summary)
+	}
+	return NotificationSourceWebhookTestOutput{
+		Success:    true,
+		Message:    fmt.Sprintf("测试消息发送成功，HTTP %d", resp.StatusCode),
+		StatusCode: resp.StatusCode,
+	}, nil
 }
 
 // ListMarkdownTemplates 查询并返回列表数据。
@@ -487,7 +534,13 @@ func (uc *NotificationManager) normalizeSourceInput(name, sourceType, webhookURL
 		return notificationdomain.Source{}, fmt.Errorf("%w: webhook_url is required", ErrInvalidInput)
 	}
 	verificationParam = strings.TrimSpace(verificationParam)
-	if typeValue != notificationdomain.SourceTypeDingTalk {
+	switch typeValue {
+	case notificationdomain.SourceTypeDingTalk:
+	case notificationdomain.SourceTypeFeishu:
+		if verificationParam == "" {
+			return notificationdomain.Source{}, fmt.Errorf("%w: 飞书放行关键字不能为空", ErrInvalidInput)
+		}
+	default:
 		verificationParam = ""
 	}
 	return notificationdomain.Source{
@@ -498,6 +551,54 @@ func (uc *NotificationManager) normalizeSourceInput(name, sourceType, webhookURL
 		Enabled:           enabled,
 		Remark:            strings.TrimSpace(remark),
 	}, nil
+}
+
+// normalizeSourceWebhookTestInput 标准化测试通知源输入。
+func (uc *NotificationManager) normalizeSourceWebhookTestInput(ctx context.Context, input TestNotificationSourceWebhookInput) (notificationdomain.Source, error) {
+	sourceID := strings.TrimSpace(input.SourceID)
+	name := input.Name
+	sourceType := input.SourceType
+	webhookURL := input.WebhookURL
+	verificationParam := input.VerificationParam
+	if sourceID != "" {
+		if uc.repo == nil {
+			return notificationdomain.Source{}, fmt.Errorf("%w: notification repository is not configured", ErrInvalidInput)
+		}
+		current, err := uc.repo.GetSourceByID(ctx, sourceID)
+		if err != nil {
+			return notificationdomain.Source{}, err
+		}
+		if strings.TrimSpace(name) == "" {
+			name = current.Name
+		}
+		if strings.TrimSpace(sourceType) == "" {
+			sourceType = string(current.SourceType)
+		}
+		if strings.TrimSpace(webhookURL) == "" {
+			webhookURL = current.WebhookURL
+		}
+		requestedType := notificationdomain.SourceType(strings.ToLower(strings.TrimSpace(sourceType)))
+		if (requestedType == notificationdomain.SourceTypeDingTalk || requestedType == notificationdomain.SourceTypeFeishu) && strings.TrimSpace(verificationParam) == "" {
+			verificationParam = current.VerificationParam
+		}
+	}
+	return uc.normalizeSourceInput(name, sourceType, webhookURL, verificationParam, true, "")
+}
+
+// buildSourceWebhookTestContent 组装通知源测试消息内容。
+func (uc *NotificationManager) buildSourceWebhookTestContent(source notificationdomain.Source) (string, string) {
+	now := time.Now().UTC()
+	if uc != nil && uc.now != nil {
+		now = uc.now()
+	}
+	title := "Webhook 连通性测试"
+	body := fmt.Sprintf(
+		"## Webhook 连通性测试\n\n这是一条由 deploy_platform 发送的模拟通知，用于验证通知源 Webhook 是否可达。\n\n- 通知源：%s\n- 类型：%s\n- 时间：%s",
+		strings.TrimSpace(firstNonEmpty(source.Name, "未命名通知源")),
+		source.SourceType,
+		now.Format("2006-01-02 15:04:05"),
+	)
+	return title, body
 }
 
 // normalizeMarkdownTemplateInput 标准化输入值，保证后续逻辑使用统一格式。

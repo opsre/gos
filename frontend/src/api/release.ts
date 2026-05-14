@@ -23,11 +23,15 @@ import type {
   ReleaseOrderConcurrentBatchProgressResponse,
   ReleaseOrderDataResponse,
   ReleaseOrderExecutionListResponse,
+  ReleaseOrderArtifactMetadataListResponse,
   ReleaseOrderListParams,
   ReleaseOrderStatsResponse,
   ReleaseOrderPrecheckResponse,
   ReleaseOrderPipelineStageListResponse,
   ReleaseOrderPipelineStageLogResponse,
+  ReleaseOrderPipelineStageDiagnosisFollowUpPayload,
+  ReleaseOrderPipelineStageDiagnosisFollowUpResponse,
+  ReleaseOrderPipelineStageDiagnosisResponse,
   ReleaseOrderListResponse,
   ReleaseOrderParamListResponse,
   ReleaseOrderValueProgressListResponse,
@@ -41,6 +45,8 @@ import type {
 } from "../types/release";
 
 export type ReleaseOrderDispatchAction = "execute" | "build" | "deploy";
+
+const RELEASE_TEMPLATE_QUERY_TIMEOUT_MS = 60_000;
 
 export async function listReleaseOrders(
   params: ReleaseOrderListParams,
@@ -459,6 +465,16 @@ export async function listReleaseOrderExecutions(
   return response.data;
 }
 
+export async function listReleaseOrderArtifactMetadata(
+  releaseOrderID: string,
+): Promise<ReleaseOrderArtifactMetadataListResponse> {
+  const id = encodeURIComponent(String(releaseOrderID || "").trim());
+  const response = await http.get<ReleaseOrderArtifactMetadataListResponse>(
+    `/release-orders/${id}/artifact-metadata`,
+  );
+  return response.data;
+}
+
 export async function listReleaseOrderSteps(
   id: string,
 ): Promise<ReleaseOrderStepListResponse> {
@@ -494,12 +510,59 @@ export async function getReleaseOrderPipelineStageLog(
   return response.data;
 }
 
+export async function createReleaseOrderPipelineStageDiagnosis(
+  releaseOrderID: string,
+  stageID: string,
+  forceRefresh = false,
+): Promise<ReleaseOrderPipelineStageDiagnosisResponse> {
+  const response = await http.post<ReleaseOrderPipelineStageDiagnosisResponse>(
+    `/release-orders/${releaseOrderID}/pipeline-stages/${stageID}/diagnoses`,
+    {
+      force_refresh: forceRefresh,
+    },
+    {
+      timeout: 180_000,
+    },
+  );
+  return response.data;
+}
+
+export async function getLatestReleaseOrderPipelineStageDiagnosis(
+  releaseOrderID: string,
+  stageID: string,
+): Promise<ReleaseOrderPipelineStageDiagnosisResponse> {
+  const response = await http.get<ReleaseOrderPipelineStageDiagnosisResponse>(
+    `/release-orders/${releaseOrderID}/pipeline-stages/${stageID}/diagnoses/latest`,
+  );
+  return response.data;
+}
+
+export async function followUpReleaseOrderPipelineStageDiagnosis(
+  releaseOrderID: string,
+  stageID: string,
+  diagnosisID: string,
+  payload: ReleaseOrderPipelineStageDiagnosisFollowUpPayload,
+): Promise<ReleaseOrderPipelineStageDiagnosisFollowUpResponse> {
+  const response =
+    await http.post<ReleaseOrderPipelineStageDiagnosisFollowUpResponse>(
+      `/release-orders/${releaseOrderID}/pipeline-stages/${stageID}/diagnoses/${diagnosisID}/follow-up`,
+      payload,
+      {
+        timeout: 180_000,
+      },
+    );
+  return response.data;
+}
+
 export async function listReleaseTemplates(
   params: ReleaseTemplateListParams,
 ): Promise<ReleaseTemplateListResponse> {
   const response = await http.get<ReleaseTemplateListResponse>(
     "/release-templates",
-    { params },
+    {
+      params,
+      timeout: RELEASE_TEMPLATE_QUERY_TIMEOUT_MS,
+    },
   );
   return response.data;
 }
@@ -534,6 +597,9 @@ export async function getReleaseTemplateByID(
 ): Promise<ReleaseTemplateDataResponse> {
   const response = await http.get<ReleaseTemplateDataResponse>(
     `/release-templates/${id}`,
+    {
+      timeout: RELEASE_TEMPLATE_QUERY_TIMEOUT_MS,
+    },
   );
   return response.data;
 }

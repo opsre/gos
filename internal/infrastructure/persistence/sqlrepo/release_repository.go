@@ -16,6 +16,11 @@ type ReleaseRepository struct {
 	dbDriver string
 }
 
+const (
+	defaultReleaseOrderDeliveryEngine       = "k8s_native"
+	defaultReleaseOrderStrategySnapshotJSON = "{}"
+)
+
 // NewReleaseRepository 创建并返回对应组件实例。
 func NewReleaseRepository(db *sql.DB, dbDriver string) *ReleaseRepository {
 	return &ReleaseRepository{
@@ -62,6 +67,8 @@ func releaseSchemaStatements(dbDriver string) ([]string, error) {
 	application_name VARCHAR(100) NOT NULL DEFAULT '',
 	template_id VARCHAR(64) NOT NULL DEFAULT '',
 	template_name VARCHAR(128) NOT NULL DEFAULT '',
+	delivery_engine VARCHAR(32) NOT NULL DEFAULT 'k8s_native',
+	strategy_snapshot_json LONGTEXT NOT NULL,
 	binding_id VARCHAR(64) NOT NULL,
 	pipeline_id VARCHAR(64) NOT NULL DEFAULT '',
 	env_code VARCHAR(50) NOT NULL,
@@ -113,6 +120,30 @@ func releaseSchemaStatements(dbDriver string) ([]string, error) {
 	updated_at BIGINT NOT NULL,
 	UNIQUE KEY uk_release_order_execution_scope (release_order_id, pipeline_scope),
 	KEY idx_release_order_execution_order (release_order_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+			`CREATE TABLE IF NOT EXISTS release_order_artifact_metadata (
+	id VARCHAR(64) PRIMARY KEY,
+	release_order_id VARCHAR(64) NOT NULL,
+	execution_id VARCHAR(64) NOT NULL DEFAULT '',
+	pipeline_scope VARCHAR(20) NOT NULL DEFAULT '',
+	artifact_name VARCHAR(255) NOT NULL DEFAULT '',
+	artifact_type VARCHAR(64) NOT NULL DEFAULT '',
+	artifact_version VARCHAR(128) NOT NULL DEFAULT '',
+	artifact_url TEXT NOT NULL,
+	repository_id VARCHAR(64) NOT NULL DEFAULT '',
+	repository_name VARCHAR(200) NOT NULL DEFAULT '',
+	bucket VARCHAR(200) NOT NULL DEFAULT '',
+	object_key VARCHAR(500) NOT NULL DEFAULT '',
+	checksum VARCHAR(255) NOT NULL DEFAULT '',
+	checksum_type VARCHAR(64) NOT NULL DEFAULT '',
+	size_bytes BIGINT NOT NULL DEFAULT 0,
+	build_number VARCHAR(128) NOT NULL DEFAULT '',
+	metadata_json LONGTEXT NOT NULL,
+	created_at BIGINT NOT NULL,
+	updated_at BIGINT NOT NULL,
+	KEY idx_release_order_artifact_order (release_order_id, updated_at),
+	KEY idx_release_order_artifact_execution (execution_id),
+	KEY idx_release_order_artifact_url (release_order_id, artifact_url(255))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
 			`CREATE TABLE IF NOT EXISTS release_order_deploy_snapshot (
 	id VARCHAR(64) PRIMARY KEY,
@@ -322,6 +353,8 @@ func releaseSchemaStatements(dbDriver string) ([]string, error) {
 	application_name TEXT NOT NULL DEFAULT '',
 	template_id TEXT NOT NULL DEFAULT '',
 	template_name TEXT NOT NULL DEFAULT '',
+	delivery_engine TEXT NOT NULL DEFAULT 'k8s_native',
+	strategy_snapshot_json TEXT NOT NULL DEFAULT '{}',
 	binding_id TEXT NOT NULL,
 	pipeline_id TEXT NOT NULL DEFAULT '',
 	env_code TEXT NOT NULL,
@@ -373,6 +406,30 @@ func releaseSchemaStatements(dbDriver string) ([]string, error) {
 	UNIQUE(release_order_id, pipeline_scope)
 );`,
 			`CREATE INDEX IF NOT EXISTS idx_release_order_execution_order ON release_order_execution (release_order_id);`,
+			`CREATE TABLE IF NOT EXISTS release_order_artifact_metadata (
+	id TEXT PRIMARY KEY,
+	release_order_id TEXT NOT NULL,
+	execution_id TEXT NOT NULL DEFAULT '',
+	pipeline_scope TEXT NOT NULL DEFAULT '',
+	artifact_name TEXT NOT NULL DEFAULT '',
+	artifact_type TEXT NOT NULL DEFAULT '',
+	artifact_version TEXT NOT NULL DEFAULT '',
+	artifact_url TEXT NOT NULL DEFAULT '',
+	repository_id TEXT NOT NULL DEFAULT '',
+	repository_name TEXT NOT NULL DEFAULT '',
+	bucket TEXT NOT NULL DEFAULT '',
+	object_key TEXT NOT NULL DEFAULT '',
+	checksum TEXT NOT NULL DEFAULT '',
+	checksum_type TEXT NOT NULL DEFAULT '',
+	size_bytes INTEGER NOT NULL DEFAULT 0,
+	build_number TEXT NOT NULL DEFAULT '',
+	metadata_json TEXT NOT NULL DEFAULT '{}',
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL
+);`,
+			`CREATE INDEX IF NOT EXISTS idx_release_order_artifact_order ON release_order_artifact_metadata (release_order_id, updated_at);`,
+			`CREATE INDEX IF NOT EXISTS idx_release_order_artifact_execution ON release_order_artifact_metadata (execution_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_release_order_artifact_url ON release_order_artifact_metadata (release_order_id, artifact_url);`,
 			`CREATE TABLE IF NOT EXISTS release_order_deploy_snapshot (
 	id TEXT PRIMARY KEY,
 	release_order_id TEXT NOT NULL UNIQUE,
@@ -682,6 +739,29 @@ func (r *ReleaseRepository) migrateSchema(ctx context.Context) error {
 			}
 		}
 		for _, columnStmt := range []struct {
+			column string
+			stmt   string
+		}{
+			{"delivery_engine", `ALTER TABLE release_order ADD COLUMN delivery_engine VARCHAR(32) NOT NULL DEFAULT 'k8s_native' AFTER template_name;`},
+			{"strategy_snapshot_json", `ALTER TABLE release_order ADD COLUMN strategy_snapshot_json LONGTEXT NULL AFTER delivery_engine;`},
+		} {
+			exists, err = r.mysqlColumnExists(ctx, "release_order", columnStmt.column)
+			if err != nil {
+				return err
+			}
+			if !exists {
+				if _, err = r.db.ExecContext(ctx, columnStmt.stmt); err != nil {
+					return err
+				}
+			}
+		}
+		if _, err = r.db.ExecContext(ctx, `UPDATE release_order SET strategy_snapshot_json = '{}' WHERE strategy_snapshot_json IS NULL OR TRIM(strategy_snapshot_json) = '';`); err != nil {
+			return err
+		}
+		if _, err = r.db.ExecContext(ctx, `ALTER TABLE release_order MODIFY COLUMN strategy_snapshot_json LONGTEXT NOT NULL;`); err != nil {
+			return err
+		}
+		for _, columnStmt := range []struct {
 			table  string
 			column string
 			stmt   string
@@ -986,6 +1066,24 @@ WHERE (ro.creator_user_id IS NULL OR TRIM(ro.creator_user_id) = '')
 				return err
 			}
 		}
+		for _, stmt := range []struct {
+			column string
+			sql    string
+		}{
+			{"delivery_engine", `ALTER TABLE release_order ADD COLUMN delivery_engine TEXT NOT NULL DEFAULT 'k8s_native';`},
+			{"strategy_snapshot_json", `ALTER TABLE release_order ADD COLUMN strategy_snapshot_json TEXT NOT NULL DEFAULT '{}';`},
+		} {
+			tableColumns, tableErr := r.sqliteTableColumns(ctx, "release_order")
+			if tableErr != nil {
+				return tableErr
+			}
+			if _, ok := tableColumns[stmt.column]; ok {
+				continue
+			}
+			if _, err = r.db.ExecContext(ctx, stmt.sql); err != nil {
+				return err
+			}
+		}
 		for _, columnStmt := range []struct {
 			table  string
 			column string
@@ -1261,9 +1359,9 @@ func (r *ReleaseRepository) Create(
 
 	const insertOrder = `
 INSERT INTO release_order (
-	id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, binding_id, pipeline_id, env_code,
+	id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code,
 	son_service, git_ref, image_tag, trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
 
 	_, err = tx.ExecContext(
 		ctx,
@@ -1283,6 +1381,8 @@ INSERT INTO release_order (
 		order.ApplicationName,
 		order.TemplateID,
 		order.TemplateName,
+		normalizeReleaseOrderDeliveryEngine(order.DeliveryEngine),
+		normalizeReleaseOrderStrategySnapshotJSON(order.StrategySnapshotJSON),
 		order.BindingID,
 		order.PipelineID,
 		order.EnvCode,
@@ -1419,7 +1519,7 @@ func (r *ReleaseRepository) UpdateEditable(
 
 	const updateOrder = `
 UPDATE release_order
-SET release_name = ?, previous_order_no = ?, operation_type = ?, source_order_id = ?, source_order_no = ?, is_concurrent = ?, concurrent_batch_no = ?, concurrent_batch_name = ?, concurrent_batch_seq = ?, application_id = ?, application_name = ?, template_id = ?, template_name = ?, binding_id = ?, pipeline_id = ?, env_code = ?,
+SET release_name = ?, previous_order_no = ?, operation_type = ?, source_order_id = ?, source_order_no = ?, is_concurrent = ?, concurrent_batch_no = ?, concurrent_batch_name = ?, concurrent_batch_seq = ?, application_id = ?, application_name = ?, template_id = ?, template_name = ?, delivery_engine = ?, strategy_snapshot_json = ?, binding_id = ?, pipeline_id = ?, env_code = ?,
 	son_service = ?, git_ref = ?, image_tag = ?, trigger_type = ?, status = ?, approval_required = ?, approval_mode = ?, approval_approver_ids_json = ?, approval_approver_names_json = ?, approved_at = ?, approved_by = ?, rejected_at = ?, rejected_by = ?, rejected_reason = ?, remark = ?, creator_user_id = ?, triggered_by = ?, executor_user_id = ?, executor_name = ?, started_at = ?, finished_at = ?, created_at = ?, updated_at = ?
 WHERE id = ?;`
 
@@ -1439,6 +1539,8 @@ WHERE id = ?;`
 		order.ApplicationName,
 		order.TemplateID,
 		order.TemplateName,
+		normalizeReleaseOrderDeliveryEngine(order.DeliveryEngine),
+		normalizeReleaseOrderStrategySnapshotJSON(order.StrategySnapshotJSON),
 		order.BindingID,
 		order.PipelineID,
 		order.EnvCode,
@@ -1579,7 +1681,7 @@ INSERT INTO release_order_step (
 // GetByID 查询并返回指定资源数据。
 func (r *ReleaseRepository) GetByID(ctx context.Context, id string) (domain.ReleaseOrder, error) {
 	const q = `
-SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
+SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
 	trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
 FROM release_order
 WHERE id = ?;`
@@ -1688,7 +1790,7 @@ func (r *ReleaseRepository) List(ctx context.Context, filter domain.ListFilter) 
 	}
 
 	listQuery := `
-SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
+SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
 	trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
 FROM release_order`
 	if len(where) > 0 {
@@ -1893,7 +1995,7 @@ WHERE (
 	}
 
 	const listQuery = `
-SELECT DISTINCT ro.id, ro.order_no, ro.release_name, ro.previous_order_no, ro.operation_type, ro.source_order_id, ro.source_order_no, ro.is_concurrent, ro.concurrent_batch_no, ro.concurrent_batch_name, ro.concurrent_batch_seq, ro.application_id, ro.application_name, ro.template_id, ro.template_name, ro.binding_id, ro.pipeline_id, ro.env_code, ro.son_service, ro.git_ref, ro.image_tag,
+SELECT DISTINCT ro.id, ro.order_no, ro.release_name, ro.previous_order_no, ro.operation_type, ro.source_order_id, ro.source_order_no, ro.is_concurrent, ro.concurrent_batch_no, ro.concurrent_batch_name, ro.concurrent_batch_seq, ro.application_id, ro.application_name, ro.template_id, ro.template_name, ro.delivery_engine, ro.strategy_snapshot_json, ro.binding_id, ro.pipeline_id, ro.env_code, ro.son_service, ro.git_ref, ro.image_tag,
 	ro.trigger_type, ro.status, ro.approval_required, ro.approval_mode, ro.approval_approver_ids_json, ro.approval_approver_names_json, ro.approved_at, ro.approved_by, ro.rejected_at, ro.rejected_by, ro.rejected_reason, ro.remark, ro.creator_user_id, ro.triggered_by, ro.executor_user_id, ro.executor_name, ro.started_at, ro.finished_at, ro.created_at, ro.updated_at
 FROM release_order ro
 WHERE (
@@ -2612,7 +2714,7 @@ func (r *ReleaseRepository) ListByConcurrentBatchNo(ctx context.Context, batchNo
 		return []domain.ReleaseOrder{}, nil
 	}
 	const q = `
-SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
+SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
 	trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
 FROM release_order
 WHERE concurrent_batch_no = ?
@@ -2653,7 +2755,7 @@ func (r *ReleaseRepository) FindActiveOrderByApplicationEnv(
 	}
 
 	const q = `
-SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
+SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
 	trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
 FROM release_order
 WHERE application_id = ?
@@ -3122,6 +3224,295 @@ WHERE release_order_id = ? AND pipeline_scope = ?;`
 		return domain.ReleaseOrderExecution{}, domain.ErrExecutionNotFound
 	}
 	return r.GetExecutionByScope(ctx, releaseOrderID, scope)
+}
+
+// UpsertArtifactMetadata 创建或更新发布单制品元信息。
+func (r *ReleaseRepository) UpsertArtifactMetadata(
+	ctx context.Context,
+	item domain.ReleaseOrderArtifactMetadata,
+) (domain.ReleaseOrderArtifactMetadata, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.ReleaseOrderArtifactMetadata{}, err
+	}
+	defer func() {
+		if tx != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	var (
+		existingID        string
+		existingCreatedAt int64
+	)
+	err = tx.QueryRowContext(
+		ctx,
+		`SELECT id, created_at
+FROM release_order_artifact_metadata
+WHERE release_order_id = ? AND artifact_url = ?
+ORDER BY updated_at DESC, created_at DESC
+LIMIT 1;`,
+		strings.TrimSpace(item.ReleaseOrderID),
+		strings.TrimSpace(item.ArtifactURL),
+	).Scan(&existingID, &existingCreatedAt)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return domain.ReleaseOrderArtifactMetadata{}, err
+	}
+
+	if existingID != "" {
+		item.ID = existingID
+		item.CreatedAt = time.Unix(0, existingCreatedAt).UTC()
+		const updateArtifact = `
+UPDATE release_order_artifact_metadata
+SET execution_id = ?, pipeline_scope = ?, artifact_name = ?, artifact_type = ?, artifact_version = ?, artifact_url = ?,
+	repository_id = ?, repository_name = ?, bucket = ?, object_key = ?, checksum = ?, checksum_type = ?,
+	size_bytes = ?, build_number = ?, metadata_json = ?, updated_at = ?
+WHERE id = ?;`
+		if _, err = tx.ExecContext(
+			ctx,
+			updateArtifact,
+			strings.TrimSpace(item.ExecutionID),
+			strings.TrimSpace(string(item.PipelineScope)),
+			strings.TrimSpace(item.ArtifactName),
+			strings.TrimSpace(item.ArtifactType),
+			strings.TrimSpace(item.ArtifactVersion),
+			strings.TrimSpace(item.ArtifactURL),
+			strings.TrimSpace(item.RepositoryID),
+			strings.TrimSpace(item.RepositoryName),
+			strings.TrimSpace(item.Bucket),
+			strings.TrimSpace(item.ObjectKey),
+			strings.TrimSpace(item.Checksum),
+			strings.TrimSpace(item.ChecksumType),
+			item.SizeBytes,
+			strings.TrimSpace(item.BuildNumber),
+			strings.TrimSpace(item.MetadataJSON),
+			item.UpdatedAt.UTC().UnixNano(),
+			item.ID,
+		); err != nil {
+			return domain.ReleaseOrderArtifactMetadata{}, err
+		}
+	} else {
+		const insertArtifact = `
+INSERT INTO release_order_artifact_metadata (
+	id, release_order_id, execution_id, pipeline_scope, artifact_name, artifact_type, artifact_version, artifact_url,
+	repository_id, repository_name, bucket, object_key, checksum, checksum_type, size_bytes, build_number,
+	metadata_json, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
+		if _, err = tx.ExecContext(
+			ctx,
+			insertArtifact,
+			strings.TrimSpace(item.ID),
+			strings.TrimSpace(item.ReleaseOrderID),
+			strings.TrimSpace(item.ExecutionID),
+			strings.TrimSpace(string(item.PipelineScope)),
+			strings.TrimSpace(item.ArtifactName),
+			strings.TrimSpace(item.ArtifactType),
+			strings.TrimSpace(item.ArtifactVersion),
+			strings.TrimSpace(item.ArtifactURL),
+			strings.TrimSpace(item.RepositoryID),
+			strings.TrimSpace(item.RepositoryName),
+			strings.TrimSpace(item.Bucket),
+			strings.TrimSpace(item.ObjectKey),
+			strings.TrimSpace(item.Checksum),
+			strings.TrimSpace(item.ChecksumType),
+			item.SizeBytes,
+			strings.TrimSpace(item.BuildNumber),
+			strings.TrimSpace(item.MetadataJSON),
+			item.CreatedAt.UTC().UnixNano(),
+			item.UpdatedAt.UTC().UnixNano(),
+		); err != nil {
+			return domain.ReleaseOrderArtifactMetadata{}, err
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return domain.ReleaseOrderArtifactMetadata{}, err
+	}
+	tx = nil
+	return item, nil
+}
+
+// ListArtifactMetadata 查询发布单制品元信息列表。
+func (r *ReleaseRepository) ListArtifactMetadata(
+	ctx context.Context,
+	releaseOrderID string,
+) ([]domain.ReleaseOrderArtifactMetadata, error) {
+	const q = `
+SELECT id, release_order_id, execution_id, pipeline_scope, artifact_name, artifact_type, artifact_version, artifact_url,
+	repository_id, repository_name, bucket, object_key, checksum, checksum_type, size_bytes, build_number,
+	metadata_json, created_at, updated_at
+FROM release_order_artifact_metadata
+WHERE release_order_id = ?
+ORDER BY updated_at DESC, created_at DESC, id ASC;`
+
+	rows, err := r.db.QueryContext(ctx, q, strings.TrimSpace(releaseOrderID))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]domain.ReleaseOrderArtifactMetadata, 0)
+	for rows.Next() {
+		item, scanErr := scanReleaseOrderArtifactMetadata(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (r *ReleaseRepository) GetArtifactMetadataByID(
+	ctx context.Context,
+	id string,
+) (domain.ReleaseOrderArtifactMetadata, error) {
+	const q = `
+SELECT id, release_order_id, execution_id, pipeline_scope, artifact_name, artifact_type, artifact_version, artifact_url,
+	repository_id, repository_name, bucket, object_key, checksum, checksum_type, size_bytes, build_number,
+	metadata_json, created_at, updated_at
+FROM release_order_artifact_metadata
+WHERE id = ?;`
+	item, err := scanReleaseOrderArtifactMetadata(r.db.QueryRowContext(ctx, q, strings.TrimSpace(id)))
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.ReleaseOrderArtifactMetadata{}, domain.ErrArtifactMetadataNotFound
+	}
+	if err != nil {
+		return domain.ReleaseOrderArtifactMetadata{}, err
+	}
+	return item, nil
+}
+
+func (r *ReleaseRepository) DeleteArtifactMetadata(ctx context.Context, id string) error {
+	res, err := r.db.ExecContext(ctx, `DELETE FROM release_order_artifact_metadata WHERE id = ?;`, strings.TrimSpace(id))
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return domain.ErrArtifactMetadataNotFound
+	}
+	return nil
+}
+
+func (r *ReleaseRepository) ListArtifactMetadataSummaries(
+	ctx context.Context,
+	filter domain.ArtifactMetadataListFilter,
+) ([]domain.ReleaseOrderArtifactMetadataSummary, int64, error) {
+	if filter.Page <= 0 {
+		filter.Page = 1
+	}
+	if filter.PageSize <= 0 {
+		filter.PageSize = 20
+	}
+	if filter.PageSize > 100 {
+		filter.PageSize = 100
+	}
+
+	where := make([]string, 0, 10)
+	args := make([]any, 0, 16)
+	if value := strings.TrimSpace(filter.ProjectID); value != "" {
+		where = append(where, "a.project_id = ?")
+		args = append(args, value)
+	}
+	if value := strings.TrimSpace(filter.ApplicationID); value != "" {
+		where = append(where, "ro.application_id = ?")
+		args = append(args, value)
+	}
+	if value := strings.TrimSpace(filter.ReleaseOrderID); value != "" {
+		where = append(where, "m.release_order_id = ?")
+		args = append(args, value)
+	}
+	if value := strings.TrimSpace(filter.Keyword); value != "" {
+		pattern := "%" + value + "%"
+		where = append(where, `(m.artifact_name LIKE ? OR m.artifact_url LIKE ? OR m.object_key LIKE ? OR ro.order_no LIKE ? OR ro.release_name LIKE ? OR ro.application_name LIKE ? OR p.name LIKE ?)`)
+		args = append(args, pattern, pattern, pattern, pattern, pattern, pattern, pattern)
+	}
+	if value := strings.TrimSpace(filter.ArtifactName); value != "" {
+		where = append(where, "m.artifact_name LIKE ?")
+		args = append(args, "%"+value+"%")
+	}
+	if value := strings.TrimSpace(filter.ArtifactType); value != "" {
+		where = append(where, "m.artifact_type = ?")
+		args = append(args, value)
+	}
+	if filter.PipelineScope != "" {
+		where = append(where, "m.pipeline_scope = ?")
+		args = append(args, string(filter.PipelineScope))
+	}
+	if value := strings.TrimSpace(filter.RepositoryID); value != "" {
+		where = append(where, "COALESCE(NULLIF(m.repository_id, ''), a.artifact_repository_id) = ?")
+		args = append(args, value)
+	}
+	if filter.CreatedAtFrom != nil {
+		where = append(where, "m.created_at >= ?")
+		args = append(args, filter.CreatedAtFrom.UTC().UnixNano())
+	}
+	if filter.CreatedAtTo != nil {
+		where = append(where, "m.created_at <= ?")
+		args = append(args, filter.CreatedAtTo.UTC().UnixNano())
+	}
+	if visibilityClause, visibilityArgs := buildReleaseOrderVisibilityClauseWithAlias(
+		"ro",
+		filter.ApplicationIDs,
+		filter.VisibleApplicationEnvScopes,
+		filter.VisibleToUserID,
+	); visibilityClause != "" {
+		where = append(where, visibilityClause)
+		args = append(args, visibilityArgs...)
+	}
+
+	baseFrom := `
+FROM release_order_artifact_metadata m
+INNER JOIN release_order ro ON ro.id = m.release_order_id
+LEFT JOIN applications a ON a.id = ro.application_id
+LEFT JOIN artifact_repository_config ar ON ar.id = COALESCE(NULLIF(m.repository_id, ''), a.artifact_repository_id)
+LEFT JOIN projects p ON p.id = a.project_id`
+	countQuery := "SELECT COUNT(1) " + baseFrom
+	if len(where) > 0 {
+		countQuery += " WHERE " + strings.Join(where, " AND ")
+	}
+	var total int64
+	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	listQuery := `
+SELECT
+	m.id, m.release_order_id, m.execution_id, m.pipeline_scope, m.artifact_name, m.artifact_type, m.artifact_version, m.artifact_url,
+	COALESCE(NULLIF(m.repository_id, ''), a.artifact_repository_id, ''), COALESCE(NULLIF(m.repository_name, ''), ar.name, ''), COALESCE(NULLIF(m.bucket, ''), ar.bucket, ''), m.object_key, m.checksum, m.checksum_type, m.size_bytes, m.build_number,
+	m.metadata_json, m.created_at, m.updated_at,
+	ro.order_no, ro.release_name, ro.application_id, ro.application_name, COALESCE(a.project_id, ''), COALESCE(p.name, ''), COALESCE(p.project_key, ''), ro.env_code, ro.status
+` + baseFrom
+	if len(where) > 0 {
+		listQuery += " WHERE " + strings.Join(where, " AND ")
+	}
+	listQuery += " ORDER BY m.updated_at DESC, m.created_at DESC, m.id ASC LIMIT ? OFFSET ?;"
+
+	offset := (filter.Page - 1) * filter.PageSize
+	rows, err := r.db.QueryContext(ctx, listQuery, append(args, filter.PageSize, offset)...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	items := make([]domain.ReleaseOrderArtifactMetadataSummary, 0)
+	for rows.Next() {
+		item, scanErr := scanReleaseOrderArtifactMetadataSummary(rows)
+		if scanErr != nil {
+			return nil, 0, scanErr
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
 }
 
 // ReplacePipelineStages 封装当前模块的业务处理逻辑。
@@ -3689,6 +4080,9 @@ func (r *ReleaseRepository) DeleteOrders(ctx context.Context, orderIDs []string)
 		if _, err := tx.ExecContext(ctx, `DELETE FROM release_order_execution WHERE release_order_id = ?;`, trimmedID); err != nil {
 			return err
 		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM release_order_artifact_metadata WHERE release_order_id = ?;`, trimmedID); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM release_order_approval_record WHERE release_order_id = ?;`, trimmedID); err != nil {
 			return err
 		}
@@ -4209,6 +4603,22 @@ ORDER BY sort_no ASC, created_at ASC;`
 	return items, nil
 }
 
+func normalizeReleaseOrderDeliveryEngine(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return defaultReleaseOrderDeliveryEngine
+	}
+	return value
+}
+
+func normalizeReleaseOrderStrategySnapshotJSON(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return defaultReleaseOrderStrategySnapshotJSON
+	}
+	return value
+}
+
 // scanReleaseOrder 封装当前模块的业务处理逻辑。
 func scanReleaseOrder(s scanner) (domain.ReleaseOrder, error) {
 	var (
@@ -4244,6 +4654,8 @@ func scanReleaseOrder(s scanner) (domain.ReleaseOrder, error) {
 		&item.ApplicationName,
 		&item.TemplateID,
 		&item.TemplateName,
+		&item.DeliveryEngine,
+		&item.StrategySnapshotJSON,
 		&item.BindingID,
 		&item.PipelineID,
 		&item.EnvCode,
@@ -4275,6 +4687,8 @@ func scanReleaseOrder(s scanner) (domain.ReleaseOrder, error) {
 	}
 
 	item.OperationType = domain.OperationType(operationType)
+	item.DeliveryEngine = normalizeReleaseOrderDeliveryEngine(item.DeliveryEngine)
+	item.StrategySnapshotJSON = normalizeReleaseOrderStrategySnapshotJSON(item.StrategySnapshotJSON)
 	item.IsConcurrent = scanBoolValue(isConcurrentValue)
 	item.TriggerType = domain.TriggerType(triggerType)
 	item.Status = domain.OrderStatus(status)
@@ -4372,6 +4786,90 @@ func scanReleaseOrderExecution(s scanner) (domain.ReleaseOrderExecution, error) 
 	}
 	item.CreatedAt = time.Unix(0, createdAt).UTC()
 	item.UpdatedAt = time.Unix(0, updatedAt).UTC()
+	return item, nil
+}
+
+// scanReleaseOrderArtifactMetadata 封装当前模块的业务处理逻辑。
+func scanReleaseOrderArtifactMetadata(s scanner) (domain.ReleaseOrderArtifactMetadata, error) {
+	var (
+		item          domain.ReleaseOrderArtifactMetadata
+		pipelineScope string
+		createdAt     int64
+		updatedAt     int64
+	)
+	if err := s.Scan(
+		&item.ID,
+		&item.ReleaseOrderID,
+		&item.ExecutionID,
+		&pipelineScope,
+		&item.ArtifactName,
+		&item.ArtifactType,
+		&item.ArtifactVersion,
+		&item.ArtifactURL,
+		&item.RepositoryID,
+		&item.RepositoryName,
+		&item.Bucket,
+		&item.ObjectKey,
+		&item.Checksum,
+		&item.ChecksumType,
+		&item.SizeBytes,
+		&item.BuildNumber,
+		&item.MetadataJSON,
+		&createdAt,
+		&updatedAt,
+	); err != nil {
+		return domain.ReleaseOrderArtifactMetadata{}, err
+	}
+	item.PipelineScope = domain.PipelineScope(pipelineScope)
+	item.CreatedAt = time.Unix(0, createdAt).UTC()
+	item.UpdatedAt = time.Unix(0, updatedAt).UTC()
+	return item, nil
+}
+
+func scanReleaseOrderArtifactMetadataSummary(s scanner) (domain.ReleaseOrderArtifactMetadataSummary, error) {
+	var (
+		item           domain.ReleaseOrderArtifactMetadataSummary
+		pipelineScope  string
+		createdAt      int64
+		updatedAt      int64
+		orderStatusRaw string
+	)
+	if err := s.Scan(
+		&item.Artifact.ID,
+		&item.Artifact.ReleaseOrderID,
+		&item.Artifact.ExecutionID,
+		&pipelineScope,
+		&item.Artifact.ArtifactName,
+		&item.Artifact.ArtifactType,
+		&item.Artifact.ArtifactVersion,
+		&item.Artifact.ArtifactURL,
+		&item.Artifact.RepositoryID,
+		&item.Artifact.RepositoryName,
+		&item.Artifact.Bucket,
+		&item.Artifact.ObjectKey,
+		&item.Artifact.Checksum,
+		&item.Artifact.ChecksumType,
+		&item.Artifact.SizeBytes,
+		&item.Artifact.BuildNumber,
+		&item.Artifact.MetadataJSON,
+		&createdAt,
+		&updatedAt,
+		&item.ReleaseOrderNo,
+		&item.ReleaseName,
+		&item.ApplicationID,
+		&item.ApplicationName,
+		&item.ProjectID,
+		&item.ProjectName,
+		&item.ProjectKey,
+		&item.EnvCode,
+		&orderStatusRaw,
+	); err != nil {
+		return domain.ReleaseOrderArtifactMetadataSummary{}, err
+	}
+	item.Artifact.PipelineScope = domain.PipelineScope(pipelineScope)
+	item.Artifact.CreatedAt = time.Unix(0, createdAt).UTC()
+	item.Artifact.UpdatedAt = time.Unix(0, updatedAt).UTC()
+	item.OrderStatus = domain.OrderStatus(orderStatusRaw)
 	return item, nil
 }
 

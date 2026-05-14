@@ -62,7 +62,7 @@ func (c *Client) ListJobs(ctx context.Context) ([]domain.JenkinsJob, error) {
 	var resp struct {
 		Jobs []jenkinsJobNode `json:"jobs"`
 	}
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := decodeJenkinsJSON(body, &resp); err != nil {
 		return nil, err
 	}
 
@@ -87,7 +87,7 @@ func (c *Client) GetJob(ctx context.Context, fullName string) (domain.JenkinsJob
 		Name string `json:"name"`
 		URL  string `json:"url"`
 	}
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := decodeJenkinsJSON(body, &resp); err != nil {
 		return domain.JenkinsJob{}, err
 	}
 	return domain.JenkinsJob{
@@ -309,7 +309,7 @@ func (c *Client) GetQueueItem(
 			URL string `json:"url"`
 		} `json:"executable"`
 	}
-	if err := json.Unmarshal(body, &payload); err != nil {
+	if err := decodeJenkinsJSON(body, &payload); err != nil {
 		return "", false, "", err
 	}
 	buildURL := strings.TrimSpace(payload.Executable.URL)
@@ -337,7 +337,7 @@ func (c *Client) GetBuildStatus(ctx context.Context, buildURL string) (building 
 		Building bool   `json:"building"`
 		Result   string `json:"result"`
 	}
-	if err := json.Unmarshal(body, &payload); err != nil {
+	if err := decodeJenkinsJSON(body, &payload); err != nil {
 		return false, "", err
 	}
 	return payload.Building, strings.TrimSpace(payload.Result), nil
@@ -367,7 +367,7 @@ func (c *Client) GetBuildStages(
 			DurationMillis  int64  `json:"durationMillis"`
 		} `json:"stages"`
 	}
-	if err := json.Unmarshal(body, &payload); err != nil {
+	if err := decodeJenkinsJSON(body, &payload); err != nil {
 		return nil, err
 	}
 
@@ -403,18 +403,39 @@ func (c *Client) GetBuildStageLog(
 	buildURL string,
 	stageKey string,
 ) (log releasedomain.ReleaseOrderPipelineStageLog, err error) {
+	return c.getBuildStageLog(ctx, buildURL, stageKey, "")
+}
+
+// GetBuildStageLogWithName 查询并返回指定资源数据。
+func (c *Client) GetBuildStageLogWithName(
+	ctx context.Context,
+	buildURL string,
+	stageKey string,
+	stageName string,
+) (log releasedomain.ReleaseOrderPipelineStageLog, err error) {
+	return c.getBuildStageLog(ctx, buildURL, stageKey, stageName)
+}
+
+func (c *Client) getBuildStageLog(
+	ctx context.Context,
+	buildURL string,
+	stageKey string,
+	stageName string,
+) (log releasedomain.ReleaseOrderPipelineStageLog, err error) {
 	stageKey = strings.TrimSpace(stageKey)
 	if stageKey == "" {
 		return releasedomain.ReleaseOrderPipelineStageLog{}, fmt.Errorf("stage key is required")
 	}
+	stageName = strings.TrimSpace(stageName)
 
 	detail, err := c.getBuildStageDetail(ctx, buildURL, stageKey)
 	if err != nil {
-		return releasedomain.ReleaseOrderPipelineStageLog{}, err
+		return c.getBuildStageLogFromConsole(ctx, buildURL, stageKey, stageName, "", err)
 	}
+	stageName = firstNonEmptyString(strings.TrimSpace(detail.Name), stageName, stageKey)
 
 	log = releasedomain.ReleaseOrderPipelineStageLog{
-		StageName: strings.TrimSpace(detail.Name),
+		StageName: stageName,
 		RawStatus: strings.TrimSpace(detail.Status),
 		HasMore:   false,
 		FetchedAt: time.Now().UTC(),
@@ -424,7 +445,7 @@ func (c *Client) GetBuildStageLog(
 	if len(nodes) == 0 {
 		text, hasMore, logErr := c.getBuildNodeLog(ctx, buildURL, stageKey)
 		if logErr != nil {
-			return releasedomain.ReleaseOrderPipelineStageLog{}, logErr
+			return c.getBuildStageLogFromConsole(ctx, buildURL, stageKey, stageName, detail.Status, logErr)
 		}
 		log.Content = text
 		log.HasMore = hasMore
@@ -435,7 +456,7 @@ func (c *Client) GetBuildStageLog(
 	for _, node := range nodes {
 		text, hasMore, logErr := c.getBuildNodeLog(ctx, buildURL, node.ID)
 		if logErr != nil {
-			return releasedomain.ReleaseOrderPipelineStageLog{}, logErr
+			return c.getBuildStageLogFromConsole(ctx, buildURL, stageKey, stageName, detail.Status, logErr)
 		}
 		if hasMore {
 			log.HasMore = true
@@ -509,7 +530,7 @@ func (c *Client) GetBuildConsoleText(
 	}
 	moreData = parseJenkinsMoreData(resp.Header.Get("X-More-Data"))
 
-	return string(body), nextStart, moreData, nil
+	return normalizeJenkinsLogContent(string(body)), nextStart, moreData, nil
 }
 
 // AbortQueueItem 封装当前模块的业务处理逻辑。
@@ -612,6 +633,11 @@ func (c *Client) ListJobParamSets(ctx context.Context) ([]pipelineparamdomain.Je
 	return items, nil
 }
 
+// GetJobParamSet 查询并返回指定 Jenkins Job 的参数定义。
+func (c *Client) GetJobParamSet(ctx context.Context, fullName string) (pipelineparamdomain.JenkinsJobParamSet, error) {
+	return c.getJobParamSet(ctx, fullName)
+}
+
 // getJobParamSet 查询并返回指定资源数据。
 func (c *Client) getJobParamSet(ctx context.Context, fullName string) (pipelineparamdomain.JenkinsJobParamSet, error) {
 	fullName = strings.Trim(strings.TrimSpace(fullName), "/")
@@ -638,7 +664,7 @@ func (c *Client) getJobParamSet(ctx context.Context, fullName string) (pipelinep
 			ParameterDefinitions []json.RawMessage `json:"parameterDefinitions"`
 		} `json:"property"`
 	}
-	if err := json.Unmarshal(body, &resp); err != nil {
+	if err := decodeJenkinsJSON(body, &resp); err != nil {
 		return pipelineparamdomain.JenkinsJobParamSet{}, err
 	}
 
@@ -1665,7 +1691,7 @@ func (c *Client) loadGitParameterChoices(ctx context.Context, fullName string, p
 	var response struct {
 		Values json.RawMessage `json:"values"`
 	}
-	if err := json.Unmarshal(body, &response); err != nil {
+	if err := decodeJenkinsJSON(body, &response); err != nil {
 		return nil, err
 	}
 	return parseGitParameterChoiceValues(response.Values), nil
@@ -2101,7 +2127,7 @@ func (c *Client) getBuildStageDetail(
 	if err != nil {
 		return payload, err
 	}
-	if err := json.Unmarshal(body, &payload); err != nil {
+	if err := decodeJenkinsJSON(body, &payload); err != nil {
 		return payload, err
 	}
 	return payload, nil
@@ -2131,10 +2157,116 @@ func (c *Client) getBuildNodeLog(
 		Text    string `json:"text"`
 		HasMore bool   `json:"hasMore"`
 	}
-	if err := json.Unmarshal(body, &payload); err != nil {
+	if err := decodeJenkinsJSON(body, &payload); err != nil {
 		return "", false, err
 	}
 	return normalizeJenkinsLogContent(payload.Text), payload.HasMore, nil
+}
+
+func (c *Client) getBuildStageLogFromConsole(
+	ctx context.Context,
+	buildURL string,
+	stageKey string,
+	stageName string,
+	rawStatus string,
+	originalErr error,
+) (releasedomain.ReleaseOrderPipelineStageLog, error) {
+	content, _, hasMore, err := c.GetBuildConsoleText(ctx, buildURL, 0)
+	if err != nil {
+		if originalErr != nil {
+			return releasedomain.ReleaseOrderPipelineStageLog{}, originalErr
+		}
+		return releasedomain.ReleaseOrderPipelineStageLog{}, err
+	}
+	content = normalizeJenkinsLogContent(content)
+	content = extractJenkinsStageConsoleSection(content, firstNonEmptyString(stageName, stageKey))
+	return releasedomain.ReleaseOrderPipelineStageLog{
+		StageName: firstNonEmptyString(stageName, stageKey),
+		RawStatus: strings.TrimSpace(rawStatus),
+		Content:   content,
+		HasMore:   hasMore,
+		FetchedAt: time.Now().UTC(),
+	}, nil
+}
+
+func extractJenkinsStageConsoleSection(content string, stageName string) string {
+	content = strings.TrimSpace(content)
+	stageName = strings.TrimSpace(stageName)
+	if content == "" || stageName == "" {
+		return content
+	}
+
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	content = strings.ReplaceAll(content, "\r", "\n")
+	lines := strings.Split(content, "\n")
+	stageNeedle := strings.ToLower(stageName)
+
+	start := -1
+	for index, line := range lines {
+		normalizedLine := strings.ToLower(strings.TrimSpace(line))
+		if !strings.Contains(normalizedLine, stageNeedle) {
+			continue
+		}
+		if !strings.Contains(normalizedLine, "[pipeline] {") && !strings.Contains(normalizedLine, "stage") {
+			continue
+		}
+		start = index
+		if index > 0 && strings.Contains(strings.ToLower(strings.TrimSpace(lines[index-1])), "[pipeline] stage") {
+			start = index - 1
+		}
+		break
+	}
+	if start < 0 {
+		return content
+	}
+
+	end := len(lines)
+	for index := start + 1; index < len(lines); index++ {
+		normalizedLine := strings.ToLower(strings.TrimSpace(lines[index]))
+		if strings.Contains(normalizedLine, "[pipeline] // stage") {
+			end = index + 1
+			break
+		}
+		if index > start+1 && strings.Contains(normalizedLine, "[pipeline] {") && !strings.Contains(normalizedLine, stageNeedle) {
+			end = index
+			break
+		}
+	}
+	return strings.TrimSpace(strings.Join(lines[start:end], "\n"))
+}
+
+func decodeJenkinsJSON(body []byte, target any) error {
+	if err := json.Unmarshal(body, target); err != nil {
+		if looksLikeHTMLResponse(body) {
+			message := extractJenkinsErrorMessage(string(body))
+			if message == "" {
+				message = "返回 HTML 页面，可能是登录失效、权限不足或 Jenkins 插件页面不可用"
+			}
+			return fmt.Errorf("Jenkins 返回了非 JSON 响应：%s", message)
+		}
+		return err
+	}
+	return nil
+}
+
+func looksLikeHTMLResponse(body []byte) bool {
+	text := strings.ToLower(strings.TrimSpace(string(body)))
+	if text == "" {
+		return false
+	}
+	return strings.HasPrefix(text, "<!doctype html") ||
+		strings.HasPrefix(text, "<html") ||
+		strings.Contains(text, "<body") ||
+		strings.Contains(text, "</html>")
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 // buildJenkinsActionEndpoint 组装业务执行所需的输入数据。
@@ -2288,7 +2420,7 @@ func (c *Client) getCrumb(ctx context.Context) (string, string, error) {
 		CrumbRequestField string `json:"crumbRequestField"`
 		Crumb             string `json:"crumb"`
 	}
-	if err := json.Unmarshal(body, &payload); err != nil {
+	if err := decodeJenkinsJSON(body, &payload); err != nil {
 		return "", "", err
 	}
 	field := strings.TrimSpace(payload.CrumbRequestField)
@@ -2517,6 +2649,8 @@ var (
 	htmlParagraphPattern = regexp.MustCompile(`(?is)<p[^>]*>(.*?)</p>`)
 	htmlH2Pattern        = regexp.MustCompile(`(?is)<h2[^>]*>(.*?)</h2>`)
 	htmlBreakPattern     = regexp.MustCompile(`(?is)<br\\s*/?>`)
+	htmlStylePattern     = regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`)
+	htmlScriptPattern    = regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`)
 	htmlTagPattern       = regexp.MustCompile(`(?is)<[^>]+>`)
 	multiSpacePattern    = regexp.MustCompile(`\s+`)
 	paramInvalidPattern  = regexp.MustCompile(`(?i)parameter\s+[^\n]{1,300}?\s+is\s+invalid`)
@@ -2574,6 +2708,7 @@ func normalizeHTMLText(raw string) string {
 	if decoded == "" {
 		return ""
 	}
+	decoded = stripHTMLNoise(decoded)
 	decoded = htmlTagPattern.ReplaceAllString(decoded, " ")
 	decoded = multiSpacePattern.ReplaceAllString(decoded, " ")
 	return strings.TrimSpace(decoded)
@@ -2585,11 +2720,18 @@ func normalizeJenkinsLogContent(raw string) string {
 	if decoded == "" {
 		return ""
 	}
+	decoded = stripHTMLNoise(decoded)
 	decoded = strings.ReplaceAll(decoded, "\r\n", "\n")
 	decoded = strings.ReplaceAll(decoded, "\r", "\n")
 	decoded = htmlBreakPattern.ReplaceAllString(decoded, "\n")
 	decoded = htmlTagPattern.ReplaceAllString(decoded, "")
 	return strings.TrimSpace(decoded)
+}
+
+func stripHTMLNoise(raw string) string {
+	cleaned := htmlStylePattern.ReplaceAllString(raw, "")
+	cleaned = htmlScriptPattern.ReplaceAllString(cleaned, "")
+	return cleaned
 }
 
 // looksLikeMeaningfulMessage 封装当前模块的业务处理逻辑。

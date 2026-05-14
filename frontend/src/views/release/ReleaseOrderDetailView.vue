@@ -28,10 +28,14 @@ import {
   cancelReleaseOrder,
   deployReleaseOrder,
   executeReleaseOrder,
+  createReleaseOrderPipelineStageDiagnosis,
+  followUpReleaseOrderPipelineStageDiagnosis,
   getReleaseOrderConcurrentBatchProgress,
   getReleaseOrderByID,
+  getLatestReleaseOrderPipelineStageDiagnosis,
   getReleaseOrderPrecheck,
   getReleaseOrderPipelineStageLog,
+  listReleaseOrderArtifactMetadata,
   listReleaseOrderApprovalRecords,
   listReleaseOrderExecutions,
   listReleaseOrderParams,
@@ -47,6 +51,7 @@ import { useResizableColumns } from "../../composables/useResizableColumns";
 import { useAuthStore } from "../../stores/auth";
 import type {
   ReleaseOperationType,
+  ReleaseOrderArtifactMetadata,
   ReleaseOrderApprovalRecord,
   ReleaseOrderDispatchAction,
   ReleaseOrder,
@@ -61,6 +66,10 @@ import type {
   ReleaseOrderValueProgress,
   ReleaseOrderValueProgressStatus,
   ReleaseOrderPipelineStage,
+  ReleaseOrderPipelineStageDiagnosis,
+  ReleaseOrderPipelineStageDiagnosisAction,
+  ReleaseOrderPipelineStageDiagnosisFollowUpMessage,
+  ReleaseOrderPipelineStageDiagnosisLogLine,
   ReleaseOrderStatus,
   ReleaseOrderStep,
   ReleasePipelineScope,
@@ -89,6 +98,16 @@ type ScopeLogState = {
   reconnectTimer: number | null;
   closeIntentional: boolean;
   autoFollow: boolean;
+};
+
+type StageDiagnosisChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  pending?: boolean;
+  error?: boolean;
+  related_log_lines?: ReleaseOrderPipelineStageDiagnosisLogLine[];
+  suggested_actions?: ReleaseOrderPipelineStageDiagnosisAction[];
 };
 
 function createScopeLogState(): ScopeLogState {
@@ -125,6 +144,8 @@ const params = ref<ReleaseOrderParam[]>([]);
 const valueProgress = ref<ReleaseOrderValueProgress[]>([]);
 const steps = ref<ReleaseOrderStep[]>([]);
 const executions = ref<ReleaseOrderExecution[]>([]);
+const artifactMetadata = ref<ReleaseOrderArtifactMetadata[]>([]);
+const artifactMetadataLoading = ref(false);
 const pipelineStages = ref<ReleaseOrderPipelineStage[]>([]);
 const precheck = ref<ReleaseOrderPrecheck | null>(null);
 const precheckLoading = ref(false);
@@ -140,6 +161,25 @@ const stageLogContent = ref("");
 const stageLogHasMore = ref(false);
 const stageLogFetchedAt = ref("");
 const selectedPipelineStage = ref<ReleaseOrderPipelineStage | null>(null);
+const stageDiagnosisDrawerVisible = ref(false);
+const stageDiagnosisLoading = ref(false);
+const stageDiagnosisRefreshing = ref(false);
+const selectedDiagnosisStage = ref<ReleaseOrderPipelineStage | null>(null);
+const stageDiagnosis = ref<ReleaseOrderPipelineStageDiagnosis | null>(null);
+const stageDiagnosisFollowUpLoading = ref(false);
+const stageDiagnosisFollowUpMessages = ref<StageDiagnosisChatMessage[]>([]);
+const stageDiagnosisQuickPrompts = [
+  "给我最短修复步骤",
+  "解释这个错误",
+  "生成通知文案",
+  "下次如何避免",
+];
+const stageDiagnosisThinkingSteps = [
+  "读取 Jenkins 阶段日志",
+  "提取错误上下文",
+  "匹配常见失败模式",
+  "生成处理建议",
+];
 const stageLogStillStreaming = computed(
   () =>
     stageLogHasMore.value &&
@@ -170,6 +210,29 @@ const scopeLogStates = reactive<Record<ReleasePipelineScope, ScopeLogState>>({
 });
 
 const orderID = computed(() => String(route.params.id || "").trim());
+function buildReleaseListQuery() {
+  const query: Record<string, string | string[]> = {};
+  Object.entries(route.query).forEach(([key, value]) => {
+    if (key === "fast_execute") {
+      return;
+    }
+    if (Array.isArray(value)) {
+      const values = value
+        .map((item) => String(item || "").trim())
+        .filter(Boolean);
+      if (values.length > 0) {
+        query[key] = values;
+      }
+      return;
+    }
+    const text = String(value || "").trim();
+    if (text) {
+      query[key] = text;
+    }
+  });
+  return query;
+}
+
 const fastExecuteRequested = computed(() => {
   const value = String(route.query.fast_execute || "").trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes";
@@ -1326,6 +1389,16 @@ function valueProgressToneClass(status: ReleaseOrderValueProgressStatus) {
   }
 }
 
+function valueProgressKindText(item: ReleaseOrderValueProgress) {
+  if (item.value_kind === "execution_output") {
+    return "执行产出";
+  }
+  if (item.pipeline_param) {
+    return "管线参数";
+  }
+  return "内置字段";
+}
+
 function precheckStatusText(status: ReleaseOrderPrecheckItem["status"]) {
   switch (status) {
     case "pass":
@@ -1534,6 +1607,125 @@ function formatDuration(durationMillis: number) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}m ${seconds}s`;
+}
+
+function formatArtifactSize(sizeBytes: number | null | undefined) {
+  const value = Number(sizeBytes || 0);
+  if (!Number.isFinite(value) || value <= 0) {
+    return "-";
+  }
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let normalized = value;
+  let unitIndex = 0;
+  while (normalized >= 1024 && unitIndex < units.length - 1) {
+    normalized /= 1024;
+    unitIndex += 1;
+  }
+  const digits = unitIndex === 0 || normalized >= 10 ? 0 : 1;
+  return `${normalized.toFixed(digits)} ${units[unitIndex]}`;
+}
+
+function artifactDisplayName(item: ReleaseOrderArtifactMetadata) {
+  return (
+    item.artifact_name ||
+    artifactObjectKeyText(item) ||
+    item.artifact_url ||
+    "-"
+  );
+}
+
+function parseArtifactURL(url: string | null | undefined) {
+  const rawURL = String(url || "").trim();
+  if (!rawURL) {
+    return { bucket: "", objectKey: "" };
+  }
+  try {
+    const parsed = new URL(rawURL);
+    const hostParts = parsed.hostname.split(".");
+    const bucket =
+      hostParts.length > 3 && hostParts[1] === "oss" ? hostParts[0] : "";
+    const rawObjectKey = parsed.pathname.replace(/^\/+/, "");
+    let objectKey = rawObjectKey;
+    try {
+      objectKey = decodeURIComponent(rawObjectKey);
+    } catch {
+      objectKey = rawObjectKey;
+    }
+    return { bucket, objectKey };
+  } catch {
+    return { bucket: "", objectKey: "" };
+  }
+}
+
+function artifactRepositoryText(item: ReleaseOrderArtifactMetadata) {
+  const parsed = parseArtifactURL(item.artifact_url);
+  return item.repository_name || item.bucket || parsed.bucket || "";
+}
+
+function artifactObjectKeyText(item: ReleaseOrderArtifactMetadata) {
+  const parsed = parseArtifactURL(item.artifact_url);
+  return item.object_key || parsed.objectKey || "";
+}
+
+function artifactChecksumText(item: ReleaseOrderArtifactMetadata) {
+  const checksum = String(item.checksum || "").trim();
+  if (!checksum) {
+    return "";
+  }
+  const checksumType = String(item.checksum_type || "").trim();
+  return checksumType ? `${checksumType} ${checksum}` : checksum;
+}
+
+function artifactDetailFields(item: ReleaseOrderArtifactMetadata) {
+  const fields = [
+    {
+      label: "制品库",
+      value: artifactRepositoryText(item),
+      title: artifactRepositoryText(item),
+      wide: false,
+    },
+    {
+      label: "大小",
+      value: formatArtifactSize(item.size_bytes),
+      title: formatArtifactSize(item.size_bytes),
+      wide: false,
+    },
+    {
+      label: "校验",
+      value: artifactChecksumText(item),
+      title: artifactChecksumText(item),
+      wide: true,
+    },
+    {
+      label: "记录时间",
+      value: formatTime(item.created_at),
+      title: formatTime(item.created_at),
+      wide: true,
+    },
+  ];
+  return fields.filter((field) => field.value && field.value !== "-");
+}
+
+function openArtifactDownload(
+  item: ReleaseOrderArtifactMetadata,
+  event?: MouseEvent,
+) {
+  event?.preventDefault();
+  event?.stopPropagation();
+  const url = String(item.artifact_url || "").trim();
+  if (!url) {
+    return;
+  }
+  const frame = document.createElement("iframe");
+  frame.style.display = "none";
+  frame.style.width = "0";
+  frame.style.height = "0";
+  frame.setAttribute("aria-hidden", "true");
+  frame.src = url;
+  document.body.appendChild(frame);
+  window.setTimeout(() => {
+    frame.remove();
+  }, 60_000);
 }
 
 function sortSteps(a: ReleaseOrderStep, b: ReleaseOrderStep) {
@@ -2100,7 +2292,10 @@ async function loadDetail(options?: { silent?: boolean }) {
   if (!orderID.value) {
     if (!silent) {
       message.error("缺少发布单 ID");
-      void router.push("/releases");
+      void router.push({
+        path: "/releases",
+        query: buildReleaseListQuery(),
+      });
     }
     return;
   }
@@ -2116,6 +2311,9 @@ async function loadDetail(options?: { silent?: boolean }) {
     const previousStatus = order.value?.status || "";
     const orderResp = await getReleaseOrderByID(orderID.value);
     order.value = orderResp.data;
+    if (!silent) {
+      artifactMetadataLoading.value = true;
+    }
 
     const detailResults = await Promise.allSettled([
       listReleaseOrderExecutions(orderID.value),
@@ -2126,6 +2324,7 @@ async function loadDetail(options?: { silent?: boolean }) {
         ? listReleaseOrderValueProgress(orderID.value)
         : Promise.resolve({ data: [] }),
       listReleaseOrderSteps(orderID.value),
+      listReleaseOrderArtifactMetadata(orderID.value),
     ]);
 
     const detailErrors: string[] = [];
@@ -2174,6 +2373,20 @@ async function loadDetail(options?: { silent?: boolean }) {
       );
     }
 
+    const artifactMetadataResult = detailResults[4];
+    if (artifactMetadataResult.status === "fulfilled") {
+      artifactMetadata.value =
+        (artifactMetadataResult.value.data as ReleaseOrderArtifactMetadata[]) ||
+        [];
+    } else {
+      detailErrors.push(
+        `制品信息：${extractHTTPErrorMessage(
+          artifactMetadataResult.reason,
+          "加载失败",
+        )}`,
+      );
+    }
+
     await loadApprovalRecords({ silent: true });
     if (orderResp.data.is_concurrent) {
       await loadConcurrentBatchProgress({ silent });
@@ -2206,9 +2419,13 @@ async function loadDetail(options?: { silent?: boolean }) {
   } catch (error) {
     if (!silent) {
       message.error(extractHTTPErrorMessage(error, "发布单详情加载失败"));
-      void router.push("/releases");
+      void router.push({
+        path: "/releases",
+        query: buildReleaseListQuery(),
+      });
     }
   } finally {
+    artifactMetadataLoading.value = false;
     querying.value = false;
     if (!silent) {
       loading.value = false;
@@ -2397,6 +2614,158 @@ async function loadStageLog() {
   } finally {
     stageLogLoading.value = false;
   }
+}
+
+async function openStageDiagnosisDrawer(stage: ReleaseOrderPipelineStage) {
+  if (!orderID.value) {
+    return;
+  }
+  selectedDiagnosisStage.value = stage;
+  stageDiagnosis.value = null;
+  stageDiagnosisFollowUpMessages.value = [];
+  stageDiagnosisDrawerVisible.value = true;
+  stageDiagnosisLoading.value = true;
+  try {
+    const latest = await getLatestReleaseOrderPipelineStageDiagnosis(orderID.value, stage.id);
+    stageDiagnosis.value = latest.data;
+  } catch {
+    await runStageDiagnosis(false);
+  } finally {
+    stageDiagnosisLoading.value = false;
+  }
+}
+
+function closeStageDiagnosisDrawer() {
+  stageDiagnosisDrawerVisible.value = false;
+  selectedDiagnosisStage.value = null;
+  stageDiagnosis.value = null;
+  stageDiagnosisFollowUpMessages.value = [];
+  stageDiagnosisFollowUpLoading.value = false;
+}
+
+async function runStageDiagnosis(forceRefresh: boolean) {
+  if (!orderID.value || !selectedDiagnosisStage.value) {
+    return;
+  }
+  stageDiagnosisRefreshing.value = true;
+  try {
+    const response = await createReleaseOrderPipelineStageDiagnosis(
+      orderID.value,
+      selectedDiagnosisStage.value.id,
+      forceRefresh,
+    );
+    stageDiagnosis.value = response.data;
+    if (forceRefresh) {
+      stageDiagnosisFollowUpMessages.value = [];
+    }
+  } catch (error) {
+    message.error(extractHTTPErrorMessage(error, "AI 诊断失败"));
+  } finally {
+    stageDiagnosisRefreshing.value = false;
+  }
+}
+
+function stageDiagnosisEvidenceItems(): ReleaseOrderPipelineStageDiagnosisLogLine[] {
+  const result = stageDiagnosis.value?.result;
+  if (!result) {
+    return [];
+  }
+  const fallbackItems = (result.root_causes || [])
+    .map((item) => ({
+      line_hint: item.title || item.category || "原因证据",
+      text: String(item.evidence || "").trim(),
+    }))
+    .filter((item) => item.text);
+  const logItems = (result.related_log_lines || [])
+    .map((item) => ({
+      line_hint: item.line_hint || "日志片段",
+      text: String(item.text || "").trim(),
+    }))
+    .filter((item) => item.text);
+  return logItems.length > 0 ? logItems : fallbackItems;
+}
+
+function stageDiagnosisFollowUpHistory(): ReleaseOrderPipelineStageDiagnosisFollowUpMessage[] {
+  return stageDiagnosisFollowUpMessages.value
+    .filter((item) => !item.pending && !item.error && item.content.trim())
+    .map((item) => ({
+      role: item.role,
+      content: item.content.trim(),
+    }));
+}
+
+async function handleStageDiagnosisQuickPrompt(prompt: string) {
+  const question = String(prompt || "").trim();
+  if (
+    !question ||
+    !orderID.value ||
+    !selectedDiagnosisStage.value ||
+    !stageDiagnosis.value ||
+    stageDiagnosisFollowUpLoading.value
+  ) {
+    return;
+  }
+  const timestamp = Date.now();
+  const assistantMessageID = `assistant-${timestamp}`;
+  const history = stageDiagnosisFollowUpHistory();
+  stageDiagnosisFollowUpMessages.value.push(
+    {
+      id: `user-${timestamp}`,
+      role: "user",
+      content: question,
+    },
+    {
+      id: assistantMessageID,
+      role: "assistant",
+      content: "正在结合阶段日志继续分析...",
+      pending: true,
+    },
+  );
+  stageDiagnosisFollowUpLoading.value = true;
+  try {
+    const response = await followUpReleaseOrderPipelineStageDiagnosis(
+      orderID.value,
+      selectedDiagnosisStage.value.id,
+      stageDiagnosis.value.id,
+      {
+        question,
+        messages: history,
+      },
+    );
+    const answer = response.data;
+    stageDiagnosisFollowUpMessages.value = stageDiagnosisFollowUpMessages.value.map(
+      (item) =>
+        item.id === assistantMessageID
+          ? {
+              id: assistantMessageID,
+              role: "assistant",
+              content: answer.answer || "AI 未返回有效追问回复",
+              related_log_lines: answer.related_log_lines || [],
+              suggested_actions: answer.suggested_actions || [],
+            }
+          : item,
+    );
+  } catch (error) {
+    const text = extractHTTPErrorMessage(error, "AI 追问失败");
+    stageDiagnosisFollowUpMessages.value = stageDiagnosisFollowUpMessages.value.map(
+      (item) =>
+        item.id === assistantMessageID
+          ? {
+              id: assistantMessageID,
+              role: "assistant",
+              content: text,
+              error: true,
+            }
+          : item,
+    );
+    message.error(text);
+  } finally {
+    stageDiagnosisFollowUpLoading.value = false;
+  }
+}
+
+function stageDiagnosisHumanReviewText() {
+  return stageDiagnosis.value?.result?.needs_human_review ? "建议人工复核" : "可按建议处理";
 }
 
 async function handleCancel() {
@@ -2591,7 +2960,10 @@ async function handleRollback() {
   try {
     const response = await rollbackReleaseOrderByID(order.value.id);
     message.success(`已创建一键重发单：${response.data.order_no}`);
-    void router.push(`/releases/${response.data.id}`);
+    void router.push({
+      path: `/releases/${response.data.id}`,
+      query: buildReleaseListQuery(),
+    });
   } catch (error) {
     message.error(extractHTTPErrorMessage(error, "一键重发创建失败"));
   } finally {
@@ -2607,7 +2979,10 @@ async function handleReplay() {
   try {
     const response = await replayReleaseOrderByID(order.value.id);
     message.success(replaySuccessText(order.value, response.data.order_no));
-    void router.push(`/releases/${response.data.id}`);
+    void router.push({
+      path: `/releases/${response.data.id}`,
+      query: buildReleaseListQuery(),
+    });
   } catch (error) {
     message.error(
       extractHTTPErrorMessage(error, replayFailureText(order.value)),
@@ -2618,7 +2993,10 @@ async function handleReplay() {
 }
 
 function goBack() {
-  void router.push("/releases");
+  void router.push({
+    path: "/releases",
+    query: buildReleaseListQuery(),
+  });
 }
 
 function handleEdit() {
@@ -3158,6 +3536,14 @@ onBeforeUnmount(() => {
                           <div class="pipeline-stage-name">
                             {{ stage.stage_name || "-" }}
                           </div>
+                          <a-button
+                            v-if="section.isJenkins"
+                            class="pipeline-stage-ai-btn"
+                            size="small"
+                            type="primary"
+                            ghost
+                            @click.stop="openStageDiagnosisDrawer(stage)"
+                          >AI 诊断</a-button>
                         </div>
                         <div class="pipeline-stage-meta-line">
                           <span>
@@ -3357,6 +3743,9 @@ onBeforeUnmount(() => {
                           </div>
                           <div class="value-progress-name">
                             <span>{{ item.param_name || "-" }}</span>
+                            <a-tag class="status-chip status-chip-section">
+                              {{ valueProgressKindText(item) }}
+                            </a-tag>
                             <a-tag
                               v-if="item.required"
                               class="required-tag status-chip status-chip-danger"
@@ -3377,7 +3766,9 @@ onBeforeUnmount(() => {
                         <span>
                           <b>执行器参数</b>
                           <em :title="item.executor_param_name || '-'">{{
-                            item.executor_param_name || "-"
+                            item.pipeline_param
+                              ? item.executor_param_name || "-"
+                              : "不下发"
                           }}</em>
                         </span>
                         <span>
@@ -3651,6 +4042,59 @@ onBeforeUnmount(() => {
         </a-card>
 
         <a-card
+          v-if="artifactMetadata.length > 0 || artifactMetadataLoading"
+          class="detail-card detail-side-card artifact-metadata-card"
+          title="制品信息"
+          :loading="artifactMetadataLoading"
+          :bordered="true"
+        >
+          <div class="artifact-metadata-list">
+            <div
+              v-for="artifact in artifactMetadata"
+              :key="artifact.id || artifact.artifact_url"
+              class="artifact-metadata-item"
+            >
+              <div class="artifact-metadata-head">
+                <div class="artifact-metadata-title-wrap">
+                  <div class="artifact-metadata-title-row">
+                    <div
+                      class="artifact-metadata-title"
+                      :title="artifactDisplayName(artifact)"
+                    >
+                      {{ artifactDisplayName(artifact) }}
+                    </div>
+                    <div class="artifact-metadata-actions">
+                      <button
+                        type="button"
+                        class="artifact-metadata-link"
+                        :title="artifact.artifact_url"
+                        :disabled="!artifact.artifact_url"
+                        @mousedown.prevent.stop
+                        @click.prevent.stop="openArtifactDownload(artifact, $event)"
+                      >
+                        下载
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="artifact-metadata-grid">
+                <div
+                  v-for="field in artifactDetailFields(artifact)"
+                  :key="field.label"
+                  class="artifact-metadata-field"
+                  :class="{ 'artifact-metadata-field-wide': field.wide }"
+                >
+                  <span>{{ field.label }}</span>
+                  <b :title="field.title">{{ field.value }}</b>
+                </div>
+              </div>
+            </div>
+          </div>
+        </a-card>
+
+        <a-card
           class="detail-card detail-side-card"
           title="执行单元"
           :loading="loading"
@@ -3899,6 +4343,226 @@ onBeforeUnmount(() => {
       }}</pre>
     </a-drawer>
 
+    <a-drawer
+      :open="stageDiagnosisDrawerVisible"
+      :width="820"
+      title="AI 诊断"
+      @close="closeStageDiagnosisDrawer"
+    >
+      <template #extra>
+        <a-space>
+          <a-button
+            size="small"
+            :loading="stageDiagnosisRefreshing"
+            @click="runStageDiagnosis(true)"
+          >重新诊断</a-button>
+        </a-space>
+      </template>
+
+      <div
+        v-if="stageDiagnosisLoading"
+        class="stage-diagnosis-assistant stage-diagnosis-diagnosing"
+      >
+        <div class="stage-diagnosis-timeline">
+          <div class="stage-diagnosis-message stage-diagnosis-message--assistant">
+            <div class="stage-diagnosis-avatar stage-diagnosis-avatar--thinking">AI</div>
+            <div class="stage-diagnosis-bubble stage-diagnosis-diagnosing-bubble">
+              <div class="stage-diagnosis-thinking">
+                <div
+                  v-for="item in stageDiagnosisThinkingSteps"
+                  :key="`loading-${item}`"
+                  class="stage-diagnosis-thinking-step stage-diagnosis-thinking-step--active"
+                >
+                  <LoadingOutlined />
+                  <span>{{ item }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div v-else-if="stageDiagnosis" class="stage-diagnosis-assistant">
+        <div class="stage-diagnosis-timeline">
+          <div
+            v-if="stageDiagnosisRefreshing"
+            class="stage-diagnosis-message stage-diagnosis-message--assistant stage-diagnosis-diagnosing"
+          >
+            <div class="stage-diagnosis-avatar stage-diagnosis-avatar--thinking">AI</div>
+            <div class="stage-diagnosis-bubble stage-diagnosis-diagnosing-bubble">
+              <div class="stage-diagnosis-thinking">
+                <div
+                  v-for="item in stageDiagnosisThinkingSteps"
+                  :key="`refreshing-${item}`"
+                  class="stage-diagnosis-thinking-step stage-diagnosis-thinking-step--active"
+                >
+                  <LoadingOutlined />
+                  <span>{{ item }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="stage-diagnosis-message stage-diagnosis-message--system">
+            <div class="stage-diagnosis-avatar">AI</div>
+            <div class="stage-diagnosis-bubble">
+              <div class="stage-diagnosis-thinking">
+                <div
+                  v-for="item in stageDiagnosisThinkingSteps"
+                  :key="item"
+                  class="stage-diagnosis-thinking-step"
+                >
+                  <CheckCircleFilled />
+                  <span>{{ item }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="stage-diagnosis-message stage-diagnosis-message--assistant">
+            <div class="stage-diagnosis-avatar">AI</div>
+            <div class="stage-diagnosis-bubble stage-diagnosis-answer">
+              <div class="stage-diagnosis-answer-head">
+                <span>分析结论</span>
+                <b>{{ stageDiagnosisHumanReviewText() }}</b>
+              </div>
+              <p class="stage-diagnosis-summary">
+                {{ stageDiagnosis.result?.summary || stageDiagnosis.error_message || "暂无诊断结论" }}
+              </p>
+
+              <section class="stage-diagnosis-section">
+                <div class="stage-diagnosis-title">可能原因</div>
+                <a-empty
+                  v-if="!stageDiagnosis.result?.root_causes?.length"
+                  description="暂无可能原因"
+                />
+                <div v-else class="stage-diagnosis-cause-list">
+                  <div
+                    v-for="item in stageDiagnosis.result?.root_causes || []"
+                    :key="`${item.category}-${item.title}`"
+                    class="stage-diagnosis-item"
+                  >
+                    <b>{{ item.title || item.category || "未分类原因" }}</b>
+                    <p>{{ item.evidence || "-" }}</p>
+                  </div>
+                </div>
+              </section>
+
+              <section class="stage-diagnosis-section">
+                <div class="stage-diagnosis-title">建议动作</div>
+                <a-empty
+                  v-if="!stageDiagnosis.result?.suggested_actions?.length"
+                  description="暂无建议动作"
+                />
+                <div v-else class="stage-diagnosis-action-list">
+                  <div
+                    v-for="item in stageDiagnosis.result?.suggested_actions || []"
+                    :key="`${item.priority}-${item.action}`"
+                    class="stage-diagnosis-item"
+                  >
+                    <b>{{ item.priority || "normal" }} · {{ item.owner_hint || "待确认" }}</b>
+                    <p>{{ item.action || "-" }}</p>
+                  </div>
+                </div>
+              </section>
+
+              <section class="stage-diagnosis-section">
+                <div class="stage-diagnosis-title">日志证据</div>
+                <a-empty
+                  v-if="!stageDiagnosisEvidenceItems().length"
+                  description="暂无日志证据"
+                />
+                <div v-else class="stage-diagnosis-evidence-list">
+                  <div
+                    v-for="item in stageDiagnosisEvidenceItems()"
+                    :key="`${item.line_hint}-${item.text}`"
+                    class="stage-diagnosis-evidence-item"
+                  >
+                    <span class="stage-diagnosis-evidence-hint">
+                      {{ item.line_hint || "日志片段" }}
+                    </span>
+                    <code>{{ item.text }}</code>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <div
+            v-for="item in stageDiagnosisFollowUpMessages"
+            :key="item.id"
+            :class="[
+              'stage-diagnosis-message',
+              `stage-diagnosis-message--${item.role}`,
+              { 'stage-diagnosis-message--error': item.error },
+            ]"
+          >
+            <div class="stage-diagnosis-avatar">
+              {{ item.role === "user" ? "我" : "AI" }}
+            </div>
+            <div class="stage-diagnosis-bubble stage-diagnosis-followup-bubble">
+              <a-skeleton
+                v-if="item.pending"
+                active
+                :title="false"
+                :paragraph="{ rows: 2 }"
+              />
+              <template v-else>
+                <p class="stage-diagnosis-summary">{{ item.content }}</p>
+                <div
+                  v-if="item.related_log_lines?.length"
+                  class="stage-diagnosis-followup-block"
+                >
+                  <div class="stage-diagnosis-title">补充证据</div>
+                  <div class="stage-diagnosis-evidence-list">
+                    <div
+                      v-for="logLine in item.related_log_lines"
+                      :key="`${item.id}-${logLine.line_hint}-${logLine.text}`"
+                      class="stage-diagnosis-evidence-item"
+                    >
+                      <span class="stage-diagnosis-evidence-hint">
+                        {{ logLine.line_hint || "日志片段" }}
+                      </span>
+                      <code>{{ logLine.text }}</code>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  v-if="item.suggested_actions?.length"
+                  class="stage-diagnosis-followup-block"
+                >
+                  <div class="stage-diagnosis-title">补充动作</div>
+                  <div class="stage-diagnosis-action-list">
+                    <div
+                      v-for="action in item.suggested_actions"
+                      :key="`${item.id}-${action.priority}-${action.action}`"
+                      class="stage-diagnosis-item"
+                    >
+                      <b>{{ action.priority || "normal" }} · {{ action.owner_hint || "待确认" }}</b>
+                      <p>{{ action.action || "-" }}</p>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <div class="stage-diagnosis-prompt-bar">
+          <span>继续追问</span>
+          <button
+            v-for="prompt in stageDiagnosisQuickPrompts"
+            :key="prompt"
+            type="button"
+            :disabled="stageDiagnosisFollowUpLoading"
+            @click="handleStageDiagnosisQuickPrompt(prompt)"
+          >
+            {{ prompt }}
+          </button>
+        </div>
+      </div>
+      <a-empty v-else description="暂无 AI 诊断结果" />
+    </a-drawer>
+
     <a-modal
       :open="approvalActionModalVisible"
       :title="approvalActionModalTitle"
@@ -3962,7 +4626,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   height: 42px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
   background: rgba(255, 255, 255, 0.42) !important;
   color: #0f172a !important;
   box-shadow:
@@ -4661,15 +5325,15 @@ onBeforeUnmount(() => {
 }
 
 .dashboard-main > .value-progress-collapse {
-  order: 2;
-}
-
-.dashboard-main > .timeline-collapse {
   order: 3;
 }
 
-.dashboard-main > .base-info-collapse {
+.dashboard-main > .timeline-collapse {
   order: 4;
+}
+
+.dashboard-main > .base-info-collapse {
+  order: 2;
 }
 
 .dashboard-side {
@@ -5510,6 +6174,14 @@ onBeforeUnmount(() => {
   word-break: break-word;
 }
 
+.pipeline-stage-ai-btn.ant-btn {
+  height: 22px;
+  border-radius: 999px;
+  padding-inline: 8px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .pipeline-stage-meta-line {
   display: flex;
   flex-direction: column;
@@ -5672,6 +6344,335 @@ onBeforeUnmount(() => {
   min-height: 220px;
 }
 
+.stage-diagnosis-assistant {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  color: #0f172a;
+}
+
+.stage-diagnosis-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.stage-diagnosis-message {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.stage-diagnosis-message--user {
+  grid-template-columns: minmax(0, 1fr) 34px;
+}
+
+.stage-diagnosis-message--user .stage-diagnosis-avatar {
+  grid-column: 2;
+  grid-row: 1;
+  border-color: rgba(15, 23, 42, 0.16);
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.stage-diagnosis-message--user .stage-diagnosis-bubble {
+  grid-column: 1;
+  grid-row: 1;
+  background: #f8fafc;
+}
+
+.stage-diagnosis-message--error .stage-diagnosis-bubble {
+  border-color: rgba(248, 113, 113, 0.42);
+  background: #fff1f2;
+}
+
+.stage-diagnosis-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.stage-diagnosis-avatar--thinking {
+  animation: stageDiagnosisPulse 1.4s ease-in-out infinite;
+}
+
+.stage-diagnosis-bubble {
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
+}
+
+.stage-diagnosis-message--system .stage-diagnosis-bubble {
+  background: #f8fafc;
+  box-shadow: none;
+}
+
+.stage-diagnosis-diagnosing-bubble {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(147, 197, 253, 0.62);
+  background: #f8fbff;
+}
+
+.stage-diagnosis-diagnosing-bubble::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -30%;
+  width: 30%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #2563eb, transparent);
+  animation: stageDiagnosisScan 1.5s ease-in-out infinite;
+}
+
+.stage-diagnosis-thinking {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stage-diagnosis-thinking-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.stage-diagnosis-thinking-step .anticon {
+  flex: 0 0 auto;
+  color: #16a34a;
+}
+
+.stage-diagnosis-thinking-step--active .anticon {
+  transform-origin: center;
+  animation: stageDiagnosisSpin 0.9s linear infinite;
+  color: #2563eb;
+}
+
+.stage-diagnosis-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stage-diagnosis-followup-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stage-diagnosis-followup-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(226, 232, 240, 0.86);
+}
+
+.stage-diagnosis-answer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stage-diagnosis-answer-head span {
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.stage-diagnosis-answer-head b {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.stage-diagnosis-section {
+  padding-top: 14px;
+  border-top: 1px solid rgba(226, 232, 240, 0.86);
+}
+
+.stage-diagnosis-title {
+  margin-bottom: 10px;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.stage-diagnosis-summary {
+  margin: 0;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.75;
+  word-break: break-word;
+}
+
+.stage-diagnosis-cause-list,
+.stage-diagnosis-action-list,
+.stage-diagnosis-evidence-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stage-diagnosis-item {
+  padding: 10px 11px;
+  border: 1px solid rgba(226, 232, 240, 0.86);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.stage-diagnosis-item b {
+  display: block;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.stage-diagnosis-item p {
+  margin: 6px 0 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+.stage-diagnosis-evidence-item {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 11px;
+  border: 1px solid rgba(30, 41, 59, 0.12);
+  border-radius: 8px;
+  background: #111827;
+  color: #e5e7eb;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: default;
+}
+
+.stage-diagnosis-evidence-hint {
+  min-width: 0;
+  color: #93c5fd;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.stage-diagnosis-evidence-item code {
+  display: block;
+  min-width: 0;
+  color: #e5e7eb;
+  font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.stage-diagnosis-prompt-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.stage-diagnosis-prompt-bar span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.stage-diagnosis-prompt-bar button {
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid rgba(147, 197, 253, 0.78);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.stage-diagnosis-prompt-bar button:hover,
+.stage-diagnosis-prompt-bar button:focus-visible {
+  border-color: #2563eb;
+  background: #eff6ff;
+  outline: none;
+}
+
+.stage-diagnosis-prompt-bar button:disabled {
+  border-color: rgba(203, 213, 225, 0.76);
+  background: #f1f5f9;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+@keyframes stageDiagnosisSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes stageDiagnosisPulse {
+  0%,
+  100% {
+    opacity: 0.62;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes stageDiagnosisScan {
+  0% {
+    left: -30%;
+  }
+
+  100% {
+    left: 100%;
+  }
+}
+
 .batch-progress-meta {
   display: grid;
   gap: 14px;
@@ -5765,6 +6766,126 @@ onBeforeUnmount(() => {
 
 .batch-progress-item-side {
   align-items: flex-end;
+}
+
+.artifact-metadata-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.artifact-metadata-item {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 0 16px;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.62);
+}
+
+.artifact-metadata-item:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.artifact-metadata-head {
+  display: block;
+}
+
+.artifact-metadata-title-wrap {
+  min-width: 0;
+}
+
+.artifact-metadata-title-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.artifact-metadata-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--color-text-main);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-metadata-actions {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.artifact-metadata-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  margin: 0;
+  padding: 2px 10px;
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.08);
+  color: #2563eb;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-decoration: none;
+}
+
+.artifact-metadata-link:hover,
+.artifact-metadata-link:focus-visible {
+  border-color: rgba(37, 99, 235, 0.34);
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+}
+
+.artifact-metadata-link:disabled {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--color-text-tertiary);
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+.artifact-metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+}
+
+.artifact-metadata-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.artifact-metadata-field-wide {
+  grid-column: 1 / -1;
+}
+
+.artifact-metadata-field span {
+  color: var(--color-text-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.artifact-metadata-field b {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 768px) {

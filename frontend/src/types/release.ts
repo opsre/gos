@@ -54,6 +54,7 @@ export type ReleaseValueSource =
   | "ci_param"
   | "builtin";
 export type ReleaseTemplateStatus = "active" | "inactive";
+export type ReleaseTemplateComplianceStatus = "compliant" | "violated" | "unknown" | "";
 export type ReleasePipelineScope = "ci" | "cd";
 export type ReleaseTemplateApprovalMode = "any" | "all";
 export type ReleaseExecutionStatus =
@@ -239,6 +240,8 @@ export interface ReleaseOrderValueProgress {
   param_name: string;
   executor_param_name: string;
   required: boolean;
+  pipeline_param: boolean;
+  value_kind: "pipeline_param" | "builtin_field" | "execution_output";
   status: ReleaseOrderValueProgressStatus;
   value: string;
   value_source: string;
@@ -296,6 +299,28 @@ export interface ReleaseOrderPipelineStage {
   duration_millis: number;
   started_at: string | null;
   finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReleaseOrderArtifactMetadata {
+  id: string;
+  release_order_id: string;
+  execution_id: string;
+  pipeline_scope: string;
+  artifact_name: string;
+  artifact_type: string;
+  artifact_version: string;
+  artifact_url: string;
+  repository_id: string;
+  repository_name: string;
+  bucket: string;
+  object_key: string;
+  checksum: string;
+  checksum_type: string;
+  size_bytes: number;
+  build_number: string;
+  metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -559,6 +584,10 @@ export interface ReleaseOrderPipelineStageListResponse {
   data: ReleaseOrderPipelineStage[];
 }
 
+export interface ReleaseOrderArtifactMetadataListResponse {
+  data: ReleaseOrderArtifactMetadata[];
+}
+
 export interface ReleaseOrderPipelineStageLogResponse {
   data: {
     stage: ReleaseOrderPipelineStage;
@@ -567,6 +596,77 @@ export interface ReleaseOrderPipelineStageLogResponse {
     raw_status: string;
     fetched_at: string;
   };
+}
+
+export interface ReleaseOrderPipelineStageDiagnosisRootCause {
+  category: string;
+  title: string;
+  evidence: string;
+  confidence: number;
+}
+
+export interface ReleaseOrderPipelineStageDiagnosisAction {
+  priority: string;
+  action: string;
+  owner_hint: string;
+}
+
+export interface ReleaseOrderPipelineStageDiagnosisLogLine {
+  line_hint: string;
+  text: string;
+}
+
+export interface ReleaseOrderPipelineStageDiagnosisResult {
+  summary: string;
+  severity: string;
+  confidence: number;
+  root_causes: ReleaseOrderPipelineStageDiagnosisRootCause[];
+  suggested_actions: ReleaseOrderPipelineStageDiagnosisAction[];
+  related_log_lines: ReleaseOrderPipelineStageDiagnosisLogLine[];
+  needs_human_review: boolean;
+}
+
+export interface ReleaseOrderPipelineStageDiagnosis {
+  id: string;
+  release_order_id: string;
+  stage_id: string;
+  ai_model_config_id: string;
+  ai_model_name: string;
+  ai_model: string;
+  status: string;
+  result: ReleaseOrderPipelineStageDiagnosisResult;
+  error_message: string;
+  created_at: string;
+  finished_at: string | null;
+}
+
+export interface ReleaseOrderPipelineStageDiagnosisResponse {
+  data: ReleaseOrderPipelineStageDiagnosis;
+}
+
+export type ReleaseOrderPipelineStageDiagnosisChatRole = "user" | "assistant";
+
+export interface ReleaseOrderPipelineStageDiagnosisFollowUpMessage {
+  role: ReleaseOrderPipelineStageDiagnosisChatRole;
+  content: string;
+}
+
+export interface ReleaseOrderPipelineStageDiagnosisFollowUpPayload {
+  question: string;
+  messages?: ReleaseOrderPipelineStageDiagnosisFollowUpMessage[];
+}
+
+export interface ReleaseOrderPipelineStageDiagnosisFollowUp {
+  question: string;
+  answer: string;
+  related_log_lines: ReleaseOrderPipelineStageDiagnosisLogLine[];
+  suggested_actions: ReleaseOrderPipelineStageDiagnosisAction[];
+  needs_human_review: boolean;
+  created_at: string;
+}
+
+export interface ReleaseOrderPipelineStageDiagnosisFollowUpResponse {
+  data: ReleaseOrderPipelineStageDiagnosisFollowUp;
 }
 
 export interface ReleaseOrderLogStreamEvent {
@@ -628,8 +728,24 @@ export interface ReleaseTemplate {
   approval_approver_names: string[];
   remark: string;
   param_count: number;
+  compliance_status: ReleaseTemplateComplianceStatus;
+  compliance_summary: string;
+  compliance_findings: ReleaseTemplateComplianceFinding[];
   created_at: string;
   updated_at: string;
+}
+
+export interface ReleaseTemplateComplianceFinding {
+  pipeline_scope: ReleasePipelineScope;
+  pipeline_id: string;
+  pipeline_name: string;
+  rule_id: string;
+  rule_code: string;
+  rule_name: string;
+  severity: string;
+  line_no: number;
+  message: string;
+  suggestion: string;
 }
 
 export interface ReleaseTemplateBinding {

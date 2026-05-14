@@ -18,10 +18,15 @@ type JenkinsPipelineClient interface {
 	BuildJobURL(fullName string) string
 }
 
+type PipelineScanSyncHook interface {
+	ScanActiveJenkinsPipelines(ctx context.Context) (ScanPipelinesOutput, error)
+}
+
 type SyncPipelines struct {
-	repo    domain.Repository
-	jenkins JenkinsPipelineClient
-	now     func() time.Time
+	repo     domain.Repository
+	jenkins  JenkinsPipelineClient
+	scanHook PipelineScanSyncHook
+	now      func() time.Time
 }
 
 type SyncPipelinesOutput struct {
@@ -41,6 +46,10 @@ func NewSyncPipelines(repo domain.Repository, jenkins JenkinsPipelineClient) *Sy
 			return time.Now().UTC()
 		},
 	}
+}
+
+func (uc *SyncPipelines) SetScanHook(hook PipelineScanSyncHook) {
+	uc.scanHook = hook
 }
 
 // Execute 封装当前模块的业务处理逻辑。
@@ -94,6 +103,10 @@ func (uc *SyncPipelines) Execute(ctx context.Context) (SyncPipelinesOutput, erro
 	inactivated, err := uc.repo.MarkMissingPipelinesInactive(ctx, domain.ProviderJenkins, keepIDs, now)
 	if err != nil {
 		return SyncPipelinesOutput{}, err
+	}
+
+	if uc.scanHook != nil {
+		_, _ = uc.scanHook.ScanActiveJenkinsPipelines(ctx)
 	}
 
 	return SyncPipelinesOutput{

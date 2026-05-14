@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -16,10 +18,17 @@ import (
 var queueURLPattern = regexp.MustCompile(`queue:\s*([^\s]+)`)
 var buildURLPattern = regexp.MustCompile(`build:\s*([^\s]+)`)
 var rawURLPattern = regexp.MustCompile(`https?://[^\s]+`)
+var gosArtifactURLPattern = regexp.MustCompile(`(?m)\bGOS_ARTIFACT_URL\s*=\s*("[^"\r\n]+"|'[^'\r\n]+'|[^\s\r\n]+)`)
+
+const maxArtifactLogScanBytes int64 = 8 << 20
 
 type JenkinsReleaseStatusClient interface {
 	GetQueueItem(ctx context.Context, queueURL string) (executableURL string, cancelled bool, why string, err error)
 	GetBuildStatus(ctx context.Context, buildURL string) (building bool, result string, err error)
+}
+
+type JenkinsReleaseConsoleTextClient interface {
+	GetBuildConsoleText(ctx context.Context, buildURL string, start int64) (content string, nextStart int64, moreData bool, err error)
 }
 
 type TrackReleaseExecutionOutput struct {
@@ -299,8 +308,10 @@ func (uc *TrackReleaseExecution) syncOrder(ctx context.Context, order domain.Rel
 		}
 	}
 
-	if binding, bindingErr := uc.manager.resolveExecutionBinding(ctx, order, *runningExecution); bindingErr == nil {
-		_, _ = uc.manager.refreshPipelineStages(ctx, order, *runningExecution, binding)
+	if uc.manager.pipelineRepo != nil {
+		if binding, bindingErr := uc.manager.resolveExecutionBinding(ctx, order, *runningExecution); bindingErr == nil {
+			_, _ = uc.manager.refreshPipelineStages(ctx, order, *runningExecution, binding)
+		}
 	}
 
 	building, result, statusErr := uc.jenkins.GetBuildStatus(ctx, buildURL)
@@ -351,6 +362,15 @@ func (uc *TrackReleaseExecution) syncOrder(ctx context.Context, order domain.Rel
 			FinishedAt: &now,
 			UpdatedAt:  now,
 		})
+		if err := uc.recordArtifactMetadataFromJenkinsLog(ctx, order, *runningExecution, buildURL); err != nil {
+			logx.Warn("release_tracker", "record_artifact_metadata_failed",
+				logx.F("order_id", order.ID),
+				logx.F("order_no", order.OrderNo),
+				logx.F("execution_id", runningExecution.ID),
+				logx.F("pipeline_scope", runningExecution.PipelineScope),
+				logx.F("error", err.Error()),
+			)
+		}
 		updated1, err := uc.finishStep(ctx, order.ID, scopeStepCode(runningExecution.PipelineScope, "pipeline_running"), domain.StepStatusSuccess, messageWithBuildURL("Jenkins 构建成功", buildURL))
 		if err != nil {
 			return false, false, err
@@ -400,6 +420,149 @@ func (uc *TrackReleaseExecution) syncOrder(ctx context.Context, order domain.Rel
 	default:
 		return false, false, nil
 	}
+}
+
+// recordArtifactMetadataFromJenkinsLog 从 Jenkins 构建日志中提取 GOS_ARTIFACT_URL 并记录制品元信息。
+func (uc *TrackReleaseExecution) recordArtifactMetadataFromJenkinsLog(
+	ctx context.Context,
+	order domain.ReleaseOrder,
+	execution domain.ReleaseOrderExecution,
+	buildURL string,
+) error {
+	if uc == nil || uc.manager == nil || uc.jenkins == nil {
+		return nil
+	}
+	logClient, ok := uc.jenkins.(JenkinsReleaseConsoleTextClient)
+	if !ok {
+		return nil
+	}
+
+	artifactURLs, err := uc.readGOSArtifactURLsFromBuildLog(ctx, logClient, buildURL)
+	if err != nil {
+		return err
+	}
+	if len(artifactURLs) == 0 {
+		return nil
+	}
+
+	buildNumber := resolveBuildNumberFromJenkinsBuildURL(buildURL)
+	for _, artifactURL := range artifactURLs {
+		artifactName := resolveArtifactNameFromURL(artifactURL)
+		if _, err := uc.manager.RecordArtifactMetadata(ctx, order.ID, RecordReleaseOrderArtifactMetadataInput{
+			ExecutionID:      execution.ID,
+			PipelineScope:    string(execution.PipelineScope),
+			ArtifactName:     artifactName,
+			ArtifactType:     resolveArtifactTypeFromName(artifactName),
+			ArtifactVersion:  buildNumber,
+			ArtifactURL:      artifactURL,
+			BuildNumber:      buildNumber,
+			AdditionalFields: map[string]any{"source": "jenkins_log", "build_url": buildURL},
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (uc *TrackReleaseExecution) readGOSArtifactURLsFromBuildLog(
+	ctx context.Context,
+	logClient JenkinsReleaseConsoleTextClient,
+	buildURL string,
+) ([]string, error) {
+	start := int64(0)
+	scanned := int64(0)
+	tail := ""
+	urls := make([]string, 0, 1)
+	seen := map[string]struct{}{}
+	for {
+		content, nextStart, moreData, err := logClient.GetBuildConsoleText(ctx, buildURL, start)
+		if err != nil {
+			return nil, err
+		}
+		for _, value := range extractGOSArtifactURLs(tail + content) {
+			if _, ok := seen[value]; ok {
+				continue
+			}
+			seen[value] = struct{}{}
+			urls = append(urls, value)
+		}
+		scanned += int64(len(content))
+		tail = lastStringSuffix(tail+content, 256)
+		if !moreData || nextStart <= start || scanned >= maxArtifactLogScanBytes {
+			break
+		}
+		start = nextStart
+	}
+	return urls, nil
+}
+
+func extractGOSArtifactURLs(content string) []string {
+	matches := gosArtifactURLPattern.FindAllStringSubmatch(content, -1)
+	result := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		value := strings.TrimSpace(match[1])
+		value = strings.Trim(value, `"'`)
+		if value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func resolveArtifactNameFromURL(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return ""
+	}
+	name := strings.TrimSpace(path.Base(parsed.Path))
+	if name == "." || name == "/" {
+		return ""
+	}
+	return name
+}
+
+func resolveArtifactTypeFromName(name string) string {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	switch {
+	case strings.HasSuffix(lower, ".tar.gz"):
+		return "tar.gz"
+	case strings.HasSuffix(lower, ".tgz"):
+		return "tgz"
+	case strings.HasSuffix(lower, ".zip"):
+		return "zip"
+	case strings.HasSuffix(lower, ".jar"):
+		return "jar"
+	case strings.HasSuffix(lower, ".war"):
+		return "war"
+	default:
+		index := strings.LastIndex(lower, ".")
+		if index >= 0 && index < len(lower)-1 {
+			return lower[index+1:]
+		}
+		return ""
+	}
+}
+
+func resolveBuildNumberFromJenkinsBuildURL(buildURL string) string {
+	trimmed := strings.Trim(strings.TrimSpace(buildURL), "/")
+	if trimmed == "" {
+		return ""
+	}
+	index := strings.LastIndex(trimmed, "/")
+	if index < 0 {
+		return trimmed
+	}
+	return strings.TrimSpace(trimmed[index+1:])
+}
+
+func lastStringSuffix(value string, maxLen int) string {
+	if maxLen <= 0 || len(value) <= maxLen {
+		return value
+	}
+	return value[len(value)-maxLen:]
 }
 
 // syncArgoCDExecution 同步外部或内部状态数据。
@@ -876,6 +1039,17 @@ func (uc *TrackReleaseExecution) finishStep(
 	}
 	switch current.Status {
 	case domain.StepStatusSuccess, domain.StepStatusFailed:
+		if current.Status != status && stepCode == "global:release_finish" && status == domain.StepStatusFailed {
+			now := uc.now()
+			startedAt := current.StartedAt
+			if startedAt == nil {
+				startedAt = &now
+			}
+			if err := uc.manager.markStep(ctx, orderID, stepCode, status, strings.TrimSpace(message), startedAt, &now); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
 		return false, nil
 	case domain.StepStatusPending:
 		_, _, err := uc.manager.StartStep(ctx, orderID, stepCode, "")

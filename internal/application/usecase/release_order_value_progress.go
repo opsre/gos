@@ -22,12 +22,22 @@ const (
 	ReleaseOrderValueProgressSkipped  ReleaseOrderValueProgressStatus = "skipped"
 )
 
+type ReleaseOrderValueKind string
+
+const (
+	ReleaseOrderValueKindPipelineParam   ReleaseOrderValueKind = "pipeline_param"
+	ReleaseOrderValueKindBuiltinField    ReleaseOrderValueKind = "builtin_field"
+	ReleaseOrderValueKindExecutionOutput ReleaseOrderValueKind = "execution_output"
+)
+
 type ReleaseOrderValueProgressItem struct {
 	PipelineScope     domain.PipelineScope
 	ParamKey          string
 	ParamName         string
 	ExecutorParamName string
 	Required          bool
+	PipelineParam     bool
+	ValueKind         ReleaseOrderValueKind
 	Status            ReleaseOrderValueProgressStatus
 	Value             string
 	ValueSource       string
@@ -74,6 +84,13 @@ func (uc *ReleaseOrderManager) ListValueProgress(
 	}
 
 	paramsByScopeKey := indexReleaseOrderParams(orderParams)
+	executorDefaultValues := uc.loadTemplateParamDefaultValuesBestEffort(ctx, templateParams)
+	artifactValues := map[string]string{}
+	if uc.appRepo != nil && strings.TrimSpace(order.ApplicationID) != "" {
+		if appItem, appErr := uc.appRepo.GetByID(ctx, strings.TrimSpace(order.ApplicationID)); appErr == nil {
+			artifactValues, _ = uc.resolveApplicationArtifactParamValues(ctx, appItem)
+		}
+	}
 	executionByScope := make(map[domain.PipelineScope]domain.ReleaseOrderExecution, len(executions))
 	for _, item := range executions {
 		executionByScope[item.PipelineScope] = item
@@ -81,7 +98,16 @@ func (uc *ReleaseOrderManager) ListValueProgress(
 
 	items := make([]ReleaseOrderValueProgressItem, 0, len(templateParams)+4)
 	for _, param := range templateParams {
-		items = append(items, resolveReleaseOrderValueProgressItem(order, param, paramsByScopeKey, executionByScope))
+		items = append(items, resolveReleaseOrderValueProgressItem(
+			order,
+			param,
+			paramsByScopeKey,
+			executionByScope,
+			firstNonEmpty(
+				artifactValues[strings.ToLower(strings.TrimSpace(param.ParamKey))],
+				executorDefaultValues[buildReleaseTemplateParamKey(param.PipelineScope, param.ParamKey, param.ExecutorParamName)],
+			),
+		))
 	}
 
 	builtinItems, err := uc.buildBuiltinValueProgress(
@@ -170,6 +196,7 @@ func resolveReleaseOrderValueProgressItem(
 	param domain.ReleaseTemplateParam,
 	paramsByScopeKey map[string]indexedReleaseParam,
 	executionByScope map[domain.PipelineScope]domain.ReleaseOrderExecution,
+	executorDefaultValue string,
 ) ReleaseOrderValueProgressItem {
 	progress := ReleaseOrderValueProgressItem{
 		PipelineScope:     param.PipelineScope,
@@ -177,11 +204,22 @@ func resolveReleaseOrderValueProgressItem(
 		ParamName:         firstNonEmpty(strings.TrimSpace(param.ParamName), strings.TrimSpace(param.ParamKey)),
 		ExecutorParamName: strings.TrimSpace(param.ExecutorParamName),
 		Required:          param.Required,
+		PipelineParam:     isValueProgressPipelineParam(param),
+		ValueKind:         resolveValueProgressKind(param),
 		Status:            ReleaseOrderValueProgressPending,
 		SortNo:            param.SortNo,
 	}
 
-	if snapshot, ok := findIndexedReleaseParam(paramsByScopeKey, param.PipelineScope, progress.ParamKey); ok {
+	if isCIOnlyStandardParamKey(progress.ParamKey) {
+		if snapshot, ok := findIndexedReleaseParam(paramsByScopeKey, domain.PipelineScopeCI, progress.ParamKey); ok {
+			progress.Value = strings.TrimSpace(snapshot.ParamValue)
+			progress.ValueSource = strings.TrimSpace(string(snapshot.ValueSource))
+			progress.UpdatedAt = timePointer(snapshot.CreatedAt)
+			progress.Status = ReleaseOrderValueProgressResolved
+			progress.Message = buildResolvedMessage(progress.ValueSource)
+			return progress
+		}
+	} else if snapshot, ok := findIndexedReleaseParam(paramsByScopeKey, param.PipelineScope, progress.ParamKey); ok {
 		progress.Value = strings.TrimSpace(snapshot.ParamValue)
 		progress.ValueSource = strings.TrimSpace(string(snapshot.ValueSource))
 		progress.UpdatedAt = timePointer(snapshot.CreatedAt)
@@ -190,7 +228,11 @@ func resolveReleaseOrderValueProgressItem(
 		return progress
 	}
 
-	execution, hasExecution := executionByScope[param.PipelineScope]
+	progressExecutionScope := param.PipelineScope
+	if isCIOnlyStandardParamKey(progress.ParamKey) {
+		progressExecutionScope = domain.PipelineScopeCI
+	}
+	execution, hasExecution := executionByScope[progressExecutionScope]
 	if derived, ok := deriveReleaseProgressValue(order, progress, execution); ok {
 		progress.Value = derived.Value
 		progress.ValueSource = derived.Source
@@ -198,6 +240,17 @@ func resolveReleaseOrderValueProgressItem(
 		progress.Status = ReleaseOrderValueProgressResolved
 		progress.Message = derived.Message
 		return progress
+	}
+
+	if param.ValueSource == domain.TemplateParamValueSourceBuiltin && !isCIOnlyStandardParamKey(progress.ParamKey) {
+		if value := strings.TrimSpace(executorDefaultValue); value != "" {
+			progress.Value = value
+			progress.ValueSource = "executor_param_default"
+			progress.UpdatedAt = timePointer(order.UpdatedAt)
+			progress.Status = ReleaseOrderValueProgressResolved
+			progress.Message = buildResolvedMessage(progress.ValueSource)
+			return progress
+		}
 	}
 
 	progress.Status, progress.Message = derivePendingProgressState(order, progress.Required, hasExecution, execution)
@@ -395,11 +448,45 @@ func buildBuiltinProgressItem(
 		ExecutorParamName: "系统内置",
 		Required:          dict.Required,
 		SortNo:            normalizeBuiltinProgressSortNo(dict.ParamKey),
-	}, paramsByScopeKey, executionByScope)
+	}, paramsByScopeKey, executionByScope, "")
 	if progress.Message == "" {
 		progress.Message = "系统内置字段，平台会自动跟踪其取值状态"
 	}
 	return progress, true
+}
+
+func isValueProgressPipelineParam(param domain.ReleaseTemplateParam) bool {
+	if isExecutionOutputStandardParamKey(param.ParamKey) {
+		return false
+	}
+	return isRealExecutorParamName(param.ExecutorParamName)
+}
+
+func resolveValueProgressKind(param domain.ReleaseTemplateParam) ReleaseOrderValueKind {
+	if isExecutionOutputStandardParamKey(param.ParamKey) {
+		return ReleaseOrderValueKindExecutionOutput
+	}
+	if isValueProgressPipelineParam(param) {
+		return ReleaseOrderValueKindPipelineParam
+	}
+	return ReleaseOrderValueKindBuiltinField
+}
+
+func isExecutionOutputStandardParamKey(key string) bool {
+	return isCIOnlyStandardParamKey(key)
+}
+
+func isRealExecutorParamName(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	switch value {
+	case "系统内置", "沿用 CI":
+		return false
+	default:
+		return true
+	}
 }
 
 // normalizeBuiltinProgressSortNo 标准化输入值，保证后续逻辑使用统一格式。
@@ -407,6 +494,9 @@ func normalizeBuiltinProgressSortNo(paramKey string) int {
 	key := strings.ToLower(strings.TrimSpace(paramKey))
 	if key == "app_key" {
 		return 8990
+	}
+	if key == "release_name" {
+		return 8995
 	}
 	if key == "image_version" {
 		return 9000
@@ -532,6 +622,15 @@ func deriveReleaseProgressValue(
 				UpdatedAt: timePointer(order.UpdatedAt),
 			}, true
 		}
+	case "release_name":
+		if value := strings.TrimSpace(order.ReleaseName); value != "" {
+			return derivedProgressValue{
+				Value:     value,
+				Source:    "release_order_summary",
+				Message:   "已从发布单摘要字段取值",
+				UpdatedAt: timePointer(order.UpdatedAt),
+			}, true
+		}
 	}
 	return derivedProgressValue{}, false
 }
@@ -568,6 +667,10 @@ func buildResolvedMessage(source string) string {
 		return "已从环境默认值中取值"
 	case "jenkins_build_number":
 		return "已从 Jenkins 构建号 BUILD_NUMBER 自动取值"
+	case "builtin":
+		return "已从平台内置字段取值"
+	case "executor_param_default":
+		return "已从执行器参数默认值取值"
 	default:
 		if strings.TrimSpace(source) == "" {
 			return "已取值"

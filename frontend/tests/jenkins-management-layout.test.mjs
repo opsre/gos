@@ -16,8 +16,10 @@ test('jenkins management uses standardized header search and actions', () => {
   assert.match(source, /<div class="page-header">[\s\S]*<div class="page-header-actions">/, 'page should use transparent header actions')
   assert.match(source, /class="application-toolbar-icon-btn"[\s\S]*SearchOutlined/, 'keyword search should be an icon entry in the header')
   assert.match(source, /class="jenkins-toolbar-select"[\s\S]*状态 · 全部[\s\S]*class="jenkins-toolbar-query-btn"[\s\S]*查询/, 'status filter and query should live in the header action strip')
-  assert.match(source, /class="application-toolbar-action-btn"[\s\S]*新增管线[\s\S]*class="application-toolbar-action-btn"[\s\S]*手动同步/, 'create and sync actions should use shared toolbar button styling')
-  assert.doesNotMatch(source, /page-header-card|filter-card|filter-form|handleReset|type="primary"/, 'page should not keep old header card, filter card, reset action or divergent primary buttons')
+  assert.match(source, /scanAllPipelines/, 'pipeline list should use the batch scan API')
+  assert.match(source, /async function handleScanAllPipelines\(\)[\s\S]*await scanAllPipelines\(\)[\s\S]*await loadPipelines\(\{\s*waitForScanResults:\s*true\s*\}\)/, 'batch scan should refresh the list scan status after completion')
+  assert.match(source, /class="application-toolbar-action-btn"[\s\S]*新增管线[\s\S]*class="application-toolbar-action-btn"[\s\S]*扫描[\s\S]*class="application-toolbar-action-btn"[\s\S]*手动同步/, 'create, scan and sync actions should use shared toolbar button styling in the requested order')
+  assert.doesNotMatch(source, /page-header-card|filter-card|filter-form|handleReset/, 'page should not keep old header card, filter card or reset action')
 
   const actionButtonRule = extractStyleRule(':deep(.application-toolbar-action-btn.ant-btn),\n:deep(.application-toolbar-icon-btn.ant-btn),\n:deep(.jenkins-toolbar-query-btn.ant-btn)')
   assert.match(actionButtonRule, /height:\s*42px/, 'toolbar buttons should use standardized height')

@@ -2,6 +2,7 @@
 import {
   AppstoreOutlined,
   ClusterOutlined,
+  DatabaseOutlined,
   LogoutOutlined,
   RocketOutlined,
   SettingOutlined,
@@ -46,6 +47,15 @@ const activeMenuKey = computed(() => {
   if (route.path.startsWith('/components/jenkins')) {
     return ['jenkins-pipeline-list']
   }
+  if (route.path.startsWith('/components/pipeline-rules')) {
+    return ['pipeline-rule-management']
+  }
+  if (route.path.startsWith('/artifacts/repositories')) {
+    return ['artifact-repository-config']
+  }
+  if (route.path.startsWith('/artifacts')) {
+    return ['artifact-center-list']
+  }
   if (route.path.startsWith('/components/argocd/applications')) {
     return ['argocd-application-management']
   }
@@ -84,7 +94,11 @@ const activeMenuKey = computed(() => {
 
 const openMenuKeys = computed(() => {
   if (route.path.startsWith('/components/')) {
-    if (route.path.startsWith('/components/jenkins') || route.path.startsWith('/components/executor-params')) {
+    if (
+      route.path.startsWith('/components/jenkins') ||
+      route.path.startsWith('/components/pipeline-rules') ||
+      route.path.startsWith('/components/executor-params')
+    ) {
       return ['component-management', 'jenkins-management-group']
     }
     if (
@@ -107,6 +121,9 @@ const openMenuKeys = computed(() => {
   }
   if (route.path.startsWith('/release-templates')) {
     return ['release-management']
+  }
+  if (route.path.startsWith('/artifacts')) {
+    return ['artifact-center']
   }
   if (
     route.path.startsWith('/applications') ||
@@ -135,6 +152,13 @@ const canViewApplications = computed(() => authStore.hasPermission('application.
 const canManageApplications = computed(() => authStore.hasPermission('application.manage'))
 const canCreateRelease = computed(() => authStore.hasPermission('release.create'))
 const canViewPipeline = computed(() => authStore.hasPermission('pipeline.view'))
+const canManagePipeline = computed(() => authStore.hasPermission('pipeline.manage'))
+const canManageArtifactRepository = computed(() => authStore.hasPermission('artifact_repo.manage'))
+const canViewArtifactCenter = computed(
+  () =>
+    canManageArtifactRepository.value ||
+    ['release.view', 'release.create', 'release.execute', 'release.cancel'].some((code) => authStore.hasPermission(code)),
+)
 const canManagePlatformParam = computed(() => authStore.hasPermission('platform_param.manage'))
 const canViewComponent = computed(() => authStore.hasPermission('component.view'))
 const canManagePipelineParam = computed(() => authStore.hasPermission('pipeline_param.manage'))
@@ -164,12 +188,14 @@ const showApplicationMenu = computed(() => true)
 const showComponentMenu = computed(
   () =>
     canViewComponent.value ||
+    canManagePipeline.value ||
     canManagePipelineParam.value ||
     canViewArgoCD.value ||
     canViewGitOps.value ||
     canViewAgent.value,
 )
 const showReleaseMenu = computed(() => true)
+const showArtifactMenu = computed(() => canViewArtifactCenter.value || canManageArtifactRepository.value)
 const showSystemMenu = computed(() => canManageUser.value || canManagePermission.value || canManageNotification.value)
 const siderExpandedWidth = computed(() => {
   if (viewportWidth.value <= 768) {
@@ -206,6 +232,10 @@ function goToProjectManagement() {
 
 function goToJenkinsManagement() {
   void router.push('/components/jenkins')
+}
+
+function goToPipelineRuleManagement() {
+  void router.push('/components/pipeline-rules')
 }
 
 function goToExecutorParamManagement() {
@@ -255,6 +285,14 @@ function goToReleaseTemplates() {
 
 function goToReleaseApprovalWorkbench() {
   void router.push('/release-approvals')
+}
+
+function goToArtifactRepositoryConfig() {
+  void router.push('/artifacts/repositories')
+}
+
+function goToArtifactCenter() {
+  void router.push('/artifacts')
 }
 
 function goToSystemUsers() {
@@ -357,17 +395,38 @@ onUnmounted(() => {
           </a-menu-item>
         </a-sub-menu>
 
+        <a-sub-menu v-if="showArtifactMenu" key="artifact-center">
+          <template #icon>
+            <DatabaseOutlined />
+          </template>
+          <template #title>制品中心</template>
+
+          <a-menu-item v-if="canViewArtifactCenter" key="artifact-center-list" @click="goToArtifactCenter">
+            制品目录
+          </a-menu-item>
+          <a-menu-item
+            v-if="canManageArtifactRepository"
+            key="artifact-repository-config"
+            @click="goToArtifactRepositoryConfig"
+          >
+            制品库配置
+          </a-menu-item>
+        </a-sub-menu>
+
         <a-sub-menu v-if="showComponentMenu" key="component-management">
           <template #icon>
             <ClusterOutlined />
           </template>
           <template #title>组件管理</template>
 
-          <a-sub-menu v-if="canViewComponent || canManagePipelineParam" key="jenkins-management-group">
+          <a-sub-menu v-if="canViewComponent || canManagePipeline || canManagePipelineParam" key="jenkins-management-group">
             <template #title>Jenkins管理</template>
 
             <a-menu-item v-if="canViewComponent" key="jenkins-pipeline-list" @click="goToJenkinsManagement">
               管线列表
+            </a-menu-item>
+            <a-menu-item v-if="canManagePipeline" key="pipeline-rule-management" @click="goToPipelineRuleManagement">
+              管线规范
             </a-menu-item>
             <a-menu-item v-if="canManagePipelineParam" key="executor-param-management" @click="goToExecutorParamManagement">
               执行器参数

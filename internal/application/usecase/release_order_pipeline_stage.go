@@ -123,9 +123,17 @@ func (uc *ReleaseOrderManager) GetPipelineStageLog(
 		return domain.ReleaseOrderPipelineStage{}, domain.ReleaseOrderPipelineStageLog{}, fmt.Errorf("%w: %s", ErrInvalidInput, message)
 	}
 
-	logResult, err := uc.jenkins.GetBuildStageLog(ctx, buildURL, stage.StageKey)
+	var logResult domain.ReleaseOrderPipelineStageLog
+	if reader, ok := uc.jenkins.(JenkinsReleaseStageLogNamedReader); ok {
+		logResult, err = reader.GetBuildStageLogWithName(ctx, buildURL, stage.StageKey, stage.StageName)
+	} else {
+		logResult, err = uc.jenkins.GetBuildStageLog(ctx, buildURL, stage.StageKey)
+	}
 	if err != nil {
-		return domain.ReleaseOrderPipelineStage{}, domain.ReleaseOrderPipelineStageLog{}, err
+		if isResourceNotFoundError(err) {
+			return domain.ReleaseOrderPipelineStage{}, domain.ReleaseOrderPipelineStageLog{}, fmt.Errorf("%w: Jenkins 阶段日志暂不可用，请稍后刷新", ErrInvalidInput)
+		}
+		return domain.ReleaseOrderPipelineStage{}, domain.ReleaseOrderPipelineStageLog{}, fmt.Errorf("%w: Jenkins 阶段日志加载失败：%s", ErrInvalidInput, trimPipelineStageError(err))
 	}
 	logResult.ReleaseOrderID = orderID
 	logResult.StageID = stage.ID

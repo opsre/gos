@@ -14,6 +14,7 @@ import {
   listNotificationHooks,
   listNotificationMarkdownTemplates,
   listNotificationSources,
+  testNotificationSourceWebhook,
   updateNotificationHook,
   updateNotificationMarkdownTemplate,
   updateNotificationSource,
@@ -28,6 +29,7 @@ import type {
   NotificationMarkdownTemplatePayload,
   NotificationSource,
   NotificationSourcePayload,
+  NotificationSourceWebhookTestPayload,
   NotificationSourceType,
 } from '../../types/notification'
 import type { PlatformParamDict } from '../../types/platform-param'
@@ -81,6 +83,7 @@ const platformParams = ref<PlatformParamDict[]>([])
 const builtinVariableOptions = [
   { label: 'app_key', value: 'app_key', type: '内置字段' },
   { label: 'app_name', value: 'app_name', type: '内置字段' },
+  { label: 'release_name', value: 'release_name', type: '内置字段' },
   { label: 'project_name', value: 'project_name', type: '内置字段' },
   { label: 'env', value: 'env', type: '内置字段' },
   { label: 'env_code', value: 'env_code', type: '内置字段' },
@@ -189,6 +192,7 @@ let notificationSearchRequestSeq = 0
 
 const sourceModalVisible = ref(false)
 const sourceSubmitting = ref(false)
+const sourceWebhookTestingID = ref('')
 const editingSourceID = ref('')
 const editingSourceHasVerificationParam = ref(false)
 const isEditSource = computed(() => Boolean(editingSourceID.value))
@@ -201,6 +205,20 @@ const sourceForm = reactive<SourceFormState>({
   enabled: true,
   remark: '',
 })
+
+const sourceTypeLabels: Record<NotificationSourceType, string> = {
+  dingtalk: '钉钉',
+  wecom: '企业微信群机器人',
+  feishu: '飞书',
+}
+
+function sourceTypeLabel(value: NotificationSourceType | string | undefined) {
+  return value ? sourceTypeLabels[value as NotificationSourceType] || value : '-'
+}
+
+function sourceUsesVerificationParam(value: NotificationSourceType | string | undefined) {
+  return value === 'dingtalk' || value === 'feishu'
+}
 
 // ---- source modal masking ----
 const sourceFormViewportInset = ref(0)
@@ -326,6 +344,17 @@ const sourceRules: Record<string, Rule[]> = {
   name: [{ required: true, message: '请输入通知源名称', trigger: 'blur' }],
   source_type: [{ required: true, message: '请选择通知源类型', trigger: 'change' }],
   webhook_url: [{ required: true, message: '请输入 Webhook 地址', trigger: 'blur' }],
+  verification_param: [
+    {
+      validator: async (_rule: Rule, value: string) => {
+        if (sourceForm.source_type !== 'feishu') return
+        if (String(value || '').trim()) return
+        if (isEditSource.value && editingSourceHasVerificationParam.value) return
+        throw new Error('请输入飞书放行关键字')
+      },
+      trigger: 'blur',
+    },
+  ],
 }
 
 const templateRules: Record<string, Rule[]> = {
@@ -340,10 +369,57 @@ const hookRules: Record<string, Rule[]> = {
 
 const sourceTypeFilterOptions = [
   { label: '钉钉', value: 'dingtalk' },
-  { label: '企业微信', value: 'wecom' },
+  { label: '企业微信群机器人', value: 'wecom' },
+  { label: '飞书', value: 'feishu' },
 ] as const
 
-const sourceTypeFormOptions = [{ label: '钉钉', value: 'dingtalk' }] as const
+const sourceTypeFormOptions = [
+  { label: '钉钉', value: 'dingtalk' },
+  { label: '企业微信群机器人', value: 'wecom' },
+  { label: '飞书', value: 'feishu' },
+] as const
+
+const sourceFormNote = computed(() =>
+  isEditSource.value
+    ? '编辑态下通知源类型保持只读，如需修改请删除当前通知源后重新创建。'
+    : '创建通知源，用于接收钉钉、企业微信群机器人或飞书机器人消息推送。',
+)
+
+const sourceTypeHelpText = computed(() =>
+  '当前开放钉钉、企业微信群机器人、飞书通知源创建',
+)
+
+const sourceNamePlaceholder = computed(() => {
+  if (sourceForm.source_type === 'feishu') return '例如：生产发布飞书群'
+  if (sourceForm.source_type === 'wecom') return '例如：生产发布企业微信群'
+  return '例如：生产发布钉钉群'
+})
+
+const sourceWebhookPlaceholder = computed(() => {
+  if (sourceForm.source_type === 'feishu') return '请输入飞书机器人的 Webhook 地址'
+  if (sourceForm.source_type === 'wecom') return '请输入企业微信群机器人的 Webhook 地址'
+  return '请输入钉钉机器人的 Webhook 地址'
+})
+
+const sourceVerificationLabel = computed(() => (sourceForm.source_type === 'feishu' ? '放行关键字' : '验证参数（Secret）'))
+
+const sourceVerificationPlaceholder = computed(() => {
+  if (sourceForm.source_type === 'feishu') {
+    return editingSourceHasVerificationParam.value
+      ? '留空则沿用当前放行关键字，输入新值则覆盖'
+      : '请输入飞书机器人安全设置里的放行关键字'
+  }
+  return editingSourceHasVerificationParam.value ? '留空则沿用当前 Secret，输入新值则覆盖' : '选填，钉钉机器人的加签 Secret'
+})
+
+const sourceVerificationHelp = computed(() => {
+  if (sourceForm.source_type === 'feishu') {
+    return editingSourceHasVerificationParam.value
+      ? '当前已配置放行关键字，留空可继续沿用'
+      : '消息标题会自动包含该关键字，用于通过飞书机器人安全校验'
+  }
+  return '当前已配置 Secret，留空可继续沿用'
+})
 
 const enabledOptions = [
   { label: '启用', value: 'true' },
@@ -396,7 +472,7 @@ const activeSourceTypeFilter = computed<NotificationSourceType | undefined>({
 })
 
 const sourceOptions = computed(() =>
-  sourceCatalog.value.map((item) => ({ label: `${item.name} · ${item.source_type === 'dingtalk' ? '钉钉' : '企业微信'}`, value: item.id })),
+  sourceCatalog.value.map((item) => ({ label: `${item.name} · ${sourceTypeLabel(item.source_type)}`, value: item.id })),
 )
 
 const markdownTemplateOptions = computed(() =>
@@ -406,11 +482,11 @@ const markdownTemplateOptions = computed(() =>
 const sourceColumns: TableColumnsType<NotificationSource> = [
   { title: '通知源名称', dataIndex: 'name', key: 'name', width: 220 },
   { title: '类型', dataIndex: 'source_type', key: 'source_type', width: 120 },
-  { title: '加签', dataIndex: 'has_verification_param', key: 'has_verification_param', width: 90 },
+  { title: '校验配置', dataIndex: 'has_verification_param', key: 'has_verification_param', width: 100 },
   { title: 'Webhook 地址', dataIndex: 'webhook_url', key: 'webhook_url', ellipsis: true },
   { title: '状态', dataIndex: 'enabled', key: 'enabled', width: 100 },
   { title: '更新时间', dataIndex: 'updated_at', key: 'updated_at', width: 180 },
-  { title: '操作', key: 'actions', width: 180, fixed: 'right' },
+  { title: '操作', key: 'actions', width: 220, fixed: 'right' },
 ]
 
 const templateColumns: TableColumnsType<NotificationMarkdownTemplate> = [
@@ -432,7 +508,7 @@ const hookColumns: TableColumnsType<NotificationHook> = [
 
 const defaultNotificationTemplatePreset = {
   name: '通用发布通知模板-默认',
-  title_template: '[{env}] {app_name} {release_status_rich}',
+  title_template: '[{env}] {app_name} {release_name} {release_status_rich}',
   body_template: [
     '## 发布进展',
     '',
@@ -441,6 +517,7 @@ const defaultNotificationTemplatePreset = {
     '',
     '### 核心信息',
     '- **应用**：{app_name}（`{app_key}`）',
+    '- **发布名称**：`{release_name}`',
     '- **环境**：`{env}`',
     '- **发布单**：`{order_no}`',
     '- **操作**：`{operation_type}`',
@@ -470,6 +547,7 @@ const templatePreviewMockValues = computed<Record<string, string>>(() => {
   const common = {
     app_key: 'gov-collab-service',
     app_name: '省公协同后端',
+    release_name: '省公协同后端正式发布',
     project_name: 'shenggongxie-notarization-management-java-k8s',
     env: 'prod',
     env_code: 'prod',
@@ -909,6 +987,17 @@ function handleSourceFormAfterClose() {
   void sourceFormRef.value?.clearValidate()
 }
 
+function buildSourcePayload(): NotificationSourcePayload {
+  return {
+    name: sourceForm.name.trim(),
+    source_type: sourceForm.source_type,
+    webhook_url: sourceForm.webhook_url.trim(),
+    verification_param: sourceUsesVerificationParam(sourceForm.source_type) ? sourceForm.verification_param.trim() || undefined : undefined,
+    enabled: sourceForm.enabled,
+    remark: sourceForm.remark.trim() || undefined,
+  }
+}
+
 async function submitSource() {
   try {
     await sourceFormRef.value?.validate()
@@ -917,14 +1006,7 @@ async function submitSource() {
   }
   sourceSubmitting.value = true
   try {
-    const payload: NotificationSourcePayload = {
-      name: sourceForm.name.trim(),
-      source_type: sourceForm.source_type,
-      webhook_url: sourceForm.webhook_url.trim(),
-      verification_param: sourceForm.source_type === 'dingtalk' ? sourceForm.verification_param.trim() || undefined : undefined,
-      enabled: sourceForm.enabled,
-      remark: sourceForm.remark.trim() || undefined,
-    }
+    const payload = buildSourcePayload()
     if (editingSourceID.value) {
       await updateNotificationSource(editingSourceID.value, payload)
       message.success('通知源更新成功')
@@ -938,6 +1020,25 @@ async function submitSource() {
     message.error(extractHTTPErrorMessage(error, '通知源保存失败'))
   } finally {
     sourceSubmitting.value = false
+  }
+}
+
+async function testSavedSourceWebhook(item: NotificationSource) {
+  sourceWebhookTestingID.value = item.id
+  try {
+    const result = await testNotificationSourceWebhook({
+      source_id: item.id,
+      name: item.name,
+      source_type: item.source_type,
+      webhook_url: item.webhook_url,
+      enabled: item.enabled,
+      remark: item.remark || undefined,
+    })
+    message.success(result.message || '测试消息发送成功')
+  } catch (error) {
+    message.error(extractHTTPErrorMessage(error, '测试消息发送失败'))
+  } finally {
+    sourceWebhookTestingID.value = ''
   }
 }
 
@@ -1254,7 +1355,7 @@ async function fetchNotificationSearchSuggestions(keyword: string) {
     notificationSearchSuggestions.value = response.data.map((item) => ({
       id: item.id,
       title: item.name,
-      subtitle: item.source_type === 'dingtalk' ? '钉钉' : '企业微信',
+      subtitle: sourceTypeLabel(item.source_type),
     }))
   } catch {
     if (requestSeq === notificationSearchRequestSeq) {
@@ -1424,7 +1525,7 @@ onBeforeUnmount(() => {
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'source_type'">
-                {{ record.source_type === 'dingtalk' ? '钉钉' : '企业微信' }}
+                {{ sourceTypeLabel(record.source_type) }}
               </template>
               <template v-else-if="column.key === 'has_verification_param'">
                 <a-tag :color="record.has_verification_param ? 'blue' : 'default'">
@@ -1436,6 +1537,7 @@ onBeforeUnmount(() => {
               </template>
               <template v-else-if="column.key === 'actions'">
                 <a-space>
+                  <a-button type="link" size="small" :loading="sourceWebhookTestingID === record.id" @click="testSavedSourceWebhook(record)">测试</a-button>
                   <a-button type="link" size="small" @click="openEditSourceModal(record)">编辑</a-button>
                   <a-button type="link" danger size="small" @click="confirmDeleteSource(record)">删除</a-button>
                 </a-space>
@@ -1553,10 +1655,10 @@ onBeforeUnmount(() => {
 
       <a-form ref="sourceFormRef" :model="sourceForm" :rules="sourceRules" layout="vertical" :required-mark="false" class="source-form">
         <div class="source-form-note">
-          {{ isEditSource ? '编辑态下通知源类型保持只读，如需修改请删除当前通知源后重新创建。' : '创建通知源，用于接收钉钉机器人消息推送。' }}
+          {{ sourceFormNote }}
         </div>
 
-        <div v-if="isEditSource && sourceForm.source_type !== 'wecom'" class="source-form-panel source-form-panel--context">
+        <div v-if="isEditSource" class="source-form-panel source-form-panel--context">
           <div class="source-form-panel-title">当前通知源</div>
           <div class="source-form-context">
             <div class="source-form-context-item">
@@ -1565,7 +1667,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="source-form-context-item">
               <div class="source-form-context-label">通知源类型</div>
-              <div class="source-form-context-value">{{ sourceForm.source_type === 'dingtalk' ? '钉钉' : '企业微信' }}</div>
+              <div class="source-form-context-value">{{ sourceTypeLabel(sourceForm.source_type) }}</div>
             </div>
           </div>
         </div>
@@ -1580,7 +1682,7 @@ onBeforeUnmount(() => {
                 <a-tag class="source-form-required-tag">必填</a-tag>
               </span>
             </template>
-            <a-input v-model:value="sourceForm.name" allow-clear placeholder="例如：生产发布钉钉群" />
+            <a-input v-model:value="sourceForm.name" allow-clear :placeholder="sourceNamePlaceholder" />
           </a-form-item>
 
           <a-form-item name="source_type">
@@ -1590,9 +1692,8 @@ onBeforeUnmount(() => {
                 <a-tag class="source-form-required-tag">必填</a-tag>
               </span>
             </template>
-            <a-select v-if="sourceForm.source_type !== 'wecom'" v-model:value="sourceForm.source_type" :options="sourceTypeFormOptions" :disabled="isEditSource" />
-            <a-input v-else value="企业微信（暂不支持新增）" disabled />
-            <div class="form-help-text">当前仅开放钉钉通知源创建，企业微信入口暂时保留为只读展示</div>
+            <a-select v-model:value="sourceForm.source_type" :options="sourceTypeFormOptions" :disabled="isEditSource" />
+            <div class="form-help-text">{{ sourceTypeHelpText }}</div>
           </a-form-item>
 
           <a-form-item name="webhook_url">
@@ -1602,19 +1703,22 @@ onBeforeUnmount(() => {
                 <a-tag class="source-form-required-tag">必填</a-tag>
               </span>
             </template>
-            <a-input v-model:value="sourceForm.webhook_url" allow-clear placeholder="请输入钉钉机器人的 Webhook 地址" />
+            <a-input v-model:value="sourceForm.webhook_url" allow-clear :placeholder="sourceWebhookPlaceholder" />
           </a-form-item>
 
-          <a-form-item v-if="sourceForm.source_type === 'dingtalk'" name="verification_param">
+          <a-form-item v-if="sourceUsesVerificationParam(sourceForm.source_type)" name="verification_param">
             <template #label>
-              <span class="source-form-label">验证参数（Secret）</span>
+              <span class="source-form-label">
+                {{ sourceVerificationLabel }}
+                <a-tag v-if="sourceForm.source_type === 'feishu'" class="source-form-required-tag">必填</a-tag>
+              </span>
             </template>
             <a-input-password
               v-model:value="sourceForm.verification_param"
               allow-clear
-              :placeholder="editingSourceHasVerificationParam ? '留空则沿用当前 Secret，输入新值则覆盖' : '选填，钉钉机器人的加签 Secret'"
+              :placeholder="sourceVerificationPlaceholder"
             />
-            <div v-if="editingSourceHasVerificationParam" class="form-help-text">当前已配置 Secret，留空可继续沿用</div>
+            <div v-if="editingSourceHasVerificationParam || sourceForm.source_type === 'feishu'" class="form-help-text">{{ sourceVerificationHelp }}</div>
           </a-form-item>
 
           <a-form-item name="remark">
@@ -1861,7 +1965,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="hook-form-context-item">
               <div class="hook-form-context-label">关联通知源</div>
-              <div class="hook-form-context-value">{{ selectedSource ? `${selectedSource.name} · ${selectedSource.source_type === 'dingtalk' ? '钉钉' : '企业微信'}` : '-' }}</div>
+              <div class="hook-form-context-value">{{ selectedSource ? `${selectedSource.name} · ${sourceTypeLabel(selectedSource.source_type)}` : '-' }}</div>
             </div>
           </div>
         </div>
@@ -1932,7 +2036,7 @@ onBeforeUnmount(() => {
               <span class="hook-form-label">已选通知源</span>
             </template>
             <a-input
-              :value="selectedSource ? `${selectedSource.name} · ${selectedSource.source_type === 'dingtalk' ? '钉钉' : '企业微信'}` : '未选择'"
+              :value="selectedSource ? `${selectedSource.name} · ${sourceTypeLabel(selectedSource.source_type)}` : '未选择'"
               readonly
             />
           </a-form-item>

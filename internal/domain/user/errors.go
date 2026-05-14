@@ -7,5 +7,6 @@ var (
 	ErrUsernameDuplicated      = errors.New("username duplicated")
 	ErrPermissionNotFound      = errors.New("permission not found")
 	ErrSessionNotFound         = errors.New("session not found")
+	ErrSessionRevoked          = errors.New("session revoked")
 	ErrParamPermissionNotFound = errors.New("param permission not found")
 )

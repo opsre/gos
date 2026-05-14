@@ -7,12 +7,13 @@ type SourceType string
 const (
 	SourceTypeDingTalk SourceType = "dingtalk"
 	SourceTypeWeCom    SourceType = "wecom"
+	SourceTypeFeishu   SourceType = "feishu"
 )
 
 // Valid 封装当前模块的业务处理逻辑。
 func (s SourceType) Valid() bool {
 	switch s {
-	case SourceTypeDingTalk, SourceTypeWeCom:
+	case SourceTypeDingTalk, SourceTypeWeCom, SourceTypeFeishu:
 		return true
 	default:
 		return false

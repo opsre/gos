@@ -47,6 +47,10 @@ func (uc *CreateApplication) Execute(ctx context.Context, input CreateInput) (do
 	if input.Status != "" && !input.Status.Valid() {
 		return domain.Application{}, ErrInvalidStatus
 	}
+	artifactRepositoryID, artifactDirectory, err := normalizeApplicationArtifactBinding(input.ArtifactRepositoryID, input.ArtifactDirectory)
+	if err != nil {
+		return domain.Application{}, err
+	}
 
 	status := input.Status
 	if status == "" {
@@ -71,6 +75,8 @@ func (uc *CreateApplication) Execute(ctx context.Context, input CreateInput) (do
 		Owner:                strings.TrimSpace(input.Owner),
 		Status:               status,
 		ArtifactType:         strings.TrimSpace(input.ArtifactType),
+		ArtifactRepositoryID: artifactRepositoryID,
+		ArtifactDirectory:    artifactDirectory,
 		GitOpsBranchMappings: normalizeGitOpsBranchMappings(input.GitOpsBranchMappings),
 		ReleaseBranches:      normalizeReleaseBranchOptions(input.ReleaseBranches),
 		CreatedAt:            now,

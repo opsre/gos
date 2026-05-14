@@ -242,6 +242,72 @@ test('executor param toolbar filters show vertically centered placeholder text',
   assert.match(placeholderRule, /line-height:\s*1\s*!important/, 'toolbar placeholder should avoid baseline drift')
 })
 
+test('executor param page exposes a one-click auto mapping action in the header', () => {
+  assert.match(
+    source,
+    /ThunderboltOutlined/,
+    'executor param page should use an icon for the auto mapping action',
+  )
+  assert.match(
+    source,
+    /const autoMappingSubmitting = ref\(false\)/,
+    'executor param page should track auto mapping submission state',
+  )
+  assert.match(
+    source,
+    /<a-button class="executor-toolbar-query-btn" @click="handleToolbarFilterChange">查询<\/a-button>[\s\S]*class="application-toolbar-action-btn executor-auto-map-btn"[\s\S]*:loading="autoMappingSubmitting"[\s\S]*@click="handleAutoMapExecutorParams"[\s\S]*一键映射/,
+    'executor param page should render the one-click mapping button immediately after the query action',
+  )
+  assert.match(
+    source,
+    /import \{ message, Modal \} from 'ant-design-vue'/,
+    'executor param page should use Ant Design modal confirmation for auto mapping',
+  )
+  assert.match(
+    source,
+    /Modal\.confirm\(\{[\s\S]*title: '确认一键映射参数？'[\s\S]*content:[\s\S]*当前筛选范围[\s\S]*已有映射如果与匹配结果不一致会被覆盖[\s\S]*okText: '确认映射'[\s\S]*cancelText: '取消'[\s\S]*await runAutoMapExecutorParams\(\)/,
+    'auto mapping click should show a second confirmation that explains scope and overwrite risk before running',
+  )
+})
+
+test('executor param one-click mapping matches normalized standard fields with executor param names', () => {
+  assert.match(
+    source,
+    /function normalizeAutoMappingName\(value: unknown\)/,
+    'auto mapping should normalize names before comparing them',
+  )
+  assert.match(
+    source,
+    /registerAutoMappingCandidate\(paramMap, item\.param_key, item\.param_key\)/,
+    'auto mapping should match by platform param key',
+  )
+  assert.match(
+    source,
+    /registerAutoMappingCandidate\(paramMap, item\.name, item\.param_key\)/,
+    'auto mapping should also match by platform param display name',
+  )
+  assert.match(
+    source,
+    /normalizeAutoMappingName\(item\.executor_param_name\)/,
+    'auto mapping should compare against the executor parameter name',
+  )
+  assert.match(
+    source,
+    /if \(!item\.can_edit\)/,
+    'auto mapping should skip rows the current user cannot edit',
+  )
+  assert.match(
+    source,
+    /currentParamKey === targetParamKey/,
+    'auto mapping should skip rows that are already bound to the matching field',
+  )
+  assert.match(
+    source,
+    /updateExecutorParamDef\(item\.id,\s*\{\s*param_key: targetParamKey,\s*\}\)/,
+    'auto mapping should update matching rows through the existing mapping endpoint',
+  )
+})
+
 test('executor param mapping form should use the shared modal form shell instead of default ant modal actions', () => {
   assert.match(
     source,

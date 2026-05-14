@@ -2,6 +2,9 @@ package usecase
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,6 +15,7 @@ import (
 	agentdomain "gos/internal/domain/agent"
 	notificationdomain "gos/internal/domain/notification"
 	domain "gos/internal/domain/release"
+	"gos/internal/infrastructure/persistence/sqlrepo"
 )
 
 // TestShouldTriggerTemplateHook 封装当前模块的业务处理逻辑。
@@ -225,6 +229,339 @@ func TestMergeAgentTaskVariablesOverridesReleaseVariables(t *testing.T) {
 	}
 }
 
+// TestBuildHookTaskVariablesIncludesReleaseName 通知 Hook 变量应包含发布名称。
+func TestBuildHookTaskVariablesIncludesReleaseName(t *testing.T) {
+	t.Parallel()
+
+	manager, _ := newReleaseOrderManagerForCancelTest(t)
+	values, err := manager.buildHookTaskVariables(context.Background(), domain.ReleaseOrder{
+		ID:          "ro-hook-release-name",
+		OrderNo:     "RO-HOOK-RELEASE-NAME",
+		ReleaseName: "南部新城智慧文旅正式发布",
+		EnvCode:     "prod",
+		Status:      domain.OrderStatusSuccess,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}, nil, domain.ReleaseTemplateHook{}, domain.TemplateHookExecuteStagePostRelease)
+	if err != nil {
+		t.Fatalf("buildHookTaskVariables failed: %v", err)
+	}
+	if got := values["release_name"]; got != "南部新城智慧文旅正式发布" {
+		t.Fatalf("release_name = %q, want %q", got, "南部新城智慧文旅正式发布")
+	}
+}
+
+// TestBuildHookTaskVariablesUsesCIOnlyForGOSArtifactURL Hook 变量中的 GOS 制品地址只能来自 CI 单元。
+func TestBuildHookTaskVariablesUsesCIOnlyForGOSArtifactURL(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	order := testReleaseOrder("ro-hook-gos-artifact", "RO-HOOK-GOS-ARTIFACT", domain.OrderStatusSuccess, now)
+	params := []domain.ReleaseOrderParam{
+		{
+			ID:             "rop-hook-gos-artifact-cd",
+			ReleaseOrderID: order.ID,
+			PipelineScope:  domain.PipelineScopeCD,
+			ParamKey:       "gos_artifact_url",
+			ParamValue:     "https://cd.example.com/should-not-use.jar",
+			CreatedAt:      now,
+		},
+		{
+			ID:             "rop-hook-gos-artifact-ci",
+			ReleaseOrderID: order.ID,
+			PipelineScope:  domain.PipelineScopeCI,
+			ParamKey:       "gos_artifact_url",
+			ParamValue:     "https://ci.example.com/app.jar",
+			CreatedAt:      now,
+		},
+	}
+	if err := repo.Create(ctx, order, nil, params, nil); err != nil {
+		t.Fatalf("Create release order failed: %v", err)
+	}
+
+	values, err := manager.buildHookTaskVariables(ctx, order, nil, domain.ReleaseTemplateHook{}, domain.TemplateHookExecuteStagePostRelease)
+	if err != nil {
+		t.Fatalf("buildHookTaskVariables failed: %v", err)
+	}
+	if got := values["gos_artifact_url"]; got != "https://ci.example.com/app.jar" {
+		t.Fatalf("gos_artifact_url = %q, want CI value", got)
+	}
+}
+
+// TestSyncHooksAfterReleaseKeepsFinishStepRunningWhileAgentHookRunning 确保发布后 Agent Hook 未结束前不提前成功整体进度。
+func TestSyncHooksAfterReleaseKeepsFinishStepRunningWhileAgentHookRunning(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	startedAt := now.Add(-2 * time.Minute)
+	manager.now = func() time.Time { return now }
+
+	agentDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("sql.Open agent failed: %v", err)
+	}
+	t.Cleanup(func() { _ = agentDB.Close() })
+	agentRepo := sqlrepo.NewAgentRepository(agentDB, "sqlite")
+	if err := agentRepo.InitSchema(ctx); err != nil {
+		t.Fatalf("agent InitSchema failed: %v", err)
+	}
+	manager.agentRepo = agentRepo
+
+	template := domain.ReleaseTemplate{
+		ID:              "rt-agent-hook-running",
+		Name:            "Agent Hook Template",
+		ApplicationID:   "app-1",
+		ApplicationName: "App 1",
+		BindingID:       "app-1",
+		BindingName:     "App 1",
+		BindingType:     "application",
+		Status:          domain.TemplateStatusActive,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	hooks := []domain.ReleaseTemplateHook{
+		{
+			ID:               "hook-agent-running",
+			TemplateID:       template.ID,
+			HookType:         domain.TemplateHookTypeAgentTask,
+			Name:             "发布后 Agent 校验",
+			ExecuteStage:     domain.TemplateHookExecuteStagePostRelease,
+			TriggerCondition: domain.TemplateHookTriggerOnSuccess,
+			FailurePolicy:    domain.TemplateHookFailurePolicyBlockRelease,
+			TargetID:         "agtask-source-running",
+			TargetName:       "发布后 Agent 校验",
+			SortNo:           1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+	}
+	if err := repo.CreateTemplate(ctx, template, nil, nil, nil, hooks); err != nil {
+		t.Fatalf("CreateTemplate failed: %v", err)
+	}
+
+	sourceTask := agentdomain.Task{
+		ID:         "agtask-source-running",
+		Name:       "发布后 Agent 校验",
+		TaskMode:   agentdomain.TaskModeTemporary,
+		TaskType:   string(agentdomain.TaskTypeShellScript),
+		ShellType:  "sh",
+		WorkDir:    "/tmp",
+		ScriptText: "echo check",
+		Variables:  map[string]string{},
+		TimeoutSec: 30,
+		Status:     agentdomain.TaskStatusDraft,
+		CreatedBy:  "tester",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	if _, err := agentRepo.CreateTask(ctx, sourceTask); err != nil {
+		t.Fatalf("CreateTask source failed: %v", err)
+	}
+	runningTask := agentdomain.Task{
+		ID:              "agtask-running-1",
+		AgentID:         "agent-1",
+		AgentCode:       "agent-1",
+		SourceTaskID:    sourceTask.ID,
+		DispatchBatchID: "agbatch-running",
+		Name:            "发布后 Agent 校验",
+		TaskMode:        agentdomain.TaskModeTemporary,
+		TaskType:        string(agentdomain.TaskTypeShellScript),
+		ShellType:       "sh",
+		WorkDir:         "/tmp",
+		ScriptText:      "echo check",
+		Variables:       map[string]string{},
+		TimeoutSec:      30,
+		Status:          agentdomain.TaskStatusRunning,
+		StartedAt:       &startedAt,
+		CreatedBy:       "tester",
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if _, err := agentRepo.CreateTask(ctx, runningTask); err != nil {
+		t.Fatalf("CreateTask running failed: %v", err)
+	}
+
+	order := testReleaseOrder("ro-agent-hook-running", "RO-AGENT-HOOK-RUNNING", domain.OrderStatusRunning, now)
+	order.TemplateID = template.ID
+	order.TemplateName = template.Name
+	order.StartedAt = &startedAt
+	executions := []domain.ReleaseOrderExecution{
+		testReleaseExecution(order.ID, "exec-ci", domain.PipelineScopeCI, domain.ExecutionStatusSuccess, now),
+		testReleaseExecution(order.ID, "exec-cd", domain.PipelineScopeCD, domain.ExecutionStatusSuccess, now),
+	}
+	steps := defaultReleaseOrderSteps(order.ID, executions, now, "", hooks, order.EnvCode)
+	for idx := range steps {
+		switch steps[idx].StepCode {
+		case "hook:post_release:agent_task:1":
+			steps[idx].Status = domain.StepStatusRunning
+			steps[idx].StartedAt = &startedAt
+			steps[idx].Message = buildHookTaskBatchProgressMessage(hooks[0], sourceTask, []agentdomain.Task{runningTask}, runningTask.DispatchBatchID)
+		case "global:release_finish":
+			steps[idx].Status = domain.StepStatusPending
+		default:
+			steps[idx].Status = domain.StepStatusSuccess
+			steps[idx].StartedAt = &startedAt
+			steps[idx].FinishedAt = &now
+		}
+	}
+	if err := repo.Create(ctx, order, executions, nil, steps); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	_, finished, status, _, err := manager.syncHooksAfterRelease(ctx, order, executions)
+	if err != nil {
+		t.Fatalf("syncHooksAfterRelease failed: %v", err)
+	}
+	if finished {
+		t.Fatal("finished = true, want false while agent hook is running")
+	}
+	if status != domain.OrderStatusRunning {
+		t.Fatalf("status = %s, want %s", status, domain.OrderStatusRunning)
+	}
+
+	storedSteps, err := repo.ListSteps(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("ListSteps failed: %v", err)
+	}
+	finishStep := findStepByCode(storedSteps, "global:release_finish")
+	if finishStep == nil {
+		t.Fatal("finish step = nil")
+	}
+	if finishStep.Status == domain.StepStatusSuccess {
+		t.Fatalf("finish step status = %s, want not success while agent hook is running", finishStep.Status)
+	}
+	if finishStep.Status != domain.StepStatusRunning {
+		t.Fatalf("finish step status = %s, want %s", finishStep.Status, domain.StepStatusRunning)
+	}
+}
+
+// TestFinalizeOrderOverridesPrematureSuccessFinishStepWhenAgentHookFailed 确保历史误标成功的整体进度可被阻塞 Hook 失败纠正。
+func TestFinalizeOrderOverridesPrematureSuccessFinishStepWhenAgentHookFailed(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	startedAt := now.Add(-2 * time.Minute)
+	manager.now = func() time.Time { return now }
+
+	template := domain.ReleaseTemplate{
+		ID:              "rt-agent-hook-failed",
+		Name:            "Agent Hook Failed Template",
+		ApplicationID:   "app-1",
+		ApplicationName: "App 1",
+		BindingID:       "app-1",
+		BindingName:     "App 1",
+		BindingType:     "application",
+		Status:          domain.TemplateStatusActive,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	hooks := []domain.ReleaseTemplateHook{
+		{
+			ID:               "hook-agent-failed",
+			TemplateID:       template.ID,
+			HookType:         domain.TemplateHookTypeAgentTask,
+			Name:             "发布后 Agent 校验",
+			ExecuteStage:     domain.TemplateHookExecuteStagePostRelease,
+			TriggerCondition: domain.TemplateHookTriggerOnSuccess,
+			FailurePolicy:    domain.TemplateHookFailurePolicyBlockRelease,
+			TargetID:         "agtask-source-failed",
+			TargetName:       "发布后 Agent 校验",
+			SortNo:           1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+	}
+	if err := repo.CreateTemplate(ctx, template, nil, nil, nil, hooks); err != nil {
+		t.Fatalf("CreateTemplate failed: %v", err)
+	}
+
+	order := testReleaseOrder("ro-agent-hook-failed", "RO-AGENT-HOOK-FAILED", domain.OrderStatusRunning, now)
+	order.TemplateID = template.ID
+	order.TemplateName = template.Name
+	order.StartedAt = &startedAt
+	executions := []domain.ReleaseOrderExecution{
+		testReleaseExecution(order.ID, "exec-ci", domain.PipelineScopeCI, domain.ExecutionStatusSuccess, now),
+		testReleaseExecution(order.ID, "exec-cd", domain.PipelineScopeCD, domain.ExecutionStatusSuccess, now),
+	}
+	steps := defaultReleaseOrderSteps(order.ID, executions, now, "", hooks, order.EnvCode)
+	for idx := range steps {
+		switch steps[idx].StepCode {
+		case "hook:post_release:agent_task:1":
+			steps[idx].Status = domain.StepStatusFailed
+			steps[idx].StartedAt = &startedAt
+			steps[idx].FinishedAt = &now
+			steps[idx].Message = "执行失败：发布后 Agent 校验"
+		case "global:release_finish":
+			steps[idx].Status = domain.StepStatusSuccess
+			steps[idx].StartedAt = &startedAt
+			steps[idx].FinishedAt = &now
+			steps[idx].Message = "主发布流程完成"
+		default:
+			steps[idx].Status = domain.StepStatusSuccess
+			steps[idx].StartedAt = &startedAt
+			steps[idx].FinishedAt = &now
+		}
+	}
+	if err := repo.Create(ctx, order, executions, nil, steps); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	tracker := NewTrackReleaseExecution(manager, nil)
+	tracker.now = func() time.Time { return now }
+	if _, _, err := tracker.finalizeOrder(ctx, order, executions); err != nil {
+		t.Fatalf("finalizeOrder failed: %v", err)
+	}
+
+	stored, err := repo.GetByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	if stored.Status != domain.OrderStatusFailed {
+		t.Fatalf("stored status = %s, want %s", stored.Status, domain.OrderStatusFailed)
+	}
+	storedSteps, err := repo.ListSteps(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("ListSteps failed: %v", err)
+	}
+	finishStep := findStepByCode(storedSteps, "global:release_finish")
+	if finishStep == nil {
+		t.Fatal("finish step = nil")
+	}
+	if finishStep.Status != domain.StepStatusFailed {
+		t.Fatalf("finish step status = %s, want %s", finishStep.Status, domain.StepStatusFailed)
+	}
+}
+
+// TestDeriveOrderStatusFromStepsDoesNotLetFinishSuccessBypassRunningHook 校验整体成功不能绕过未完成 Hook。
+func TestDeriveOrderStatusFromStepsDoesNotLetFinishSuccessBypassRunningHook(t *testing.T) {
+	t.Parallel()
+
+	status, shouldUpdate := deriveOrderStatusFromSteps([]domain.ReleaseOrderStep{
+		{
+			StepScope: domain.StepScopeGlobal,
+			StepCode:  "hook:post_release:agent_task:1",
+			Status:    domain.StepStatusRunning,
+		},
+		{
+			StepScope: domain.StepScopeGlobal,
+			StepCode:  "global:release_finish",
+			Status:    domain.StepStatusSuccess,
+		},
+	})
+	if status != domain.OrderStatusRunning {
+		t.Fatalf("status = %s, want %s", status, domain.OrderStatusRunning)
+	}
+	if shouldUpdate {
+		t.Fatal("shouldUpdate = true, want false while hook is running")
+	}
+}
+
 // TestEvaluateMainReleaseStatus 启动当前进程并完成依赖初始化。
 func TestEvaluateMainReleaseStatus(t *testing.T) {
 	t.Parallel()
@@ -412,5 +749,58 @@ func TestBuildNotificationHookRequestAddsDingTalkSignature(t *testing.T) {
 	}
 	if query.Get("sign") == "" {
 		t.Fatal("sign = empty, want signed signature")
+	}
+}
+
+// TestBuildNotificationHookRequestBuildsFeishuCardWithKeywordTitle 组装业务执行所需的输入数据。
+func TestBuildNotificationHookRequestBuildsFeishuCardWithKeywordTitle(t *testing.T) {
+	t.Parallel()
+
+	req, err := buildNotificationHookRequest(context.Background(), notificationdomain.Source{
+		SourceType:        notificationdomain.SourceType("feishu"),
+		WebhookURL:        "https://open.feishu.cn/open-apis/bot/v2/hook/test-token",
+		VerificationParam: "GOS放行",
+	}, "发布完成", "**body**")
+	if err != nil {
+		t.Fatalf("buildNotificationHookRequest failed: %v", err)
+	}
+
+	bodyBytes, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatalf("ReadAll request body failed: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+		t.Fatalf("Unmarshal request body failed: %v", err)
+	}
+	if got := payload["msg_type"]; got != "interactive" {
+		t.Fatalf("msg_type = %v, want interactive", got)
+	}
+	card, ok := payload["card"].(map[string]any)
+	if !ok {
+		t.Fatalf("card payload type = %T, want object", payload["card"])
+	}
+	header, ok := card["header"].(map[string]any)
+	if !ok {
+		t.Fatalf("header payload type = %T, want object", card["header"])
+	}
+	titleNode, ok := header["title"].(map[string]any)
+	if !ok {
+		t.Fatalf("header.title payload type = %T, want object", header["title"])
+	}
+	titleContent, _ := titleNode["content"].(string)
+	if !strings.Contains(titleContent, "GOS放行") || !strings.Contains(titleContent, "发布完成") {
+		t.Fatalf("feishu title = %q, want keyword and original title", titleContent)
+	}
+	elements, ok := card["elements"].([]any)
+	if !ok || len(elements) != 1 {
+		t.Fatalf("elements = %#v, want one markdown element", card["elements"])
+	}
+	markdownElement, ok := elements[0].(map[string]any)
+	if !ok {
+		t.Fatalf("element payload type = %T, want object", elements[0])
+	}
+	if got := markdownElement["content"]; got != "**body**" {
+		t.Fatalf("markdown content = %v, want **body**", got)
 	}
 }

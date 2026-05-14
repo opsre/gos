@@ -405,6 +405,21 @@ function releaseDetailEnvSections(card: WorkbenchCard) {
   return sections.length > 0 ? sections : card.envSections
 }
 
+function defaultReleaseDetailSection(card: WorkbenchCard) {
+  const sections = releaseDetailEnvSections(card)
+  if (sections.length === 0) {
+    return null
+  }
+  const latestOrderID = normalizedValue(card.latestOrder?.id)
+  if (latestOrderID) {
+    const latestSection = sections.find((section) => normalizedValue(section.latestOrder?.id) === latestOrderID)
+    if (latestSection) {
+      return latestSection
+    }
+  }
+  return sections[0]
+}
+
 function selectedReleaseSection(card: WorkbenchCard) {
   const sections = releaseDetailEnvSections(card)
   if (sections.length === 0) {
@@ -412,7 +427,7 @@ function selectedReleaseSection(card: WorkbenchCard) {
   }
   const applicationID = normalizedValue(card.application.id)
   const selectedEnv = normalizedValue(selectedReleaseEnvByApplication.value[applicationID])
-  return sections.find((section) => section.envCode === selectedEnv) || sections[0]
+  return sections.find((section) => section.envCode === selectedEnv) || defaultReleaseDetailSection(card)
 }
 
 function setSelectedReleaseEnv(applicationID: string, envCode: string) {
@@ -2565,7 +2580,7 @@ onUnmounted(() => {
   gap: 8px;
   height: 42px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
   background: rgba(255, 255, 255, 0.42) !important;
   color: #0f172a !important;
   box-shadow:

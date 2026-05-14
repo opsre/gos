@@ -9,18 +9,20 @@ const ApplicationListView = () => import('../views/application/ApplicationListVi
 const ApplicationPipelineBindingView = () => import('../views/application/ApplicationPipelineBindingView.vue')
 const ProjectManagementView = () => import('../views/application/ProjectManagementView.vue')
 const PlatformParamDictView = () => import('../views/application/PlatformParamDictView.vue')
+const ArtifactCenterView = () => import('../views/artifact/ArtifactCenterView.vue')
+const ArtifactRepositoryConfigView = () => import('../views/artifact/ArtifactRepositoryConfigView.vue')
 const ArgoCDManagementView = () => import('../views/component/ArgoCDManagementView.vue')
 const ArgoCDApplicationManagementView = () => import('../views/component/ArgoCDApplicationManagementView.vue')
 const GitOpsManagementView = () => import('../views/component/GitOpsManagementView.vue')
 const GitOpsTutorialView = () => import('../views/help/GitOpsTutorialView.vue')
 const JenkinsManagementView = () => import('../views/component/JenkinsManagementView.vue')
+const PipelineRuleManagementView = () => import('../views/component/PipelineRuleManagementView.vue')
 const ExecutorParamManagementView = () => import('../views/component/ExecutorParamManagementView.vue')
 const AgentManagementView = () => import('../views/component/AgentManagementView.vue')
 const AgentTaskManagementView = () => import('../views/component/AgentTaskManagementView.vue')
 const AgentScriptManagementView = () => import('../views/component/AgentScriptManagementView.vue')
 const ForbiddenView = () => import('../views/exception/ForbiddenView.vue')
 const LoginView = () => import('../views/login/LoginView.vue')
-const OfficialWebsiteView = () => import('../views/marketing/OfficialWebsiteView.vue')
 const ReleaseOrderCreateView = () => import('../views/release/ReleaseOrderCreateView.vue')
 const ReleaseOrderDetailView = () => import('../views/release/ReleaseOrderDetailView.vue')
 const ReleaseOrderListView = () => import('../views/release/ReleaseOrderListView.vue')
@@ -82,9 +84,7 @@ export const router = createRouter({
   routes: [
     {
       path: '/',
-      name: 'official-website',
-      component: OfficialWebsiteView,
-      meta: { title: 'GOS Release', public: true },
+      redirect: '/applications',
     },
     {
       path: '/login',
@@ -143,6 +143,12 @@ export const router = createRouter({
           name: 'jenkins-management',
           component: JenkinsManagementView,
           meta: { title: '管线列表', permission: 'component.view' },
+        },
+        {
+          path: '/components/pipeline-rules',
+          name: 'pipeline-rule-management',
+          component: PipelineRuleManagementView,
+          meta: { title: '管线规范', permission: 'pipeline.manage' },
         },
         {
           path: '/components/argocd',
@@ -209,6 +215,21 @@ export const router = createRouter({
           name: 'executor-param-management',
           component: ExecutorParamManagementView,
           meta: { title: '执行器参数', permission: 'pipeline_param.manage' },
+        },
+        {
+          path: '/artifacts',
+          name: 'artifact-center',
+          component: ArtifactCenterView,
+          meta: {
+            title: '制品目录',
+            permission: ['release.view', 'release.create', 'release.execute', 'release.cancel', 'artifact_repo.manage'],
+          },
+        },
+        {
+          path: '/artifacts/repositories',
+          name: 'artifact-repository-config',
+          component: ArtifactRepositoryConfigView,
+          meta: { title: '制品库配置', permission: 'artifact_repo.manage' },
         },
         {
           path: '/releases',

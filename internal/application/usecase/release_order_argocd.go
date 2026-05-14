@@ -760,6 +760,7 @@ func buildGitOpsCommitMessageFields(
 	)
 	fields := map[string]string{
 		"order_no":      strings.TrimSpace(order.OrderNo),
+		"release_name":  strings.TrimSpace(order.ReleaseName),
 		"app_name":      strings.TrimSpace(order.ApplicationName),
 		"app_key":       strings.TrimSpace(appKey),
 		"project_name":  projectName,
@@ -769,10 +770,16 @@ func buildGitOpsCommitMessageFields(
 		"image_version": strings.TrimSpace(imageVersion),
 		"source_path":   strings.TrimSpace(sourcePath),
 	}
+	if value := findReleaseParamValue(params, domain.PipelineScopeCI, standardParamGOSArtifactURL); value != "" {
+		fields[standardParamGOSArtifactURL] = value
+	}
 	for _, item := range params {
 		paramKey := strings.ToLower(strings.TrimSpace(item.ParamKey))
 		paramValue := strings.TrimSpace(item.ParamValue)
 		if paramKey == "" || paramValue == "" {
+			continue
+		}
+		if isCIOnlyStandardParamKey(paramKey) && item.PipelineScope != domain.PipelineScopeCI {
 			continue
 		}
 		if _, exists := fields[paramKey]; exists && strings.TrimSpace(fields[paramKey]) != "" {

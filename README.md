@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>GOS Release · 发布治理平台</h1>
+<h1 align="center">GOS Release · 发布治理平台</h1>
 
 <p><strong>一张发布单，串起交付全链路。</strong></p>
 
@@ -19,7 +19,10 @@
   <img alt="GitOps Repos" src="https://img.shields.io/badge/GitOps-repos-F05032?logo=git&logoColor=white" />
   <img alt="GOS Agent" src="https://img.shields.io/badge/GOS%20Agent-active-111827?logo=gnubash&logoColor=white" />
   <img alt="Approval Workflow" src="https://img.shields.io/badge/Approval-workflow-2563EB?logo=checkmarx&logoColor=white" />
-  <img alt="Notify Hook" src="https://img.shields.io/badge/Notify-hook-1677FF?logo=dingtalk&logoColor=white" />
+  <img alt="Pipeline Rules" src="https://img.shields.io/badge/Pipeline-rules-334155" />
+  <img alt="Artifact Center" src="https://img.shields.io/badge/Artifact-center-0EA5E9" />
+  <img alt="AI Diagnosis" src="https://img.shields.io/badge/AI-diagnosis-7C3AED" />
+  <img alt="Feishu WeCom DingTalk" src="https://img.shields.io/badge/Notify-Feishu%20%2F%20WeCom%20%2F%20DingTalk-1677FF?logo=dingtalk&logoColor=white" />
 </p>
 
 <p>GOS 不是 Jenkins、ArgoCD 或 Agent 的替代品，而是它们上层的发布治理层。</p>
@@ -32,18 +35,21 @@
 
 ## 🎯 为什么选择 GOS？
 
-内部发布平台真正复杂的地方，不是单个执行器，而是链路太分散。
+内部发布平台真正复杂的地方，不是单个执行器，而是发布链路被拆散在太多系统里。
 
-应用负责人、项目归属、发布环境、Jenkins 参数、GitOps 仓库、ArgoCD 实例、Agent 脚本、通知 Hook、审批人和执行权限分散在不同系统里，研发需要理解太多底层细节，平台也很难追踪一次发布到底做了什么。
+应用负责人、项目归属、发布环境、Jenkins 参数、管线脚本规范、GitOps 仓库、ArgoCD 实例、Agent 脚本、制品产物、通知 Hook、审批人和执行权限分散维护。研发需要理解大量底层细节，平台也很难回答一次发布到底用了什么参数、跑了哪条管线、产出了哪些制品、失败在哪里、通知是否送达。
 
 GOS 将这些链路收口成发布单：
 
-- 一个入口创建发布单，减少 Jenkins / ArgoCD / Git 仓库 / Agent 任务之间的切换
-- 一套发布模板治理 CI/CD 执行单元、参数映射、审批和 Hook
-- 一套高级参数展示规则，只让申请人填写真正需要输入的字段
-- 一个详情页查看预检、审批、构建、部署、Hook、日志、阶段和失败原因
-- 一套权限模型控制应用、环境、组件、模板、通知和系统管理入口
-- 一套审计数据沉淀发布参数、执行单元、步骤、Agent 任务和通知结果
+- 统一入口：从发布单发起标准发布、极速发布、仅构建、分段部署、回滚和重放，减少 Jenkins / ArgoCD / Git 仓库 / Agent 任务之间的切换。
+- 模板治理：用发布模板固化 CI/CD 执行单元、参数映射、审批规则、Hook 和通知策略，避免每次发布临时拼流程。
+- 管线约束：通过管线规范对 Jenkins Pipeline 做底层、有边界的约束，保证制品地址输出、OSS 上传命令、内置参数映射等关键节点可被平台识别。
+- 参数收敛：用标准字库和高级参数展示规则隐藏底层映射细节，只让申请人填写真正需要输入的字段。
+- 执行追踪：在发布单详情里查看预检、审批、构建、部署、Hook、阶段日志、制品信息和 AI 诊断结论。
+- 制品沉淀：用制品中心聚合发布过程产物、校验信息、记录时间和下载入口，避免制品链接散落在流水线日志里。
+- 诊断闭环：对 Jenkins 阶段日志做 AI 诊断，提取错误上下文、可能原因、日志证据和处理建议。
+- 通知闭环：把飞书、企业微信（企微）、钉钉通知源、Markdown 模板和通知 Hook 配成平台能力。
+- 权限与审计：统一控制应用、环境、组件、模板、制品库、通知和系统管理入口，并沉淀发布参数、执行单元、阶段、Agent 任务、制品元信息、AI 诊断记录和通知结果。
 
 ---
 
@@ -51,11 +57,16 @@ GOS 将这些链路收口成发布单：
 
 GOS 的标准化不是要求所有团队使用同一条流水线，而是把发布过程中必须统一的边界先定下来。
 
-- 标准入口：所有发布、回滚、重放都从发布单进入
-- 标准字段：应用、环境、分支、镜像、Helm values 等关键参数统一命名和来源
-- 标准模板：把 CI/CD、审批、Hook、通知和参数规则前置到模板里
-- 标准流程：预检、审批、执行、Hook、回滚和审计按同一套生命周期流转
-- 标准留痕：每一次参数、操作、执行单元、阶段日志和失败原因都能回到发布单追踪
+- 标准入口：所有发布、回滚、重放都从发布单进入。
+- 标准对象：项目、应用、环境、执行器、模板、制品库、发布单和通知源统一建模。
+- 标准字段：应用、环境、分支、镜像、Helm values、制品地址等关键参数统一命名和来源。
+- 标准参数：基础字段、固定值、CI 沿用、CD 沿用、GitOps 替换和 Hook 变量按同一套规则流转。
+- 标准模板：把 CI/CD、审批、Hook、通知、参数规则和管线规范前置到模板里。
+- 标准管线：对制品地址输出、OSS 上传命令、内置参数等关键边界做规则校验，不侵入团队自定义流水线逻辑。
+- 标准制品：发布过程产出的包、校验信息、对象路径和下载入口统一沉淀到制品中心。
+- 标准诊断：失败阶段可以回到同一个发布上下文中查看日志、AI 诊断、可能原因和建议动作。
+- 标准流程：预检、审批、管线规范校验、执行、制品归档、Hook、通知、AI 诊断、回滚和审计按同一套生命周期流转。
+- 标准留痕：每一次参数、操作、执行单元、阶段日志、制品元信息、AI 诊断和通知结果都能回到发布单追踪。
 
 执行器可以不同，网络环境可以不同，部署方式也可以不同；但申请人看到的是同一套发布语言，平台沉淀的是同一套治理数据。
 
@@ -67,88 +78,116 @@ GOS 的标准化不是要求所有团队使用同一条流水线，而是把发�
 
 围绕发布单组织完整发布生命周期。
 
-- 发布单创建、编辑、删除、执行、取消
-- 标准发布、极速发布、仅构建、分段部署
-- 批量执行、批量删除、并发批次进度
-- 发布前预检：状态、执行单元、参数、锁冲突等
-- 回滚、重放、应用维度回滚能力检测
-- 当前上线状态确认与历史状态追踪
-- 发布单统计、筛选、详情、日志流、阶段日志
+- 发布单创建、编辑、删除、执行、取消。
+- 支持标准发布、极速发布、仅构建、分段部署、回滚和重放。
+- 批量执行、批量删除、并发批次进度和执行状态追踪。
+- 发布前预检覆盖发布单状态、执行单元、参数完整性、并发锁冲突和模板合规性。
+- 应用维度回滚能力检测、当前上线状态确认与历史状态追踪。
+- 发布详情聚合执行单元、实时日志、阶段日志、Hook 进度、制品信息和 AI 诊断结果。
 
 ### ✅ 审批与发布模板
 
 把发布规则前置到模板，而不是让每次发布临时决定。
 
-- 发布模板 CRUD
-- CI / CD 执行器绑定
-- CI / CD 参数映射、固定值、基础字段、CI 参数沿用
-- 高级参数统一展示，隐藏基础字段映射和 CD 沿用 CI 的参数
-- 模板审批开关、审批模式、审批人配置
-- 审批工作台、审批记录、通过 / 拒绝 / 提交审批
-- 模板 Hook 配置，支持 Agent 任务和通知 Hook
+- 发布模板 CRUD，按应用绑定可用发布流程。
+- CI / CD 执行器绑定，支持 Jenkins、ArgoCD / GitOps 和 Agent 任务组合。
+- CI / CD 参数映射、固定值、基础字段、CI 参数沿用和高级参数展示。
+- 隐藏基础字段映射和 CD 沿用 CI 的参数，降低发布申请页面复杂度。
+- 模板审批开关、审批模式、审批人配置、审批工作台和审批记录。
+- 模板 Hook 配置，支持 Agent 任务、通知 Hook 和发布后补充动作。
+- 发布创建前校验模板执行单元、参数、管线规范和权限边界。
 
 ### 🧱 Jenkins 管理
 
 让 Jenkins 专注执行，GOS 负责治理入口。
 
-- Jenkins 管线同步
-- 执行器参数同步
-- 管线列表、详情、原始链接
-- 原始脚本 / Config XML 查看
-- 原始 Jenkins Pipeline 创建、编辑、删除
-- 管线校验
-- Jenkins 构建日志、阶段状态、阶段日志回写发布单
+- Jenkins 管线同步、列表、详情和原始链接跳转。
+- 执行器参数同步，并映射到平台标准字段。
+- 原始脚本 / Config XML 查看，支持原始 Jenkins Pipeline 创建、编辑、删除。
+- 单条管线校验和批量管线扫描，帮助提前发现执行器不可用或脚本不合规。
+- Jenkins 构建日志、阶段状态、阶段日志回写发布单。
+- 与管线规范、制品中心、AI 诊断联动，补齐从构建到排障的发布链路。
+
+### 📏 管线规范
+
+在不接管团队 Pipeline 业务逻辑的前提下，对发布链路必须可治理的底层边界做规则约束。
+
+- 规则管理支持内置规则和自定义规则，可按制品、安全、凭据、命名等分类维护。
+- 支持 `info`、`warning`、`error` 等级，规则可启停并记录更新时间。
+- 扫描 Jenkins Pipeline 脚本，输出违规行、匹配内容、处理建议和扫描状态。
+- 内置 `GOS_ARTIFACT_URL` 制品地址输出规范，确保 CI 产物能被发布单、CD、GitOps 和 Hook 继续沿用。
+- 支持 OSS 上传命令格式、内置字段参数映射等制品链路规范。
+- 发布模板可按 CI / CD 绑定管线规范校验范围，违反阻断级规则时阻止创建发布单。
+- 约束重点放在平台必须识别的边界上，保留团队对 Pipeline 内部业务步骤的自主权。
+
+### 🧠 AI 诊断
+
+把 Jenkins 阶段日志转成结构化排障结果，降低失败定位成本。
+
+- 系统设置维护 OpenAI Compatible 模型，支持测试连接、启停和设置诊断模型。
+- 发布单详情的 Jenkins 阶段节点展示 AI 诊断入口，失败阶段可快速进入排障。
+- 后端拉取阶段日志，完成脱敏、截断、错误上下文提取后调用诊断模型。
+- 诊断抽屉展示分析结论、可能原因、日志证据、建议动作和人工复核提示。
+- 支持重新诊断、诊断缓存、历史结果查看和快捷追问。
+- 诊断记录保存模型、日志 hash、创建人和时间，便于审计追踪。
 
 ### 🚢 ArgoCD / GitOps 管理
 
 面向声明式部署场景，串起环境、仓库、应用和集群。
 
-- 多 ArgoCD 实例管理
-- ArgoCD 实例连通性检查
-- 环境到 ArgoCD 实例绑定
-- ArgoCD Application 列表、详情、原始链接、手动 Sync
-- GitOps 实例管理
-- GitOps 仓库状态检查
-- GitOps 模板字段、字段候选值、values 候选值
-- Helm / Kustomize 扫描路径配置
-- 发布时解析链路：`env -> ArgoCD -> GitOps -> Git 仓库`
+- 多 ArgoCD 实例管理、连通性检查和环境绑定。
+- ArgoCD Application 列表、详情、原始链接和手动 Sync。
+- GitOps 实例管理、仓库状态检查和路径映射。
+- GitOps 模板字段、字段候选值、values 候选值和替换规则。
+- Helm / Kustomize 扫描路径配置。
+- 发布时解析链路：`env -> ArgoCD -> GitOps -> Git 仓库`。
+- 可沿用 CI 产出的制品地址、镜像版本和标准参数，保持构建到部署参数一致。
 
 ### 🛰️ Agent 与受控任务
 
 用于生产孤岛、网络隔离或平台无法直连目标环境的场景。
 
-- Agent 注册、心跳、在线 / 离线 / 忙碌状态
-- Agent 启用、禁用、维护模式
-- Agent 安装配置生成与 Token 重置
-- 临时任务、常驻任务、指定 Agent 分发
-- Shell 任务、脚本文件任务、文件分发任务
-- 脚本管理：脚本模板、Shell 类型、脚本文本、脚本路径
-- 任务执行、停止、恢复、删除、日志和结果回传
-- 发布详情中展示 Hook / Agent 任务进度和日志
+- Agent 注册、心跳、在线 / 离线 / 忙碌状态。
+- Agent 启用、禁用、维护模式、安装配置生成与 Token 重置。
+- 临时任务、常驻任务、指定 Agent 分发。
+- Shell 任务、脚本文件任务、文件分发任务。
+- 脚本管理：脚本模板、Shell 类型、脚本文本、脚本路径。
+- 任务执行、停止、恢复、删除、日志和结果回传。
+- 发布模板可把 Agent 任务配置为 Hook，发布详情中展示 Hook / Agent 任务进度和日志。
+
+### 📦 制品中心
+
+把发布过程产出的文件纳入统一目录，避免制品链接散落在流水线日志里。
+
+- 制品库配置、连接测试和凭据加密存储。
+- 应用绑定制品库与制品路径，发布时自动注入 OSS 内置参数。
+- 管线规范约束制品上传和 `GOS_ARTIFACT_URL` 输出，保证平台能识别 CI 产物。
+- CI 标准字段 `gos_artifact_url` 可沿用至 CD、GitOps 和 Hook 变量。
+- 发布单详情展示制品名称、校验信息、记录时间和下载入口。
+- 制品目录按制品库、项目、应用、执行单元和发布单聚合检索。
+- 支持手动补录制品，并限制删除发布过程自动产出的制品记录。
 
 ### 🔔 通知模块
 
 把通知源、模板和 Hook 配成平台能力，而不是散落在流水线脚本里。
 
-- 通知源管理：钉钉、企业微信
-- Markdown 通知模板
-- 条件化模板内容
-- 通知 Hook 管理
-- 发布模板可关联通知 Hook
-- 通知源 Secret / Token 加密存储
+- 通知源管理：飞书、企业微信（企微）、钉钉。
+- Markdown 通知模板和条件化模板内容。
+- 通知 Hook 管理，发布模板可按阶段和触发条件关联通知 Hook。
+- 通知内容可复用发布单、应用、环境、执行结果、制品和 Hook 上下文。
+- 通知源 Secret / Token / 飞书放行关键字加密存储。
 
 ### 🔐 应用、项目与权限治理
 
 把发布入口和组织权限绑定起来。
 
-- 项目管理
-- 应用 CRUD、负责人、仓库、语言、制品类型
-- 应用 GitOps 分支映射、发布分支选项
-- 应用与 CI/CD 管线绑定
-- 标准字库管理
-- 应用级可见 / 发布权限控制
-- 用户管理、权限授权、参数权限
-- 系统设置：发布环境、并发控制、GitOps 扫描路径
+- 项目管理和应用归属治理。
+- 应用 CRUD、负责人、仓库、语言、制品类型、制品库和制品路径。
+- 应用 GitOps 分支映射、发布分支选项和环境策略。
+- 应用与 CI/CD 管线绑定，支持应用级执行器选择。
+- 标准字库管理，统一发布字段、执行器参数、GitOps 替换和通知变量来源。
+- 应用级可见 / 发布权限控制、用户管理、权限授权和参数权限。
+- 系统设置：发布环境、并发控制、GitOps 扫描路径和 AI 模型配置。
 
 ---
 
@@ -164,6 +203,30 @@ GOS 的标准化不是要求所有团队使用同一条流水线，而是把发�
 
 <p align="center">
   <img src="images/release-order-detail-legend.png" alt="发布单详情" width="90%" />
+</p>
+
+<p align="center"><strong>发布单详情：制品信息与 AI 诊断入口</strong></p>
+
+<p align="center">
+  <img src="images/release-detail-artifacts-ai.png" alt="发布单详情制品与 AI 诊断" width="90%" />
+</p>
+
+<p align="center"><strong>AI 诊断抽屉</strong></p>
+
+<p align="center">
+  <img src="images/ai-diagnosis-drawer.png" alt="AI 诊断抽屉" width="90%" />
+</p>
+
+<p align="center"><strong>制品目录</strong></p>
+
+<p align="center">
+  <img src="images/artifact-catalog.png" alt="制品目录" width="90%" />
+</p>
+
+<p align="center"><strong>管线规范</strong></p>
+
+<p align="center">
+  <img src="images/pipeline-rules.png" alt="管线规范" width="90%" />
 </p>
 
 <p align="center"><strong>发布单列表页</strong></p>
@@ -254,7 +317,7 @@ docker run -d \
   -e GOS_AUTH_ADMIN_USERNAME='admin' \
   -e GOS_AUTH_ADMIN_PASSWORD='your-admin-password' \
   -e GOS_SECURITY_ENCRYPTION_KEY='replace-with-a-strong-key' \
-  yl10115658529/gos-release:latest
+  yl10115658529/gos-release:v1.1
 ```
 
 > **说明**：GOS_SECURITY_ENCRYPTION_KEY 用于加密数据，请自定义 。
@@ -276,7 +339,7 @@ mysql -h mysql-host -P 3306 -u user -p < ./deploy_platform.sql
 - Go `1.25+`
 - Node.js `20+`
 - MySQL `8+` 或 SQLite
-- Jenkins / ArgoCD / GitOps / Agent / 通知源按需准备
+- Jenkins / ArgoCD / GitOps / Agent / 制品库 / AI 模型 / 通知源按需准备
 
 启动后端：
 
@@ -350,7 +413,10 @@ Docker 单容器运行时由 `docker/entrypoint.sh` 根据环境变量生成：
 | 发布管理 | 发布单详情 | `/releases/:id` |
 | 发布管理 | 审批工作台 | `/release-approvals` |
 | 发布管理 | 发布模板 | `/release-templates` |
+| 制品中心 | 制品目录 | `/artifacts` |
+| 制品中心 | 制品库配置 | `/artifacts/repositories` |
 | 组件管理 | Jenkins 管线 | `/components/jenkins` |
+| 组件管理 | 管线规范 | `/components/pipeline-rules` |
 | 组件管理 | 执行器参数 | `/components/executor-params` |
 | 组件管理 | ArgoCD 管理 | `/components/argocd` |
 | 组件管理 | ArgoCD 应用 | `/components/argocd/applications` |
@@ -362,7 +428,7 @@ Docker 单容器运行时由 `docker/entrypoint.sh` 根据环境变量生成：
 | 系统管理 | 用户管理 | `/system/users` |
 | 系统管理 | 权限授权 | `/system/permissions` |
 | 系统管理 | 通知模块 | `/system/notifications` |
-| 系统管理 | 系统设置 | `/system/settings` |
+| 系统管理 | 系统设置 / AI 模型 | `/system/settings` |
 
 ---
 
@@ -375,9 +441,9 @@ Docker 单容器运行时由 `docker/entrypoint.sh` 根据环境变量生成：
 3. 配置发布环境和并发策略
 4. 创建用户并授权
 5. 创建项目和应用
-6. 按需接入 Jenkins / ArgoCD / GitOps / Agent / 通知源
+6. 按需接入 Jenkins / ArgoCD / GitOps / Agent / 制品库 / AI 模型 / 通知源
 7. 绑定应用与 CI/CD 执行器
-8. 维护标准字库和执行器参数
+8. 维护标准字库、执行器参数和管线规范
 9. 创建发布模板，配置审批与 Hook
 10. 创建发布单，执行并查看详情
 
@@ -413,6 +479,7 @@ gos/
 - Swagger：`docs/swagger.yaml`
 - 后端需求：`docs/后端/`
 - 前端需求：`docs/前端/`
+- AI 诊断功能设计：`docs/ai-diagnosis-feature.md`
 - 前端样式规范：`docs/样式规范/`
 - 测试清单与报告：`docs/测试/`
 
@@ -439,4 +506,4 @@ gos/
 
 ## 📄 License
 
-内部项目，按团队实际规范使用。
+本项目基于 MIT License 开源，详见 [LICENSE](./LICENSE)。

@@ -696,7 +696,7 @@ onBeforeUnmount(() => {
   width: 42px;
   height: 42px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
   background: rgba(255, 255, 255, 0.42) !important;
   color: #0f172a !important;
   box-shadow:
@@ -720,7 +720,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   height: 42px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
   background: rgba(255, 255, 255, 0.42) !important;
   color: #0f172a !important;
   box-shadow:
@@ -736,6 +736,32 @@ onBeforeUnmount(() => {
 .user-toolbar-action-btn:focus,
 .user-toolbar-action-btn:focus-visible,
 .user-toolbar-action-btn:active {
+  border-color: rgba(96, 165, 250, 0.34) !important;
+  background: rgba(255, 255, 255, 0.56) !important;
+  color: #0f172a !important;
+}
+
+:deep(.application-toolbar-action-btn.ant-btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 42px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
+  background: rgba(255, 255, 255, 0.42) !important;
+  color: #0f172a !important;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.68),
+    0 10px 22px rgba(15, 23, 42, 0.05) !important;
+  backdrop-filter: blur(14px) saturate(135%);
+}
+
+:deep(.application-toolbar-action-btn.ant-btn):hover,
+:deep(.application-toolbar-action-btn.ant-btn):focus,
+:deep(.application-toolbar-action-btn.ant-btn):focus-visible,
+:deep(.application-toolbar-action-btn.ant-btn):active {
   border-color: rgba(96, 165, 250, 0.34) !important;
   background: rgba(255, 255, 255, 0.56) !important;
   color: #0f172a !important;

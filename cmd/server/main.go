@@ -18,6 +18,7 @@ import (
 	"gos/internal/bootstrap"
 	argocddomain "gos/internal/domain/argocdapp"
 	gitopsdomain "gos/internal/domain/gitops"
+	aiinfra "gos/internal/infrastructure/ai"
 	argocdinfra "gos/internal/infrastructure/argocd"
 	configstore "gos/internal/infrastructure/configstore"
 	gitopsinfra "gos/internal/infrastructure/gitops"
@@ -71,10 +72,18 @@ func main() {
 	if err := bootstrap.InitSchema(pipelineRepo); err != nil {
 		log.Fatalf("init pipeline schema: %v", err)
 	}
+	pipelineScanRepo := sqlrepo.NewPipelineScanRepository(db, cfg.Database.Driver)
+	if err := bootstrap.InitSchema(pipelineScanRepo); err != nil {
+		log.Fatalf("init pipeline scan schema: %v", err)
+	}
 
 	platformParamRepo := sqlrepo.NewPlatformParamRepository(db, cfg.Database.Driver)
 	if err := bootstrap.InitSchema(platformParamRepo); err != nil {
 		log.Fatalf("init platform param schema: %v", err)
+	}
+	artifactRepositoryRepo := sqlrepo.NewArtifactRepositoryConfigRepository(db, cfg.Database.Driver)
+	if err := bootstrap.InitSchema(artifactRepositoryRepo); err != nil {
+		log.Fatalf("init artifact repository schema: %v", err)
 	}
 
 	executorParamRepo := sqlrepo.NewExecutorParamRepository(db, cfg.Database.Driver)
@@ -114,6 +123,14 @@ func main() {
 	if err := bootstrap.InitSchema(releaseStore); err != nil {
 		log.Fatalf("init release settings schema: %v", err)
 	}
+	aiModelConfigRepo := sqlrepo.NewAIModelConfigRepository(db, cfg.Database.Driver)
+	if err := bootstrap.InitSchema(aiModelConfigRepo); err != nil {
+		log.Fatalf("init ai model config schema: %v", err)
+	}
+	stageDiagnosisRepo := sqlrepo.NewStageDiagnosisRepository(db, cfg.Database.Driver)
+	if err := bootstrap.InitSchema(stageDiagnosisRepo); err != nil {
+		log.Fatalf("init stage diagnosis schema: %v", err)
+	}
 	if err := argocdAppRepo.CleanupLegacyApplications(context.Background()); err != nil {
 		log.Fatalf("cleanup legacy argocd applications: %v", err)
 	}
@@ -127,6 +144,8 @@ func main() {
 	gitopsServiceFactory := gitOpsServiceFactory{}
 	argocdClientFactory := argoCDClientFactory{}
 	syncPipelines := usecase.NewSyncPipelines(pipelineRepo, jenkinsClient)
+	pipelineScanManager := usecase.NewPipelineScanManager(pipelineScanRepo, pipelineRepo, jenkinsClient)
+	syncPipelines.SetScanHook(pipelineScanManager)
 	syncExecutorParamDefs := usecase.NewSyncExecutorParamDefs(executorParamRepo, jenkinsClient)
 	syncArgoCDApplications := usecase.NewSyncArgoCDApplications(argocdAppRepo, argocdClientFactory)
 	gitopsInstanceManager := usecase.NewGitOpsInstanceManager(gitopsRepo, gitopsServiceFactory, platformParamRepo)
@@ -167,12 +186,19 @@ func main() {
 		authSessionManager,
 	)
 	releaseSettingsQuery := usecase.NewQueryReleaseSettings(releaseStore)
+	aiClientFactory := aiinfra.NewOpenAICompatibleClientFactory()
+	aiModelConfigManager := usecase.NewAIModelConfigManager(aiModelConfigRepo)
 	systemSettingsHandler := httpapi.NewSystemSettingsHandler(
 		releaseSettingsQuery,
 		usecase.NewUpdateReleaseSettings(
 			releaseStore,
 			releaseSettingsQuery,
 		),
+		authSessionManager,
+	)
+	aiModelConfigHandler := httpapi.NewAIModelConfigHandler(
+		aiModelConfigManager,
+		aiClientFactory,
 		authSessionManager,
 	)
 	pipelineHandler := httpapi.NewPipelineHandler(
@@ -182,6 +208,7 @@ func main() {
 		usecase.NewJenkinsPipelineManager(pipelineRepo, jenkinsClient, syncPipelines, syncExecutorParamDefs),
 		authSessionManager,
 	)
+	pipelineScanHandler := httpapi.NewPipelineScanHandler(pipelineScanManager, authSessionManager)
 	argocdHandler := httpapi.NewArgoCDHandler(
 		syncArgoCDApplications,
 		usecase.NewQueryArgoCDApplications(argocdAppRepo),
@@ -198,6 +225,10 @@ func main() {
 	)
 	platformParamHandler := httpapi.NewPlatformParamHandler(
 		usecase.NewPlatformParamDictManager(platformParamRepo, executorParamRepo),
+		authSessionManager,
+	)
+	artifactRepositoryHandler := httpapi.NewArtifactRepositoryHandler(
+		usecase.NewArtifactRepositoryManager(artifactRepositoryRepo),
 		authSessionManager,
 	)
 	notificationHandler := httpapi.NewNotificationHandler(
@@ -231,6 +262,12 @@ func main() {
 		nil,
 	)
 	releaseTemplateManager := usecase.NewReleaseTemplateManager(releaseRepo, repo, pipelineRepo, executorParamRepo, platformParamRepo, argocdAppRepo, agentRepo, notificationRepo, gitopsInstanceManager)
+	releaseOrderManager.SetArtifactRepository(artifactRepositoryRepo)
+	releaseOrderManager.SetPipelineScanRepository(pipelineScanRepo)
+	releaseOrderManager.SetAIModelRepository(aiModelConfigRepo)
+	releaseOrderManager.SetStageDiagnosisRepository(stageDiagnosisRepo)
+	releaseOrderManager.SetAIClientFactory(aiClientFactory)
+	releaseTemplateManager.SetPipelineScanRepository(pipelineScanRepo)
 	releaseOrderLogStreamer := usecase.NewReleaseOrderLogStreamer(releaseRepo, pipelineRepo, jenkinsClient)
 	releaseOrderHandler := httpapi.NewReleaseOrderHandler(
 		releaseOrderManager,
@@ -354,9 +391,12 @@ func main() {
 		handler,
 		projectHandler,
 		systemSettingsHandler,
+		aiModelConfigHandler,
 		pipelineHandler,
+		pipelineScanHandler,
 		argocdHandler,
 		gitopsHandler,
+		artifactRepositoryHandler,
 		platformParamHandler,
 		notificationHandler,
 		executorParamHandler,

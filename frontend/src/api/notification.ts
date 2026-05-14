@@ -12,6 +12,8 @@ import type {
   NotificationSourceListParams,
   NotificationSourceListResponse,
   NotificationSourcePayload,
+  NotificationSourceWebhookTestPayload,
+  NotificationSourceWebhookTestResponse,
 } from '../types/notification'
 
 export async function listNotificationSources(params: NotificationSourceListParams = {}): Promise<NotificationSourceListResponse> {
@@ -36,6 +38,11 @@ export async function updateNotificationSource(id: string, payload: Notification
 
 export async function deleteNotificationSource(id: string): Promise<{ ok: boolean }> {
   const response = await http.delete<{ ok: boolean }>(`/notification-sources/${id}`)
+  return response.data
+}
+
+export async function testNotificationSourceWebhook(payload: NotificationSourceWebhookTestPayload): Promise<NotificationSourceWebhookTestResponse> {
+  const response = await http.post<NotificationSourceWebhookTestResponse>('/notification-sources/actions/test-webhook', payload)
   return response.data
 }
 

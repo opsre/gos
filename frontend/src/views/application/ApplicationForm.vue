@@ -14,6 +14,11 @@ interface ProjectOption {
   value: string
 }
 
+interface ArtifactRepositoryOption {
+  label: string
+  value: string
+}
+
 interface ApplicationFormModel {
   name: string
   key: string
@@ -23,6 +28,8 @@ interface ApplicationFormModel {
   owner_user_id: string
   status: ApplicationPayload['status']
   artifact_type: string
+  artifact_repository_id: string
+  artifact_directory: string
   language: string
   gitops_branch_mappings: GitOpsBranchMapping[]
   release_branches: ReleaseBranchOption[]
@@ -33,8 +40,10 @@ const props = withDefaults(
     initialValues?: Partial<ApplicationPayload>
     ownerOptions?: OwnerOption[]
     projectOptions?: ProjectOption[]
+    artifactRepositoryOptions?: ArtifactRepositoryOption[]
     ownerLoading?: boolean
     projectLoading?: boolean
+    artifactRepositoryLoading?: boolean
     loading?: boolean
     submitText?: string
     cancelText?: string
@@ -46,8 +55,10 @@ const props = withDefaults(
     initialValues: () => ({}),
     ownerOptions: () => [],
     projectOptions: () => [],
+    artifactRepositoryOptions: () => [],
     ownerLoading: false,
     projectLoading: false,
+    artifactRepositoryLoading: false,
     loading: false,
     submitText: '保存',
     cancelText: '取消',
@@ -125,6 +136,8 @@ const model = reactive<ApplicationFormModel>({
   owner_user_id: '',
   status: 'active',
   artifact_type: '',
+  artifact_repository_id: '',
+  artifact_directory: '',
   language: '',
   gitops_branch_mappings: [],
   release_branches: [],
@@ -137,7 +150,20 @@ const rules: Record<string, Rule[]> = {
   owner_user_id: [{ required: true, message: '请选择负责人', trigger: 'change' }],
   status: [{ required: true, message: '请选择状态', trigger: 'change' }],
   artifact_type: [{ required: true, message: '请选择制品类型', trigger: 'change' }],
+  artifact_directory: [{ validator: validateArtifactDirectory, trigger: 'blur' }],
   language: [{ required: true, message: '请选择语言', trigger: 'change' }],
+}
+
+function validateArtifactDirectory(_rule: Rule, value: string) {
+  const repositoryID = model.artifact_repository_id.trim()
+  const directory = String(value || '').trim()
+  if (!repositoryID && directory) {
+    return Promise.reject('请先选择制品库')
+  }
+  if (repositoryID && !directory) {
+    return Promise.reject('请输入制品路径')
+  }
+  return Promise.resolve()
 }
 
 watch(
@@ -151,6 +177,8 @@ watch(
     model.owner_user_id = values.owner_user_id ?? ''
     model.status = values.status ?? 'active'
     model.artifact_type = values.artifact_type ?? ''
+    model.artifact_repository_id = values.artifact_repository_id ?? ''
+    model.artifact_directory = values.artifact_directory === '/' ? '' : values.artifact_directory ?? ''
     model.language = values.language ?? ''
     model.gitops_branch_mappings = Array.isArray(values.gitops_branch_mappings)
       ? values.gitops_branch_mappings.map((item) => ({
@@ -171,7 +199,12 @@ watch(
 async function handleSubmit() {
   try {
     await formRef.value?.validate()
-    emit('submit', { ...model })
+    const artifactRepositoryID = model.artifact_repository_id.trim()
+    emit('submit', {
+      ...model,
+      artifact_repository_id: artifactRepositoryID,
+      artifact_directory: artifactRepositoryID ? normalizeArtifactDirectory(model.artifact_directory) : '',
+    })
   } catch {
     // 校验失败由表单项自身提示
   }
@@ -179,6 +212,18 @@ async function handleSubmit() {
 
 function handleCancel() {
   emit('cancel')
+}
+
+function normalizeArtifactDirectory(value: string) {
+  const raw = String(value || '').trim().replace(/^\/+|\/+$/g, '')
+  return raw || '/'
+}
+
+function handleArtifactRepositoryChange(value: string | undefined) {
+  if (!value) {
+    model.artifact_directory = ''
+    formRef.value?.clearValidate(['artifact_directory'])
+  }
 }
 
 defineExpose({
@@ -316,6 +361,38 @@ function removeReleaseBranch(index: number) {
               <span class="field-label-with-hint">语言 <span class="field-required-hint">必填</span></span>
             </template>
             <a-select v-model:value="model.language" :options="languageOptions" />
+          </a-form-item>
+        </a-col>
+      </a-row>
+
+      <a-row :gutter="12" class="form-row-compact form-row-artifact-binding">
+        <a-col :xs="24" :md="12">
+          <a-form-item name="artifact_repository_id" class="form-item-compact form-item-artifact-repository">
+            <template #label>
+              <span class="field-label-with-hint">制品库</span>
+            </template>
+            <a-select
+              v-model:value="model.artifact_repository_id"
+              show-search
+              allow-clear
+              option-filter-prop="label"
+              :options="artifactRepositoryOptions"
+              :loading="artifactRepositoryLoading"
+              placeholder="可选，选择已配置制品库"
+              @change="handleArtifactRepositoryChange"
+            />
+          </a-form-item>
+        </a-col>
+        <a-col :xs="24" :md="12">
+          <a-form-item name="artifact_directory" class="form-item-compact form-item-artifact-directory">
+            <template #label>
+              <span class="field-label-with-hint">制品路径</span>
+            </template>
+            <a-input
+              v-model:value="model.artifact_directory"
+              :disabled="!model.artifact_repository_id"
+              placeholder="例如 release/pay-center"
+            />
           </a-form-item>
         </a-col>
       </a-row>
@@ -493,12 +570,14 @@ function removeReleaseBranch(index: number) {
 }
 
 .form-row-pair :deep(.ant-form-item),
-.form-row-triple :deep(.ant-form-item) {
+.form-row-triple :deep(.ant-form-item),
+.form-row-artifact-binding :deep(.ant-form-item) {
   margin-bottom: 14px;
 }
 
 .form-row-pair :deep(.ant-select-selector),
-.form-row-triple :deep(.ant-select-selector) {
+.form-row-triple :deep(.ant-select-selector),
+.form-row-artifact-binding :deep(.ant-select-selector) {
   min-width: 0;
 }
 
@@ -507,7 +586,9 @@ function removeReleaseBranch(index: number) {
 .form-item-owner,
 .form-item-status,
 .form-item-artifact,
-.form-item-language {
+.form-item-language,
+.form-item-artifact-repository,
+.form-item-artifact-directory {
   width: 100%;
   min-width: 0;
 }

@@ -83,13 +83,15 @@ type UserParamPermission struct {
 }
 
 type UserSession struct {
-	ID          string
-	UserID      string
-	AccessToken string
-	ExpiredAt   time.Time
-	ClientIP    string
-	UserAgent   string
-	CreatedAt   time.Time
+	ID            string
+	UserID        string
+	AccessToken   string
+	ExpiredAt     time.Time
+	ClientIP      string
+	UserAgent     string
+	RevokedAt     *time.Time
+	RevokedReason string
+	CreatedAt     time.Time
 }
 
 type UserListFilter struct {

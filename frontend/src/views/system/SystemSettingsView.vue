@@ -2,7 +2,18 @@
 import { ExclamationCircleOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { onMounted, reactive, ref } from 'vue'
-import { getReleaseSettings, updateReleaseSettings } from '../../api/system'
+import {
+  createAIModelConfig,
+  deleteAIModelConfig,
+  getReleaseSettings,
+  listAIModelConfigs,
+  setDiagnosisAIModelConfig,
+  testAIModelConfig,
+  unsetDiagnosisAIModelConfig,
+  updateAIModelConfig,
+  updateReleaseSettings,
+} from '../../api/system'
+import type { AIModelConfig } from '../../types/system'
 import { extractHTTPErrorMessage } from '../../utils/http-error'
 import AnnouncementManage from './AnnouncementManage.vue'
 
@@ -10,6 +21,13 @@ const activeTab = ref('release')
 const announcementRef = ref<InstanceType<typeof AnnouncementManage> | null>(null)
 const loading = ref(false)
 const saving = ref(false)
+const aiModelLoading = ref(false)
+const aiModelSaving = ref(false)
+const aiModelModalVisible = ref(false)
+const editingAIModel = ref<AIModelConfig | null>(null)
+const testingAIModelID = ref('')
+const settingDiagnosisModelID = ref('')
+const aiModelConfigs = ref<AIModelConfig[]>([])
 const envOptions = ref<string[]>([])
 const concurrency = reactive({
   enabled: false,
@@ -21,6 +39,18 @@ const concurrency = reactive({
 const gitopsConfig = reactive({
   helm_scan_path: 'apps/helm',
   kustomize_scan_path: 'apps/{app_key}/overlays/{env}',
+})
+
+const aiModelForm = reactive({
+  name: '',
+  provider: 'openai_compatible',
+  base_url: '',
+  model: '',
+  api_key: '',
+  temperature: 0.2,
+  max_tokens: 2048,
+  timeout_sec: 60,
+  enabled: true,
 })
 
 function normalizeEnvOptions(values: string[]) {
@@ -91,8 +121,146 @@ async function saveSettings() {
   }
 }
 
+function resetAIModelForm() {
+  editingAIModel.value = null
+  aiModelForm.name = ''
+  aiModelForm.provider = 'openai_compatible'
+  aiModelForm.base_url = ''
+  aiModelForm.model = ''
+  aiModelForm.api_key = ''
+  aiModelForm.temperature = 0.2
+  aiModelForm.max_tokens = 2048
+  aiModelForm.timeout_sec = 60
+  aiModelForm.enabled = true
+}
+
+async function loadAIModelConfigs() {
+  aiModelLoading.value = true
+  try {
+    const response = await listAIModelConfigs()
+    aiModelConfigs.value = response.data || []
+  } catch (error) {
+    message.error(extractHTTPErrorMessage(error, 'AI 模型配置加载失败'))
+  } finally {
+    aiModelLoading.value = false
+  }
+}
+
+function openAIModelCreateModal() {
+  resetAIModelForm()
+  aiModelModalVisible.value = true
+}
+
+function openAIModelEditModal(item: AIModelConfig) {
+  editingAIModel.value = item
+  aiModelForm.name = item.name
+  aiModelForm.provider = item.provider || 'openai_compatible'
+  aiModelForm.base_url = item.base_url
+  aiModelForm.model = item.model
+  aiModelForm.api_key = ''
+  aiModelForm.temperature = Number(item.temperature ?? 0.2)
+  aiModelForm.max_tokens = Number(item.max_tokens || 2048)
+  aiModelForm.timeout_sec = Number(item.timeout_sec || 60)
+  aiModelForm.enabled = Boolean(item.enabled)
+  aiModelModalVisible.value = true
+}
+
+function closeAIModelModal() {
+  aiModelModalVisible.value = false
+  resetAIModelForm()
+}
+
+async function saveAIModelConfig() {
+  if (!aiModelForm.name.trim() || !aiModelForm.base_url.trim() || !aiModelForm.model.trim()) {
+    message.warning('请填写模型名称、Base URL 和 Model')
+    return
+  }
+  aiModelSaving.value = true
+  try {
+    const payload = {
+      name: aiModelForm.name.trim(),
+      provider: aiModelForm.provider,
+      base_url: aiModelForm.base_url.trim(),
+      model: aiModelForm.model.trim(),
+      api_key: aiModelForm.api_key.trim() || undefined,
+      temperature: Number(aiModelForm.temperature ?? 0.2),
+      max_tokens: Number(aiModelForm.max_tokens || 2048),
+      timeout_sec: Number(aiModelForm.timeout_sec || 60),
+      enabled: Boolean(aiModelForm.enabled),
+    }
+    if (editingAIModel.value) {
+      await updateAIModelConfig(editingAIModel.value.id, payload)
+    } else {
+      await createAIModelConfig(payload)
+    }
+    message.success('AI 模型配置已保存')
+    closeAIModelModal()
+    await loadAIModelConfigs()
+  } catch (error) {
+    message.error(extractHTTPErrorMessage(error, 'AI 模型配置保存失败'))
+  } finally {
+    aiModelSaving.value = false
+  }
+}
+
+async function testAIModel(item: AIModelConfig) {
+  testingAIModelID.value = item.id
+  try {
+    await testAIModelConfig(item.id)
+    message.success('模型连接测试通过')
+  } catch (error) {
+    message.error(extractHTTPErrorMessage(error, '模型连接测试失败'))
+  } finally {
+    testingAIModelID.value = ''
+  }
+}
+
+async function setDiagnosisModel(item: AIModelConfig) {
+  settingDiagnosisModelID.value = item.id
+  try {
+    await setDiagnosisAIModelConfig(item.id)
+    message.success('已设置为诊断模型')
+    await loadAIModelConfigs()
+  } catch (error) {
+    message.error(extractHTTPErrorMessage(error, '设置诊断模型失败'))
+  } finally {
+    settingDiagnosisModelID.value = ''
+  }
+}
+
+async function unsetDiagnosisModel(item: AIModelConfig) {
+  settingDiagnosisModelID.value = item.id
+  try {
+    await unsetDiagnosisAIModelConfig(item.id)
+    message.success('已取消诊断模型设置')
+    await loadAIModelConfigs()
+  } catch (error) {
+    message.error(extractHTTPErrorMessage(error, '取消诊断模型设置失败'))
+  } finally {
+    settingDiagnosisModelID.value = ''
+  }
+}
+
+async function removeAIModel(item: AIModelConfig) {
+  if (item.is_diagnosis_model) {
+    message.warning('请先设置其他诊断模型后再删除')
+    return
+  }
+  if (!window.confirm(`确认删除 AI 模型配置「${item.name}」？`)) {
+    return
+  }
+  try {
+    await deleteAIModelConfig(item.id)
+    message.success('AI 模型配置已删除')
+    await loadAIModelConfigs()
+  } catch (error) {
+    message.error(extractHTTPErrorMessage(error, 'AI 模型配置删除失败'))
+  }
+}
+
 onMounted(() => {
   void loadSettings()
+  void loadAIModelConfigs()
 })
 </script>
 
@@ -116,6 +284,14 @@ onMounted(() => {
         >
           <template #icon><PlusOutlined /></template>
           新增公告
+        </a-button>
+        <a-button
+          v-if="activeTab === 'ai-models'"
+          class="settings-toolbar-action-btn settings-toolbar-action-btn--primary"
+          @click="openAIModelCreateModal"
+        >
+          <template #icon><PlusOutlined /></template>
+          新增模型
         </a-button>
       </div>
     </div>
@@ -248,7 +424,120 @@ onMounted(() => {
         <a-tab-pane key="announcement" tab="公告管理">
           <AnnouncementManage ref="announcementRef" />
         </a-tab-pane>
+        <a-tab-pane key="ai-models" tab="AI 模型">
+          <a-card :loading="aiModelLoading" :bordered="false" class="settings-card">
+            <template #title>
+              大模型配置
+              <a-popover
+                trigger="click"
+                placement="rightTop"
+                overlay-class-name="release-tip-popover"
+              >
+                <template #content>
+                  <div class="release-tip-content">
+                    维护可用于发布单阶段日志分析的大模型配置。只有被设置为诊断模型的启用配置会被阶段 AI 诊断调用。
+                  </div>
+                </template>
+                <button
+                  class="release-tip-trigger release-tip-trigger-info"
+                  type="button"
+                  aria-label="查看 AI 模型配置说明"
+                >
+                  <ExclamationCircleOutlined />
+                </button>
+              </a-popover>
+            </template>
+            <div v-if="aiModelConfigs.length > 0" class="ai-model-list">
+              <div v-for="item in aiModelConfigs" :key="item.id" class="ai-model-row">
+                <div class="ai-model-main">
+                  <div class="ai-model-title-row">
+                    <span class="ai-model-title">{{ item.name }}</span>
+                    <a-tag v-if="item.is_diagnosis_model" color="blue">诊断模型</a-tag>
+                    <a-tag :color="item.enabled ? 'green' : 'default'">
+                      {{ item.enabled ? '启用' : '停用' }}
+                    </a-tag>
+                  </div>
+                  <div class="ai-model-meta">
+                    <span>{{ item.provider }}</span>
+                    <span>{{ item.model }}</span>
+                    <span>{{ item.base_url }}</span>
+                    <span>{{ item.api_key_configured ? 'Key 已配置' : 'Key 未配置' }}</span>
+                  </div>
+                </div>
+                <a-space class="ai-model-actions" wrap>
+                  <a-button size="small" @click="openAIModelEditModal(item)">编辑</a-button>
+                  <a-button
+                    size="small"
+                    :loading="testingAIModelID === item.id"
+                    @click="testAIModel(item)"
+                  >测试连接</a-button>
+                  <a-button
+                    size="small"
+                    type="primary"
+                    ghost
+                    :disabled="!item.enabled || !item.api_key_configured"
+                    :loading="settingDiagnosisModelID === item.id"
+                    @click="setDiagnosisModel(item)"
+                    v-if="!item.is_diagnosis_model"
+                  >设置为诊断模型</a-button>
+                  <a-button
+                    v-else
+                    size="small"
+                    danger
+                    ghost
+                    :loading="settingDiagnosisModelID === item.id"
+                    @click="unsetDiagnosisModel(item)"
+                  >取消诊断模型设置</a-button>
+                  <a-button size="small" danger @click="removeAIModel(item)">删除</a-button>
+                </a-space>
+              </div>
+            </div>
+            <a-empty v-else description="暂无 AI 模型配置" />
+          </a-card>
+        </a-tab-pane>
       </a-tabs>
+
+    <a-modal
+      :open="aiModelModalVisible"
+      :title="editingAIModel ? '编辑 AI 模型' : '新增 AI 模型'"
+      :confirm-loading="aiModelSaving"
+      ok-text="保存"
+      cancel-text="取消"
+      @ok="saveAIModelConfig"
+      @cancel="closeAIModelModal"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="模型名称">
+          <a-input v-model:value="aiModelForm.name" placeholder="例如：默认诊断模型" />
+        </a-form-item>
+        <a-form-item label="Provider">
+          <a-select v-model:value="aiModelForm.provider">
+            <a-select-option value="openai_compatible">OpenAI Compatible</a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="Base URL">
+          <a-input v-model:value="aiModelForm.base_url" placeholder="https://api.example.com/v1" />
+        </a-form-item>
+        <a-form-item label="Model">
+          <a-input v-model:value="aiModelForm.model" placeholder="chat-model" />
+        </a-form-item>
+        <a-form-item :label="editingAIModel?.api_key_configured ? 'API Key（留空保留原 Key）' : 'API Key'">
+          <a-input-password v-model:value="aiModelForm.api_key" autocomplete="new-password" />
+        </a-form-item>
+        <a-form-item label="Temperature">
+          <a-input-number v-model:value="aiModelForm.temperature" :min="0" :max="2" :step="0.1" style="width: 100%" />
+        </a-form-item>
+        <a-form-item label="Max Tokens">
+          <a-input-number v-model:value="aiModelForm.max_tokens" :min="256" :max="32000" style="width: 100%" />
+        </a-form-item>
+        <a-form-item label="Timeout（秒）">
+          <a-input-number v-model:value="aiModelForm.timeout_sec" :min="5" :max="300" style="width: 100%" />
+        </a-form-item>
+        <a-form-item label="启用">
+          <a-switch v-model:checked="aiModelForm.enabled" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
@@ -285,7 +574,7 @@ onMounted(() => {
   gap: 8px;
   height: 42px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
   background: rgba(255, 255, 255, 0.42) !important;
   color: #0f172a !important;
   box-shadow:
@@ -357,6 +646,52 @@ onMounted(() => {
 .settings-card :deep(.ant-select),
 .settings-card :deep(.ant-input-number) {
   max-width: 480px;
+}
+
+.ai-model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ai-model-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.62);
+}
+
+.ai-model-row:last-child {
+  border-bottom: none;
+}
+
+.ai-model-main {
+  min-width: 0;
+}
+
+.ai-model-title-row,
+.ai-model-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-model-title {
+  color: var(--color-text-main);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.ai-model-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 8px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
 }
 
 @media (max-width: 1024px) {

@@ -27,6 +27,7 @@ func (h *NotificationHandler) RegisterRoutes(router gin.IRouter) {
 		return
 	}
 	router.GET("/notification-sources", h.ListSources)
+	router.POST("/notification-sources/actions/test-webhook", h.TestSourceWebhook)
 	router.GET("/notification-sources/:id", h.GetSource)
 	router.POST("/notification-sources", h.CreateSource)
 	router.PUT("/notification-sources/:id", h.UpdateSource)
@@ -54,6 +55,12 @@ type NotificationSourceListResponse struct {
 
 type NotificationSourceDataResponse struct {
 	Data usecase.NotificationSourceOutput `json:"data"`
+}
+
+type NotificationSourceWebhookTestResponse struct {
+	Success    bool   `json:"success"`
+	Message    string `json:"message"`
+	StatusCode int    `json:"status_code"`
 }
 
 type NotificationMarkdownTemplateListResponse struct {
@@ -85,6 +92,14 @@ type upsertNotificationSourceRequest struct {
 	VerificationParam string `json:"verification_param"`
 	Enabled           bool   `json:"enabled"`
 	Remark            string `json:"remark"`
+}
+
+type testNotificationSourceWebhookRequest struct {
+	SourceID          string `json:"source_id"`
+	Name              string `json:"name"`
+	SourceType        string `json:"source_type"`
+	WebhookURL        string `json:"webhook_url"`
+	VerificationParam string `json:"verification_param"`
 }
 
 type notificationMarkdownTemplateConditionRequest struct {
@@ -229,6 +244,50 @@ func (h *NotificationHandler) CreateSource(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": output})
+}
+
+// TestSourceWebhook 发送测试消息验证通知源 Webhook。
+// @Summary      测试通知源 Webhook
+// @Description  发送模拟通知验证通知源 Webhook 是否可达。
+// @Tags         notifications
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  GenericResponse
+// @Failure      400  {object}  ErrorResponse
+// @Failure      401  {object}  ErrorResponse
+// @Failure      403  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /notification-sources/actions/test-webhook [post]
+func (h *NotificationHandler) TestSourceWebhook(c *gin.Context) {
+	if !ensurePermission(c, h.authz, "system.notification.manage", "", "") {
+		return
+	}
+	if h.manager == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "notification manager is not configured"})
+		return
+	}
+	var req testNotificationSourceWebhookRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	output, err := h.manager.TestSourceWebhook(c.Request.Context(), usecase.TestNotificationSourceWebhookInput{
+		SourceID:          req.SourceID,
+		Name:              req.Name,
+		SourceType:        req.SourceType,
+		WebhookURL:        req.WebhookURL,
+		VerificationParam: req.VerificationParam,
+	})
+	if err != nil {
+		writeNotificationHTTPError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, NotificationSourceWebhookTestResponse{
+		Success:    output.Success,
+		Message:    output.Message,
+		StatusCode: output.StatusCode,
+	})
 }
 
 // UpdateSource 更新Source。

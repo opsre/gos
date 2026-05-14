@@ -48,6 +48,34 @@ func (s applicationRepositoryStub) InitSchema(context.Context) error {
 	return nil
 }
 
+// TestBuildGitOpsCommitMessageFieldsUsesCIOnlyForGOSArtifactURL GitOps 变量中的 GOS 制品地址只能来自 CI 单元。
+func TestBuildGitOpsCommitMessageFieldsUsesCIOnlyForGOSArtifactURL(t *testing.T) {
+	t.Parallel()
+
+	fields := buildGitOpsCommitMessageFields(
+		releasedomain.ReleaseOrder{OrderNo: "RO-1"},
+		[]releasedomain.ReleaseOrderParam{
+			{
+				PipelineScope: releasedomain.PipelineScopeCD,
+				ParamKey:      "gos_artifact_url",
+				ParamValue:    "https://cd.example.com/should-not-use.jar",
+			},
+			{
+				PipelineScope: releasedomain.PipelineScopeCI,
+				ParamKey:      "gos_artifact_url",
+				ParamValue:    "https://ci.example.com/app.jar",
+			},
+		},
+		"app-key",
+		"dev",
+		"1042",
+		"apps/demo",
+	)
+	if got := fields["gos_artifact_url"]; got != "https://ci.example.com/app.jar" {
+		t.Fatalf("gos_artifact_url = %q, want CI value", got)
+	}
+}
+
 type argoAppSnapshotStub struct {
 	targetRevision string
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CaretRightOutlined, DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
+import { CaretRightOutlined, CopyOutlined, DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { createAgentTask, createUnassignedAgentTask, deleteResidentAgentTask, deleteTemporaryAgentTask, executeAgentTask, executeStandaloneAgentTask, listAgents, listAgentScripts, listAllAgentTasks, updateResidentAgentTask, updateTemporaryAgentTask } from '../../api/agent'
@@ -14,6 +14,7 @@ import type {
   CreateAgentTaskPayload,
 } from '../../types/agent'
 import type { PlatformParamDict } from '../../types/platform-param'
+import { buildCloneName } from '../../utils/clone-name'
 import { extractHTTPErrorMessage } from '../../utils/http-error'
 
 interface TaskVariableFormItem {
@@ -903,11 +904,11 @@ const editTaskForm = reactive<CreateAgentTaskPayload>({
   timeout_sec: 300,
 })
 const editTaskID = ref('')
+const editTaskCloneSourceID = ref('')
 const editTaskTargetAgentIDs = ref<string[]>([])
 
-async function handleEditTemporaryTask(task: AgentTaskViewItem) {
-  editTaskID.value = task.id
-  editTaskForm.name = task.name
+function fillTemporaryTaskEditForm(task: AgentTaskViewItem, name: string) {
+  editTaskForm.name = name
   editTaskForm.task_mode = task.task_mode
   editTaskForm.task_type = task.task_type
   editTaskForm.shell_type = task.shell_type
@@ -919,6 +920,19 @@ async function handleEditTemporaryTask(task: AgentTaskViewItem) {
   editTaskVariables.value = buildTaskVariableItems(task.variables)
   editTaskForm.timeout_sec = task.timeout_sec
   editTaskTargetAgentIDs.value = [...(task.target_agent_ids || [])]
+}
+
+async function handleEditTemporaryTask(task: AgentTaskViewItem) {
+  editTaskID.value = task.id
+  editTaskCloneSourceID.value = ''
+  fillTemporaryTaskEditForm(task, task.name)
+  editTaskVisible.value = true
+}
+
+function handleCloneTemporaryTask(task: AgentTaskViewItem) {
+  editTaskID.value = ''
+  editTaskCloneSourceID.value = task.id
+  fillTemporaryTaskEditForm(task, buildCloneName(task.name))
   editTaskVisible.value = true
 }
 
@@ -941,12 +955,17 @@ async function handleSaveEditTemporaryTask() {
       target_agent_ids: editTaskTargetAgentIDs.value,
       timeout_sec: editTaskForm.timeout_sec,
     }
-    await updateTemporaryAgentTask(editTaskID.value, payload)
-    message.success('任务已更新')
+    if (editTaskCloneSourceID.value) {
+      await createUnassignedAgentTask(payload)
+      message.success('任务已克隆')
+    } else {
+      await updateTemporaryAgentTask(editTaskID.value, payload)
+      message.success('任务已更新')
+    }
     editTaskVisible.value = false
     await loadTaskViews({ silent: true })
   } catch (error) {
-    message.error(extractHTTPErrorMessage(error, '更新任务失败'))
+    message.error(extractHTTPErrorMessage(error, editTaskCloneSourceID.value ? '克隆任务失败' : '更新任务失败'))
   } finally {
     editTaskSaving.value = false
   }
@@ -977,10 +996,10 @@ const editResidentTaskForm = reactive<CreateAgentTaskPayload>({
   timeout_sec: 300,
 })
 const editResidentTaskID = ref('')
+const editResidentTaskCloneSourceID = ref('')
 
-function handleEditResidentTask(task: AgentTaskViewItem) {
-  editResidentTaskID.value = task.id
-  editResidentTaskForm.name = task.name
+function fillResidentTaskEditForm(task: AgentTaskViewItem, name: string) {
+  editResidentTaskForm.name = name
   editResidentTaskForm.task_mode = task.task_mode
   editResidentTaskForm.task_type = task.task_type
   editResidentTaskForm.shell_type = task.shell_type
@@ -991,6 +1010,19 @@ function handleEditResidentTask(task: AgentTaskViewItem) {
   editResidentTaskForm.variables = { ...task.variables }
   editResidentTaskVariables.value = buildTaskVariableItems(task.variables)
   editResidentTaskForm.timeout_sec = task.timeout_sec
+}
+
+function handleEditResidentTask(task: AgentTaskViewItem) {
+  editResidentTaskID.value = task.id
+  editResidentTaskCloneSourceID.value = ''
+  fillResidentTaskEditForm(task, task.name)
+  editResidentTaskVisible.value = true
+}
+
+function handleCloneResidentTask(task: AgentTaskViewItem) {
+  editResidentTaskID.value = ''
+  editResidentTaskCloneSourceID.value = task.id
+  fillResidentTaskEditForm(task, buildCloneName(task.name))
   editResidentTaskVisible.value = true
 }
 
@@ -1012,12 +1044,17 @@ async function handleSaveEditResidentTask() {
       variables: serializeTaskVariableItems(editResidentTaskVariables.value),
       timeout_sec: editResidentTaskForm.timeout_sec,
     }
-    await updateResidentAgentTask(editResidentTaskID.value, payload)
-    message.success('常驻任务已更新')
+    if (editResidentTaskCloneSourceID.value) {
+      await createUnassignedAgentTask(payload)
+      message.success('常驻任务已克隆')
+    } else {
+      await updateResidentAgentTask(editResidentTaskID.value, payload)
+      message.success('常驻任务已更新')
+    }
     editResidentTaskVisible.value = false
     await loadTaskViews({ silent: true })
   } catch (error) {
-    message.error(extractHTTPErrorMessage(error, '更新任务失败'))
+    message.error(extractHTTPErrorMessage(error, editResidentTaskCloneSourceID.value ? '克隆任务失败' : '更新任务失败'))
   } finally {
     editResidentTaskSaving.value = false
   }
@@ -1348,11 +1385,12 @@ onBeforeUnmount(() => {
 
     <a-modal
       v-model:open="editTaskVisible"
-      title="编辑临时任务"
+      :title="editTaskCloneSourceID ? '克隆临时任务' : '编辑临时任务'"
       :width="860"
       :confirm-loading="editTaskSaving"
       ok-text="保存"
       cancel-text="取消"
+      wrap-class-name="task-edit-modal-wrap"
       @ok="handleSaveEditTemporaryTask"
       @cancel="() => { editTaskVisible = false }"
     >
@@ -1510,6 +1548,15 @@ onBeforeUnmount(() => {
                       <template #icon><EditOutlined /></template>
                       编辑
                     </a-button>
+                    <a-button
+                      v-if="canManageAgent"
+                      type="link"
+                      size="small"
+                      @click="handleCloneResidentTask(item)"
+                    >
+                      <template #icon><CopyOutlined /></template>
+                      克隆
+                    </a-button>
                     <a-popconfirm
                       v-if="canManageAgent"
                       title="确认删除此常驻任务？"
@@ -1598,6 +1645,15 @@ onBeforeUnmount(() => {
                     >
                       <template #icon><EditOutlined /></template>
                       编辑
+                    </a-button>
+                    <a-button
+                      v-if="canManageAgent && !item.source_task_id"
+                      type="link"
+                      size="small"
+                      @click="handleCloneTemporaryTask(item)"
+                    >
+                      <template #icon><CopyOutlined /></template>
+                      克隆
                     </a-button>
                     <a-popconfirm
                       v-if="canManageAgent && canDeleteTemporaryTask(item)"
@@ -1745,7 +1801,7 @@ onBeforeUnmount(() => {
 
     <a-modal
       v-model:open="editResidentTaskVisible"
-      title="编辑常驻任务"
+      :title="editResidentTaskCloneSourceID ? '克隆常驻任务' : '编辑常驻任务'"
       :width="860"
       :confirm-loading="editResidentTaskSaving"
       ok-text="保存"
@@ -1866,7 +1922,7 @@ onBeforeUnmount(() => {
 .page-header-actions {
   --task-header-action-bg: rgba(255, 255, 255, 0.42);
   --task-header-action-bg-hover: rgba(255, 255, 255, 0.56);
-  --task-header-action-border: rgba(255, 255, 255, 0.34);
+  --task-header-action-border: rgba(148, 163, 184, 0.28);
   --task-header-action-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68), 0 10px 22px rgba(15, 23, 42, 0.05);
   --task-header-action-filter: blur(14px) saturate(135%);
   display: flex;
@@ -1950,8 +2006,39 @@ onBeforeUnmount(() => {
 :deep(.task-form-modal-save-btn.ant-btn) {
   flex: none;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: normal;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
+}
+
+.task-edit-modal-wrap :deep(.ant-modal-footer) {
+  margin-top: 14px;
+  border-top: 1px solid rgba(226, 232, 240, 0.92);
+  background: transparent;
+}
+
+.task-edit-modal-wrap :deep(.ant-modal-footer .ant-btn) {
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
+  background: rgba(255, 255, 255, 0.42) !important;
+  color: #0f172a !important;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.68),
+    0 10px 22px rgba(15, 23, 42, 0.05) !important;
+  backdrop-filter: blur(14px) saturate(135%);
+}
+
+.task-edit-modal-wrap :deep(.ant-modal-footer .ant-btn-primary) {
+  border-color: rgba(96, 165, 250, 0.42) !important;
+  background: rgba(96, 165, 250, 0.12) !important;
+  color: #2563eb !important;
+}
+
+.task-edit-modal-wrap :deep(.ant-modal-footer .ant-btn:hover),
+.task-edit-modal-wrap :deep(.ant-modal-footer .ant-btn:focus) {
+  border-color: rgba(96, 165, 250, 0.48) !important;
+  background: rgba(255, 255, 255, 0.56) !important;
 }
 
 .task-create-form {
@@ -2176,7 +2263,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--task-header-action-border) !important;
   background: var(--task-header-action-bg) !important;
   color: #0f172a !important;
-  font-weight: 700;
+  font-weight: 600;
   box-shadow: var(--task-header-action-shadow) !important;
   backdrop-filter: var(--task-header-action-filter);
 }
@@ -2189,7 +2276,7 @@ onBeforeUnmount(() => {
 
 :deep(.application-toolbar-action-btn.ant-btn) {
   padding-inline: 14px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 :deep(.application-toolbar-icon-btn.ant-btn:hover),

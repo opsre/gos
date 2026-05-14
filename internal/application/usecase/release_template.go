@@ -16,6 +16,7 @@ import (
 	gitopsdomain "gos/internal/domain/gitops"
 	notificationdomain "gos/internal/domain/notification"
 	pipelinedomain "gos/internal/domain/pipeline"
+	scandomain "gos/internal/domain/pipelinescan"
 	platformparamdomain "gos/internal/domain/platformparam"
 	releasedomain "gos/internal/domain/release"
 	"gos/internal/support/logx"
@@ -24,6 +25,7 @@ import (
 var templateBuiltinSourceKeys = map[string]struct{}{
 	"app_key":       {},
 	"app_name":      {},
+	"release_name":  {},
 	"env":           {},
 	"env_code":      {},
 	"branch":        {},
@@ -41,6 +43,7 @@ type ReleaseTemplateManager struct {
 	argocdRepo       argocddomain.Repository
 	agentRepo        agentdomain.Repository
 	notificationRepo notificationdomain.Repository
+	pipelineScanRepo scandomain.Repository
 	gitopsReader     ReleaseTemplateGitOpsFieldCandidateReader
 	now              func() time.Time
 }
@@ -171,6 +174,13 @@ func NewReleaseTemplateManager(
 			return time.Now().UTC()
 		},
 	}
+}
+
+func (uc *ReleaseTemplateManager) SetPipelineScanRepository(repo scandomain.Repository) {
+	if uc == nil {
+		return
+	}
+	uc.pipelineScanRepo = repo
 }
 
 // Create 创建业务资源并返回处理结果。
@@ -305,7 +315,7 @@ func (uc *ReleaseTemplateManager) Create(
 		logx.F("params_count", len(params)),
 		logx.F("gitops_rules_count", len(gitopsRules)),
 	)
-	return uc.repo.GetTemplateByID(ctx, template.ID)
+	return uc.GetByID(ctx, template.ID)
 }
 
 // GetByID 查询并返回指定资源数据。
@@ -317,7 +327,12 @@ func (uc *ReleaseTemplateManager) GetByID(
 	if id == "" {
 		return releasedomain.ReleaseTemplate{}, nil, nil, nil, nil, ErrInvalidID
 	}
-	return uc.repo.GetTemplateByID(ctx, id)
+	template, bindings, params, gitopsRules, hooks, err := uc.repo.GetTemplateByID(ctx, id)
+	if err != nil {
+		return releasedomain.ReleaseTemplate{}, nil, nil, nil, nil, err
+	}
+	uc.applyTemplateCompliance(ctx, &template, bindings)
+	return template, bindings, params, gitopsRules, hooks, nil
 }
 
 // List 查询并返回列表数据。
@@ -351,7 +366,20 @@ func (uc *ReleaseTemplateManager) List(
 	if filter.PageSize > maxPageSize {
 		filter.PageSize = maxPageSize
 	}
-	return uc.repo.ListTemplates(ctx, filter)
+	items, total, err := uc.repo.ListTemplates(ctx, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+	for idx := range items {
+		_, bindings, _, _, _, detailErr := uc.repo.GetTemplateByID(ctx, items[idx].ID)
+		if detailErr != nil {
+			items[idx].ComplianceStatus = releasedomain.TemplateComplianceStatusUnknown
+			items[idx].ComplianceSummary = "模板规范状态暂不可用"
+			continue
+		}
+		uc.applyTemplateCompliance(ctx, &items[idx], bindings)
+	}
+	return items, total, nil
 }
 
 // Update 更新业务资源并返回处理结果。
@@ -487,7 +515,21 @@ func (uc *ReleaseTemplateManager) Update(
 		logx.F("params_count", len(params)),
 		logx.F("gitops_rules_count", len(gitopsRules)),
 	)
-	return uc.repo.GetTemplateByID(ctx, template.ID)
+	return uc.GetByID(ctx, template.ID)
+}
+
+func (uc *ReleaseTemplateManager) applyTemplateCompliance(
+	ctx context.Context,
+	template *releasedomain.ReleaseTemplate,
+	bindings []releasedomain.ReleaseTemplateBinding,
+) {
+	if template == nil {
+		return
+	}
+	result := evaluateReleaseTemplateCompliance(ctx, uc.pipelineScanRepo, bindings)
+	template.ComplianceStatus = result.Status
+	template.ComplianceSummary = result.Summary
+	template.ComplianceFindings = append([]releasedomain.ReleaseTemplateComplianceFinding(nil), result.Findings...)
 }
 
 // Delete 删除业务资源并返回处理结果。

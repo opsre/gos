@@ -20,9 +20,12 @@ func NewRouter(
 	applicationHandler *ApplicationHandler,
 	projectHandler *ProjectHandler,
 	systemSettingsHandler *SystemSettingsHandler,
+	aiModelConfigHandler *AIModelConfigHandler,
 	pipelineHandler *PipelineHandler,
+	pipelineScanHandler *PipelineScanHandler,
 	argocdHandler *ArgoCDHandler,
 	gitopsHandler *GitOpsHandler,
+	artifactRepositoryHandler *ArtifactRepositoryHandler,
 	platformParamHandler *PlatformParamHandler,
 	notificationHandler *NotificationHandler,
 	executorParamHandler *ExecutorParamHandler,
@@ -43,9 +46,12 @@ func NewRouter(
 	registerApplicationRoutes(router, applicationHandler)
 	registerProjectRoutes(router, projectHandler)
 	registerSystemSettingsRoutes(router, systemSettingsHandler)
+	registerAIModelConfigRoutes(router, aiModelConfigHandler)
 	registerPipelineRoutes(router, pipelineHandler)
+	registerPipelineScanRoutes(router, pipelineScanHandler)
 	registerArgoCDRoutes(router, argocdHandler)
 	registerGitOpsRoutes(router, gitopsHandler)
+	registerArtifactRepositoryRoutes(router, artifactRepositoryHandler)
 	registerPlatformParamRoutes(router, platformParamHandler)
 	registerNotificationRoutes(router, notificationHandler)
 	registerExecutorParamRoutes(router, executorParamHandler)
@@ -53,6 +59,13 @@ func NewRouter(
 	registerReleaseTemplateRoutes(router, releaseTemplateHandler)
 	registerAnnouncementRoutes(router, announcementHandler)
 	return router
+}
+
+func registerAIModelConfigRoutes(router gin.IRouter, aiModelConfigHandler *AIModelConfigHandler) {
+	if aiModelConfigHandler == nil {
+		return
+	}
+	aiModelConfigHandler.RegisterRoutes(router)
 }
 
 // registerPublicAgentRoutes 封装当前模块的业务处理逻辑。
@@ -112,6 +125,14 @@ func registerPipelineRoutes(router gin.IRouter, pipelineHandler *PipelineHandler
 	pipelineHandler.RegisterRoutes(router)
 }
 
+// registerPipelineScanRoutes 封装当前模块的业务处理逻辑。
+func registerPipelineScanRoutes(router gin.IRouter, pipelineScanHandler *PipelineScanHandler) {
+	if pipelineScanHandler == nil {
+		return
+	}
+	pipelineScanHandler.RegisterRoutes(router)
+}
+
 // registerArgoCDRoutes 封装当前模块的业务处理逻辑。
 func registerArgoCDRoutes(router gin.IRouter, argocdHandler *ArgoCDHandler) {
 	if argocdHandler == nil {
@@ -126,6 +147,14 @@ func registerGitOpsRoutes(router gin.IRouter, gitopsHandler *GitOpsHandler) {
 		return
 	}
 	gitopsHandler.RegisterRoutes(router)
+}
+
+// registerArtifactRepositoryRoutes 封装当前模块的业务处理逻辑。
+func registerArtifactRepositoryRoutes(router gin.IRouter, artifactRepositoryHandler *ArtifactRepositoryHandler) {
+	if artifactRepositoryHandler == nil {
+		return
+	}
+	artifactRepositoryHandler.RegisterRoutes(router)
 }
 
 // registerPlatformParamRoutes 封装当前模块的业务处理逻辑。
@@ -184,7 +213,7 @@ func cors() gin.HandlerFunc {
 			c.Header("Vary", "Origin")
 		}
 		c.Header("Access-Control-Allow-Credentials", "true")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
 		if c.Request.Method == http.MethodOptions {

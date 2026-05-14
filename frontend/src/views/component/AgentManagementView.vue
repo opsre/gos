@@ -1861,7 +1861,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   height: 42px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
   background: rgba(255, 255, 255, 0.42) !important;
   color: #0f172a !important;
   box-shadow:
@@ -1870,13 +1870,39 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(14px) saturate(135%);
   padding-inline: 14px;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .agent-toolbar-action-btn:hover,
 .agent-toolbar-action-btn:focus,
 .agent-toolbar-action-btn:focus-visible,
 .agent-toolbar-action-btn:active {
+  border-color: rgba(96, 165, 250, 0.34) !important;
+  background: rgba(255, 255, 255, 0.56) !important;
+  color: #0f172a !important;
+}
+
+:deep(.application-toolbar-action-btn.ant-btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 42px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
+  background: rgba(255, 255, 255, 0.42) !important;
+  color: #0f172a !important;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.68),
+    0 10px 22px rgba(15, 23, 42, 0.05) !important;
+  backdrop-filter: blur(14px) saturate(135%);
+}
+
+:deep(.application-toolbar-action-btn.ant-btn):hover,
+:deep(.application-toolbar-action-btn.ant-btn):focus,
+:deep(.application-toolbar-action-btn.ant-btn):focus-visible,
+:deep(.application-toolbar-action-btn.ant-btn):active {
   border-color: rgba(96, 165, 250, 0.34) !important;
   background: rgba(255, 255, 255, 0.56) !important;
   color: #0f172a !important;
@@ -1904,7 +1930,7 @@ onBeforeUnmount(() => {
 	width: 42px;
 	height: 42px;
 	border-radius: 16px;
-	border: 1px solid rgba(255, 255, 255, 0.34) !important;
+	border: 1px solid rgba(148, 163, 184, 0.28) !important;
 	background: rgba(255, 255, 255, 0.42) !important;
 	color: #0f172a !important;
 	box-shadow:
@@ -2484,7 +2510,7 @@ onBeforeUnmount(() => {
 }
 
 .agent-form-modal-save-btn.ant-btn {
-	flex: none; font-size: 14px; font-weight: 700; letter-spacing: normal;
+	flex: none; font-size: 14px; font-weight: 600; letter-spacing: normal;
 }
 
 .agent-form {

@@ -28,3 +28,46 @@ export interface UpdateReleaseSettingsPayload {
   concurrency: ReleaseConcurrencySettings
   gitops_config: ReleaseGitOpsConfig
 }
+
+export interface AIModelConfig {
+  id: string
+  name: string
+  provider: string
+  base_url: string
+  model: string
+  api_key_configured: boolean
+  temperature: number
+  max_tokens: number
+  timeout_sec: number
+  enabled: boolean
+  is_diagnosis_model: boolean
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface AIModelConfigPayload {
+  name: string
+  provider: string
+  base_url: string
+  model: string
+  api_key?: string
+  temperature: number
+  max_tokens: number
+  timeout_sec: number
+  enabled: boolean
+}
+
+export interface AIModelConfigListResponse {
+  data: AIModelConfig[]
+}
+
+export interface AIModelConfigDataResponse {
+  data: AIModelConfig
+}
+
+export interface AIModelConfigTestResponse {
+  data: {
+    ok: boolean
+  }
+}

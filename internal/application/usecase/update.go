@@ -50,6 +50,10 @@ func (uc *UpdateApplication) Execute(ctx context.Context, id string, input domai
 	if !input.Status.Valid() {
 		return domain.Application{}, ErrInvalidStatus
 	}
+	artifactRepositoryID, artifactDirectory, err := normalizeApplicationArtifactBinding(input.ArtifactRepositoryID, input.ArtifactDirectory)
+	if err != nil {
+		return domain.Application{}, err
+	}
 	project, err := uc.projectRepo.GetByID(ctx, strings.TrimSpace(input.ProjectID))
 	if err != nil {
 		return domain.Application{}, err
@@ -65,11 +69,37 @@ func (uc *UpdateApplication) Execute(ctx context.Context, id string, input domai
 		Owner:                strings.TrimSpace(input.Owner),
 		Status:               input.Status,
 		ArtifactType:         strings.TrimSpace(input.ArtifactType),
+		ArtifactRepositoryID: artifactRepositoryID,
+		ArtifactDirectory:    artifactDirectory,
 		Language:             strings.TrimSpace(input.Language),
 		GitOpsBranchMappings: normalizeGitOpsBranchMappings(input.GitOpsBranchMappings),
 		ReleaseBranches:      normalizeReleaseBranchOptions(input.ReleaseBranches),
 	}
 	return uc.repo.Update(ctx, id, clean, uc.now())
+}
+
+func normalizeApplicationArtifactBinding(repositoryID string, directory string) (string, string, error) {
+	repositoryID = strings.TrimSpace(repositoryID)
+	rawDirectory := strings.TrimSpace(directory)
+	if repositoryID == "" {
+		if rawDirectory != "" {
+			return "", "", fmt.Errorf("%w: artifact_repository_id is required when artifact_directory is set", ErrInvalidInput)
+		}
+		return "", "", nil
+	}
+	if rawDirectory == "" {
+		return "", "", fmt.Errorf("%w: artifact_directory is required when artifact_repository_id is set", ErrInvalidInput)
+	}
+	return repositoryID, normalizeApplicationArtifactDirectory(rawDirectory), nil
+}
+
+func normalizeApplicationArtifactDirectory(value string) string {
+	raw := strings.TrimSpace(value)
+	raw = strings.Trim(raw, "/")
+	if raw == "" {
+		return "/"
+	}
+	return raw
 }
 
 // normalizeGitOpsBranchMappings 标准化输入值，保证后续逻辑使用统一格式。

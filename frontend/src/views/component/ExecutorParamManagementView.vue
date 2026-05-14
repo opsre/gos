@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { LinkOutlined, SearchOutlined } from '@ant-design/icons-vue'
-import { message } from 'ant-design-vue'
+import { LinkOutlined, SearchOutlined, ThunderboltOutlined } from '@ant-design/icons-vue'
+import { message, Modal } from 'ant-design-vue'
 import type { FormInstance, TableColumnsType } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
@@ -53,12 +53,18 @@ interface SearchSuggestion {
   query: string
 }
 
+interface AutoMappingTarget {
+  id: string
+  targetParamKey: string
+}
+
 const route = useRoute()
 const router = useRouter()
 
 const loading = ref(false)
 const mappingOptionsLoading = ref(false)
 const mappingSubmitting = ref(false)
+const autoMappingSubmitting = ref(false)
 const dataSource = ref<ExecutorParamDef[]>([])
 const total = ref(0)
 const routeBindingHint = ref<RouteBindingHint | null>(null)
@@ -282,6 +288,23 @@ function parseBooleanFilter(value: '' | 'true' | 'false') {
   return value === 'true'
 }
 
+function normalizeAutoMappingName(value: unknown) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
+function registerAutoMappingCandidate(paramMap: Map<string, string>, value: unknown, paramKey: string) {
+  const normalizedName = normalizeAutoMappingName(value)
+  const normalizedParamKey = String(paramKey || '').trim().toLowerCase()
+  if (!normalizedName || !normalizedParamKey || paramMap.has(normalizedName)) {
+    return
+  }
+  paramMap.set(normalizedName, normalizedParamKey)
+}
+
 function formatApplicationLabel(record: Partial<ExecutorParamDef>) {
   const name = String(record.application_name || '').trim()
   const key = String(record.application_key || '').trim()
@@ -375,6 +398,34 @@ async function loadPlatformParamOptions(currentParamKey = '') {
   }
 }
 
+async function loadAutoMappingParamMap() {
+  const paramMap = new Map<string, string>()
+  let page = 1
+  const pageSize = 100
+
+  while (true) {
+    const response = await listPlatformParamDicts({
+      status: 1,
+      page,
+      page_size: pageSize,
+    })
+    const items = response.data || []
+    items
+      .filter((item: PlatformParamDict) => !item.cd_self_fill)
+      .forEach((item: PlatformParamDict) => {
+        registerAutoMappingCandidate(paramMap, item.param_key, item.param_key)
+        registerAutoMappingCandidate(paramMap, item.name, item.param_key)
+      })
+
+    if (items.length === 0 || page * (response.page_size || pageSize) >= response.total) {
+      break
+    }
+    page += 1
+  }
+
+  return paramMap
+}
+
 async function loadExecutorParams() {
   const keyword = String(filters.keyword || '').trim()
   loading.value = true
@@ -404,6 +455,113 @@ async function loadExecutorParams() {
     message.error(extractHTTPErrorMessage(error, '执行器参数加载失败'))
   } finally {
     loading.value = false
+  }
+}
+
+async function listExecutorParamsForAutoMapping() {
+  const keyword = String(filters.keyword || '').trim()
+  const items: ExecutorParamDef[] = []
+  let page = 1
+  const pageSize = 100
+
+  while (true) {
+    const commonParams = {
+      binding_type: filters.binding_type,
+      status: filters.status || undefined,
+      visible: parseBooleanFilter(filters.visible),
+      editable: parseBooleanFilter(filters.editable),
+      page,
+      page_size: pageSize,
+    }
+    const response =
+      filters.application_id && !keyword
+        ? await listApplicationExecutorParamDefs(filters.application_id, commonParams)
+        : await listExecutorParamDefs({
+            ...commonParams,
+            keyword: keyword || undefined,
+          })
+    const pageItems = response.data || []
+    items.push(...pageItems)
+
+    if (pageItems.length === 0 || items.length >= response.total) {
+      break
+    }
+    page += 1
+  }
+
+  return items
+}
+
+function buildAutoMappingTargets(items: ExecutorParamDef[], paramMap: Map<string, string>) {
+  const targets: AutoMappingTarget[] = []
+  for (const item of items) {
+    if (!item.can_edit) {
+      continue
+    }
+    const normalizedExecutorParamName = normalizeAutoMappingName(item.executor_param_name)
+    const targetParamKey = paramMap.get(normalizedExecutorParamName)
+    if (!targetParamKey) {
+      continue
+    }
+    const currentParamKey = String(item.param_key || '').trim().toLowerCase()
+    if (currentParamKey === targetParamKey) {
+      continue
+    }
+    targets.push({
+      id: item.id,
+      targetParamKey,
+    })
+  }
+  return targets
+}
+
+function handleAutoMapExecutorParams() {
+  if (autoMappingSubmitting.value) {
+    return
+  }
+
+  Modal.confirm({
+    title: '确认一键映射参数？',
+    content:
+      '系统会读取当前筛选范围内的管线参数，将字段名称与管线参数名称一致的字段自动绑定。' +
+      '已有映射如果与匹配结果不一致会被覆盖，请确认后再执行。',
+    okText: '确认映射',
+    cancelText: '取消',
+    async onOk() {
+      await runAutoMapExecutorParams()
+    },
+  })
+}
+
+async function runAutoMapExecutorParams() {
+  if (autoMappingSubmitting.value) {
+    return
+  }
+
+  autoMappingSubmitting.value = true
+  try {
+    const [paramMap, items] = await Promise.all([loadAutoMappingParamMap(), listExecutorParamsForAutoMapping()])
+    const targets = buildAutoMappingTargets(items, paramMap)
+    if (!targets.length) {
+      message.info('没有找到可自动映射的参数')
+      return
+    }
+
+    let successCount = 0
+    for (const item of targets) {
+      const targetParamKey = item.targetParamKey
+      await updateExecutorParamDef(item.id, {
+        param_key: targetParamKey,
+      })
+      successCount += 1
+    }
+
+    message.success(`已自动映射 ${successCount} 个参数`)
+    await loadExecutorParams()
+  } catch (error) {
+    message.error(extractHTTPErrorMessage(error, '一键映射失败'))
+  } finally {
+    autoMappingSubmitting.value = false
   }
 }
 
@@ -699,6 +857,17 @@ onUnmounted(() => {
           ]"
         />
         <a-button class="executor-toolbar-query-btn" @click="handleToolbarFilterChange">查询</a-button>
+        <a-button
+          class="application-toolbar-action-btn executor-auto-map-btn"
+          :loading="autoMappingSubmitting"
+          :disabled="loading"
+          @click="handleAutoMapExecutorParams"
+        >
+          <template #icon>
+            <ThunderboltOutlined />
+          </template>
+          一键映射
+        </a-button>
         <a-button
           v-if="showBindingLink"
           class="page-header-link-btn"
@@ -1007,7 +1176,7 @@ onUnmounted(() => {
   gap: 8px;
   height: 42px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
   background: rgba(255, 255, 255, 0.42) !important;
   color: #0f172a !important;
   box-shadow:
@@ -1166,7 +1335,7 @@ onUnmounted(() => {
   height: 42px;
   padding-inline: 18px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.58) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.56), rgba(255, 255, 255, 0.24)),
     rgba(255, 255, 255, 0.18) !important;

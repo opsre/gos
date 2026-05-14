@@ -269,6 +269,8 @@ type ReleaseOrder struct {
 	ApplicationName       string
 	TemplateID            string
 	TemplateName          string
+	DeliveryEngine        string
+	StrategySnapshotJSON  string
 	BindingID             string
 	PipelineID            string
 	EnvCode               string
@@ -522,6 +524,41 @@ type ReleaseOrderExecution struct {
 	UpdatedAt      time.Time
 }
 
+type ReleaseOrderArtifactMetadata struct {
+	ID              string
+	ReleaseOrderID  string
+	ExecutionID     string
+	PipelineScope   PipelineScope
+	ArtifactName    string
+	ArtifactType    string
+	ArtifactVersion string
+	ArtifactURL     string
+	RepositoryID    string
+	RepositoryName  string
+	Bucket          string
+	ObjectKey       string
+	Checksum        string
+	ChecksumType    string
+	SizeBytes       int64
+	BuildNumber     string
+	MetadataJSON    string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+type ReleaseOrderArtifactMetadataSummary struct {
+	Artifact        ReleaseOrderArtifactMetadata
+	ReleaseOrderNo  string
+	ReleaseName     string
+	ApplicationID   string
+	ApplicationName string
+	ProjectID       string
+	ProjectName     string
+	ProjectKey      string
+	EnvCode         string
+	OrderStatus     OrderStatus
+}
+
 type ExecutionLockScope string
 
 const (
@@ -665,6 +702,23 @@ func (s TemplateStatus) Valid() bool {
 	}
 }
 
+type TemplateComplianceStatus string
+
+const (
+	TemplateComplianceStatusCompliant TemplateComplianceStatus = "compliant"
+	TemplateComplianceStatusViolated  TemplateComplianceStatus = "violated"
+	TemplateComplianceStatusUnknown   TemplateComplianceStatus = "unknown"
+)
+
+func (s TemplateComplianceStatus) Valid() bool {
+	switch s {
+	case TemplateComplianceStatusCompliant, TemplateComplianceStatusViolated, TemplateComplianceStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 type ReleaseTemplate struct {
 	ID                    string
 	Name                  string
@@ -681,8 +735,24 @@ type ReleaseTemplate struct {
 	ApprovalApproverNames []string
 	Remark                string
 	ParamCount            int
+	ComplianceStatus      TemplateComplianceStatus
+	ComplianceSummary     string
+	ComplianceFindings    []ReleaseTemplateComplianceFinding
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
+}
+
+type ReleaseTemplateComplianceFinding struct {
+	PipelineScope PipelineScope
+	PipelineID    string
+	PipelineName  string
+	RuleID        string
+	RuleCode      string
+	RuleName      string
+	Severity      string
+	LineNo        int
+	Message       string
+	Suggestion    string
 }
 
 type TemplateApprovalMode string

@@ -70,6 +70,8 @@ type CreateApplicationRequest struct {
 	Owner                string                       `json:"owner"`
 	Status               string                       `json:"status"`
 	ArtifactType         string                       `json:"artifact_type"`
+	ArtifactRepositoryID string                       `json:"artifact_repository_id"`
+	ArtifactDirectory    string                       `json:"artifact_directory"`
 	Language             string                       `json:"language"`
 	GitOpsBranchMappings []domain.GitOpsBranchMapping `json:"gitops_branch_mappings"`
 	ReleaseBranches      []domain.ReleaseBranchOption `json:"release_branches"`
@@ -85,6 +87,8 @@ type UpdateApplicationRequest struct {
 	Owner                string                       `json:"owner"`
 	Status               string                       `json:"status"`
 	ArtifactType         string                       `json:"artifact_type"`
+	ArtifactRepositoryID string                       `json:"artifact_repository_id"`
+	ArtifactDirectory    string                       `json:"artifact_directory"`
 	Language             string                       `json:"language"`
 	GitOpsBranchMappings []domain.GitOpsBranchMapping `json:"gitops_branch_mappings"`
 	ReleaseBranches      []domain.ReleaseBranchOption `json:"release_branches"`
@@ -103,6 +107,8 @@ type ApplicationResponse struct {
 	Owner                string                       `json:"owner"`
 	Status               string                       `json:"status"`
 	ArtifactType         string                       `json:"artifact_type"`
+	ArtifactRepositoryID string                       `json:"artifact_repository_id"`
+	ArtifactDirectory    string                       `json:"artifact_directory"`
 	Language             string                       `json:"language"`
 	GitOpsBranchMappings []domain.GitOpsBranchMapping `json:"gitops_branch_mappings"`
 	ReleaseBranches      []domain.ReleaseBranchOption `json:"release_branches"`
@@ -178,6 +184,8 @@ func (h *ApplicationHandler) Create(c *gin.Context) {
 		Owner:                ownerName,
 		Status:               domain.Status(strings.TrimSpace(req.Status)),
 		ArtifactType:         req.ArtifactType,
+		ArtifactRepositoryID: req.ArtifactRepositoryID,
+		ArtifactDirectory:    req.ArtifactDirectory,
 		Language:             req.Language,
 		GitOpsBranchMappings: req.GitOpsBranchMappings,
 		ReleaseBranches:      req.ReleaseBranches,
@@ -504,6 +512,8 @@ func (h *ApplicationHandler) Update(c *gin.Context) {
 		Owner:                ownerName,
 		Status:               domain.Status(strings.TrimSpace(req.Status)),
 		ArtifactType:         req.ArtifactType,
+		ArtifactRepositoryID: req.ArtifactRepositoryID,
+		ArtifactDirectory:    req.ArtifactDirectory,
 		Language:             req.Language,
 		GitOpsBranchMappings: req.GitOpsBranchMappings,
 		ReleaseBranches:      req.ReleaseBranches,
@@ -552,6 +562,8 @@ func toResponse(app domain.Application) ApplicationResponse {
 		Owner:                app.Owner,
 		Status:               string(app.Status),
 		ArtifactType:         app.ArtifactType,
+		ArtifactRepositoryID: app.ArtifactRepositoryID,
+		ArtifactDirectory:    app.ArtifactDirectory,
 		Language:             app.Language(),
 		GitOpsBranchMappings: app.GitOpsBranchMappings,
 		ReleaseBranches:      app.ReleaseBranches,

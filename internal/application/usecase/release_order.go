@@ -10,33 +10,41 @@ import (
 	"time"
 
 	agentdomain "gos/internal/domain/agent"
+	aidomain "gos/internal/domain/ai"
 	appdomain "gos/internal/domain/application"
 	argocddomain "gos/internal/domain/argocdapp"
+	artifactrepodomain "gos/internal/domain/artifactrepo"
 	pipelineparamdomain "gos/internal/domain/executorparam"
 	gitopsdomain "gos/internal/domain/gitops"
 	notificationdomain "gos/internal/domain/notification"
 	pipelinedomain "gos/internal/domain/pipeline"
+	scandomain "gos/internal/domain/pipelinescan"
 	platformparamdomain "gos/internal/domain/platformparam"
 	domain "gos/internal/domain/release"
 	"gos/internal/support/logx"
 )
 
 type ReleaseOrderManager struct {
-	repo             domain.Repository
-	appRepo          appdomain.Repository
-	pipelineRepo     pipelinedomain.Repository
-	paramRepo        pipelineparamdomain.Repository
-	platformRepo     platformparamdomain.Repository
-	releaseSettings  ReleaseSettingsStore
-	jenkins          JenkinsReleaseExecutor
-	agentRepo        agentdomain.Repository
-	argocdRepo       argocddomain.Repository
-	gitopsRepo       gitopsdomain.Repository
-	notificationRepo notificationdomain.Repository
-	argocdFactory    ArgoCDClientFactory
-	gitopsFactory    GitOpsServiceFactory
-	gitops           GitOpsReleaseService
-	now              func() time.Time
+	repo               domain.Repository
+	appRepo            appdomain.Repository
+	pipelineRepo       pipelinedomain.Repository
+	paramRepo          pipelineparamdomain.Repository
+	platformRepo       platformparamdomain.Repository
+	artifactRepo       artifactrepodomain.Repository
+	releaseSettings    ReleaseSettingsStore
+	jenkins            JenkinsReleaseExecutor
+	agentRepo          agentdomain.Repository
+	argocdRepo         argocddomain.Repository
+	gitopsRepo         gitopsdomain.Repository
+	notificationRepo   notificationdomain.Repository
+	pipelineScanRepo   scandomain.Repository
+	aiModelRepo        aidomain.ModelConfigRepository
+	stageDiagnosisRepo aidomain.StageDiagnosisRepository
+	aiClientFactory    AIModelClientFactory
+	argocdFactory      ArgoCDClientFactory
+	gitopsFactory      GitOpsServiceFactory
+	gitops             GitOpsReleaseService
+	now                func() time.Time
 }
 
 type CreateReleaseOrderInput struct {
@@ -106,6 +114,14 @@ type JenkinsReleaseExecutor interface {
 	AbortBuild(ctx context.Context, buildURL string) error
 	GetBuildStages(ctx context.Context, buildURL string) ([]domain.ReleaseOrderPipelineStage, error)
 	GetBuildStageLog(ctx context.Context, buildURL string, stageKey string) (domain.ReleaseOrderPipelineStageLog, error)
+}
+
+type JenkinsReleaseStageLogNamedReader interface {
+	GetBuildStageLogWithName(ctx context.Context, buildURL string, stageKey string, stageName string) (domain.ReleaseOrderPipelineStageLog, error)
+}
+
+type JenkinsReleaseParamReader interface {
+	GetJobParamSet(ctx context.Context, fullName string) (pipelineparamdomain.JenkinsJobParamSet, error)
 }
 
 type ArgoCDReleaseExecutor interface {
@@ -180,6 +196,41 @@ func NewReleaseOrderManager(
 			return time.Now().UTC()
 		},
 	}
+}
+
+func (uc *ReleaseOrderManager) SetPipelineScanRepository(repo scandomain.Repository) {
+	if uc == nil {
+		return
+	}
+	uc.pipelineScanRepo = repo
+}
+
+func (uc *ReleaseOrderManager) SetAIModelRepository(repo aidomain.ModelConfigRepository) {
+	if uc == nil {
+		return
+	}
+	uc.aiModelRepo = repo
+}
+
+func (uc *ReleaseOrderManager) SetStageDiagnosisRepository(repo aidomain.StageDiagnosisRepository) {
+	if uc == nil {
+		return
+	}
+	uc.stageDiagnosisRepo = repo
+}
+
+func (uc *ReleaseOrderManager) SetAIClientFactory(factory AIModelClientFactory) {
+	if uc == nil {
+		return
+	}
+	uc.aiClientFactory = factory
+}
+
+func (uc *ReleaseOrderManager) SetArtifactRepository(repo artifactrepodomain.Repository) {
+	if uc == nil {
+		return
+	}
+	uc.artifactRepo = repo
 }
 
 // Create 创建业务资源并返回处理结果。
@@ -266,6 +317,7 @@ func (uc *ReleaseOrderManager) Create(
 		firstNonEmpty(strings.TrimSpace(input.GitRef), inputSummary.GitRef),
 		firstNonEmpty(strings.TrimSpace(input.SonService), inputSummary.ProjectName),
 		firstNonEmpty(strings.TrimSpace(input.ImageTag), inputSummary.ImageTag),
+		strings.TrimSpace(input.ReleaseName),
 	)
 	if err != nil {
 		logx.Error("release_order", "create_failed", err,
@@ -497,6 +549,7 @@ func (uc *ReleaseOrderManager) Update(
 		firstNonEmpty(strings.TrimSpace(input.GitRef), inputSummary.GitRef),
 		firstNonEmpty(strings.TrimSpace(input.SonService), inputSummary.ProjectName),
 		firstNonEmpty(strings.TrimSpace(input.ImageTag), inputSummary.ImageTag),
+		strings.TrimSpace(input.ReleaseName),
 	)
 	if err != nil {
 		logx.Error("release_order", "update_failed", err,
@@ -728,6 +781,9 @@ func (uc *ReleaseOrderManager) CreatePipelineReplayByOrder(
 		)
 		return domain.ReleaseOrder{}, err
 	}
+	if err := ensureReplaySourceOrderCanReplay(sourceOrder); err != nil {
+		return domain.ReleaseOrder{}, err
+	}
 	if !canCreatePipelineReplayFromStatus(sourceOrder.Status) {
 		return domain.ReleaseOrder{}, fmt.Errorf("%w: 仅支持从成功或失败发布单发起一键重发", ErrInvalidInput)
 	}
@@ -954,6 +1010,13 @@ func executorParamNameOrKey(executorParamName string, paramKey string) string {
 	return strings.TrimSpace(paramKey)
 }
 
+const standardParamGOSArtifactURL = "gos_artifact_url"
+
+// isCIOnlyStandardParamKey 判断标准字段是否只能从 CI 执行单元取值。
+func isCIOnlyStandardParamKey(key string) bool {
+	return strings.EqualFold(strings.TrimSpace(key), standardParamGOSArtifactURL)
+}
+
 // templateUsesArgoCD 封装当前模块的业务处理逻辑。
 func templateUsesArgoCD(bindings []domain.ReleaseTemplateBinding) bool {
 	for _, item := range bindings {
@@ -977,6 +1040,7 @@ func (uc *ReleaseOrderManager) materializeCreateTemplateParams(
 	gitRef string,
 	projectName string,
 	imageTag string,
+	releaseName string,
 ) ([]CreateReleaseOrderParamInput, error) {
 	submittedByTemplateKey := make(map[string]CreateReleaseOrderParamInput, len(input))
 	submittedByScopeParamKey := make(map[string]CreateReleaseOrderParamInput, len(input))
@@ -992,6 +1056,14 @@ func (uc *ReleaseOrderManager) materializeCreateTemplateParams(
 		domain.PipelineScopeCI: {},
 		domain.PipelineScopeCD: {},
 	}
+	artifactValues, err := uc.resolveApplicationArtifactParamValues(ctx, app)
+	if err != nil {
+		return nil, err
+	}
+	executorDefaultValues, err := uc.loadTemplateParamDefaultValues(ctx, templateParams)
+	if err != nil {
+		return nil, err
+	}
 
 	resolveSubmitted := func(item domain.ReleaseTemplateParam) (CreateReleaseOrderParamInput, bool) {
 		templateKey := buildReleaseTemplateParamKey(item.PipelineScope, item.ParamKey, item.ExecutorParamName)
@@ -1000,6 +1072,12 @@ func (uc *ReleaseOrderManager) materializeCreateTemplateParams(
 		}
 		submitted, ok := submittedByScopeParamKey[buildReleaseTemplateScopeParamKey(item.PipelineScope, item.ParamKey)]
 		return submitted, ok
+	}
+	executorDefaultValue := func(item domain.ReleaseTemplateParam) string {
+		if isCIOnlyStandardParamKey(item.ParamKey) || isCIOnlyStandardParamKey(item.SourceParamKey) {
+			return ""
+		}
+		return executorDefaultValues[buildReleaseTemplateParamKey(item.PipelineScope, item.ParamKey, item.ExecutorParamName)]
 	}
 
 	appendResolved := func(item domain.ReleaseTemplateParam, value string, source domain.ValueSource) {
@@ -1042,14 +1120,17 @@ func (uc *ReleaseOrderManager) materializeCreateTemplateParams(
 					item,
 					firstNonEmpty(
 						resolvedValues[domain.PipelineScopeCI][strings.ToLower(strings.TrimSpace(item.SourceParamKey))],
-						resolveCreateStandardFieldValue(strings.TrimSpace(item.SourceParamKey), envCode, projectName, gitRef, imageTag, appKey, resolvedValues),
+						resolveCreateStandardFieldValue(strings.TrimSpace(item.SourceParamKey), envCode, projectName, gitRef, imageTag, releaseName, appKey, artifactValues, resolvedValues),
 					),
 					domain.ValueSourceCIParam,
 				)
 			case domain.TemplateParamValueSourceBuiltin:
 				appendResolved(
 					item,
-					resolveCreateStandardFieldValue(strings.TrimSpace(item.SourceParamKey), envCode, projectName, gitRef, imageTag, appKey, resolvedValues),
+					firstNonEmpty(
+						resolveCreateStandardFieldValue(strings.TrimSpace(item.SourceParamKey), envCode, projectName, gitRef, imageTag, releaseName, appKey, artifactValues, resolvedValues),
+						executorDefaultValue(item),
+					),
 					domain.ValueSourceBuiltin,
 				)
 			default:
@@ -1061,6 +1142,91 @@ func (uc *ReleaseOrderManager) materializeCreateTemplateParams(
 	return resolvedParams, nil
 }
 
+// resolveApplicationArtifactParamValues 从应用绑定的制品库配置解析 OSS 内置字段。
+func (uc *ReleaseOrderManager) resolveApplicationArtifactParamValues(
+	ctx context.Context,
+	app appdomain.Application,
+) (map[string]string, error) {
+	result := make(map[string]string)
+	if uc == nil || uc.artifactRepo == nil {
+		return result, nil
+	}
+	repositoryID := strings.TrimSpace(app.ArtifactRepositoryID)
+	if repositoryID == "" {
+		return result, nil
+	}
+	repo, err := uc.artifactRepo.GetByID(ctx, repositoryID)
+	if err != nil {
+		return nil, err
+	}
+	if repo.Status != "" && repo.Status != artifactrepodomain.StatusEnabled {
+		return nil, fmt.Errorf("%w: artifact repository is disabled", ErrInvalidInput)
+	}
+	put := func(key string, value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		result[key] = value
+	}
+	put("oss_endpoint", repo.Endpoint)
+	put("oss_bucket", repo.Bucket)
+	put("oss_dir", firstNonEmpty(strings.TrimSpace(app.ArtifactDirectory), strings.TrimSpace(repo.Directory)))
+	put("oss_acl", string(repo.ACL))
+	put("oss_access_key_id", repo.AccessKeyID)
+	put("oss_access_key_secret", repo.AccessKeySecret)
+	return result, nil
+}
+
+// loadTemplateParamDefaultValues 读取模板参数对应执行器参数的默认值。
+func (uc *ReleaseOrderManager) loadTemplateParamDefaultValues(
+	ctx context.Context,
+	templateParams []domain.ReleaseTemplateParam,
+) (map[string]string, error) {
+	result := make(map[string]string)
+	if uc == nil || uc.paramRepo == nil {
+		return result, nil
+	}
+	defByID := make(map[string]pipelineparamdomain.ExecutorParamDef)
+	for _, item := range templateParams {
+		id := strings.TrimSpace(item.ExecutorParamDefID)
+		if id == "" {
+			continue
+		}
+		paramDef, ok := defByID[id]
+		if !ok {
+			var err error
+			paramDef, err = uc.paramRepo.GetByID(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			defByID[id] = paramDef
+		}
+		defaultValue := strings.TrimSpace(paramDef.DefaultValue)
+		if defaultValue == "" {
+			continue
+		}
+		key := buildReleaseTemplateParamKey(item.PipelineScope, item.ParamKey, item.ExecutorParamName)
+		if key == "" {
+			continue
+		}
+		result[key] = defaultValue
+	}
+	return result, nil
+}
+
+// loadTemplateParamDefaultValuesBestEffort 用于详情展示，参数定义异常不应阻断页面。
+func (uc *ReleaseOrderManager) loadTemplateParamDefaultValuesBestEffort(
+	ctx context.Context,
+	templateParams []domain.ReleaseTemplateParam,
+) map[string]string {
+	values, err := uc.loadTemplateParamDefaultValues(ctx, templateParams)
+	if err != nil {
+		return map[string]string{}
+	}
+	return values
+}
+
 // resolveCreateStandardFieldValue 解析上下文数据，得到后续流程需要的结果。
 func resolveCreateStandardFieldValue(
 	key string,
@@ -1068,7 +1234,9 @@ func resolveCreateStandardFieldValue(
 	projectName string,
 	gitRef string,
 	imageTag string,
+	releaseName string,
 	appKey string,
+	artifactValues map[string]string,
 	resolved map[domain.PipelineScope]map[string]string,
 ) string {
 	normalizedKey := strings.ToLower(strings.TrimSpace(key))
@@ -1090,12 +1258,18 @@ func resolveCreateStandardFieldValue(
 		return firstNonEmpty(pickResolved("env", "env_code"), envCode)
 	case "project_name":
 		return firstNonEmpty(pickResolved("project_name"), projectName)
+	case "release_name":
+		return firstNonEmpty(pickResolved("release_name"), releaseName)
 	case "branch", "git_ref":
 		return firstNonEmpty(pickResolved("branch", "git_ref"), gitRef)
 	case "image_version", "image_tag":
 		return firstNonEmpty(pickResolved("image_version", "image_tag"), imageTag)
 	case "app_key":
 		return firstNonEmpty(pickResolved("app_key"), appKey)
+	case standardParamGOSArtifactURL:
+		return strings.TrimSpace(resolved[domain.PipelineScopeCI][standardParamGOSArtifactURL])
+	case "oss_endpoint", "oss_bucket", "oss_dir", "oss_acl", "oss_access_key_id", "oss_access_key_secret":
+		return firstNonEmpty(pickResolved(normalizedKey), strings.TrimSpace(artifactValues[normalizedKey]))
 	default:
 		return pickResolved(normalizedKey)
 	}
@@ -1123,6 +1297,10 @@ func (uc *ReleaseOrderManager) resolveTemplateForCreate(
 	}
 	if len(templateBindings) == 0 {
 		return domain.ReleaseTemplate{}, nil, nil, nil, fmt.Errorf("%w: release template has no enabled pipeline scopes", ErrInvalidInput)
+	}
+	compliance := evaluateReleaseTemplateCompliance(ctx, uc.pipelineScanRepo, templateBindings)
+	if compliance.Status == domain.TemplateComplianceStatusViolated {
+		return domain.ReleaseTemplate{}, nil, nil, nil, fmt.Errorf("%w: 模板违反管线规范，%s", ErrInvalidInput, compliance.Summary)
 	}
 	return template, templateBindings, templateParams, templateHooks, nil
 }
@@ -1246,6 +1424,14 @@ func canCreatePipelineReplayFromStatus(status domain.OrderStatus) bool {
 	default:
 		return false
 	}
+}
+
+// ensureReplaySourceOrderCanReplay 校验标准重放来源单。
+func ensureReplaySourceOrderCanReplay(sourceOrder domain.ReleaseOrder) error {
+	if sourceOrder.OperationType == domain.OperationTypeReplay {
+		return fmt.Errorf("%w: 重放单不支持再次重放，继续重发请从原始单发起", ErrInvalidInput)
+	}
+	return nil
 }
 
 // ensureRollbackDeploySnapshot 校验前置条件，不满足时写入对应错误响应。
@@ -1512,6 +1698,7 @@ func (uc *ReleaseOrderManager) buildRecoveryParamsInput(
 
 	appendParam("env", sourceOrder.EnvCode, domain.ValueSourceEnvironment, "")
 	appendParam("env_code", sourceOrder.EnvCode, domain.ValueSourceEnvironment, "")
+	appendParam("release_name", sourceOrder.ReleaseName, domain.ValueSourceBuiltin, "")
 	appendParam("project_name", sourceOrder.SonService, domain.ValueSourceReleaseInput, "")
 	appendParam("branch", sourceOrder.GitRef, domain.ValueSourceReleaseInput, "")
 	appendParam("git_ref", sourceOrder.GitRef, domain.ValueSourceReleaseInput, "")
@@ -2699,6 +2886,11 @@ func (uc *ReleaseOrderManager) startNextPendingExecution(
 		if strings.TrimSpace(pipeline.JobFullName) == "" {
 			return fmt.Errorf("%w: jenkins job full name is empty", ErrInvalidInput)
 		}
+		if mismatches := uc.validateJenkinsExecutionChoiceCandidates(ctx, pipeline, execution, orderParams); len(mismatches) > 0 {
+			message := "Jenkins 管线参数候选值校验失败：" + strings.Join(mismatches, "；")
+			uc.markExecutionStartFailed(ctx, order, execution, message)
+			return fmt.Errorf("%w: %s", ErrInvalidInput, message)
+		}
 
 		buildParams, err := uc.buildJenkinsExecutionParams(ctx, order, execution, orderParams, executions)
 		if err != nil {
@@ -2783,6 +2975,99 @@ func (uc *ReleaseOrderManager) startNextPendingExecution(
 	return nil
 }
 
+func (uc *ReleaseOrderManager) validateJenkinsExecutionChoiceCandidates(
+	ctx context.Context,
+	pipeline pipelinedomain.Pipeline,
+	execution domain.ReleaseOrderExecution,
+	orderParams []domain.ReleaseOrderParam,
+) []string {
+	if uc == nil || uc.paramRepo == nil {
+		return nil
+	}
+	reader, ok := uc.jenkins.(JenkinsReleaseParamReader)
+	if !ok || reader == nil {
+		return nil
+	}
+	jobFullName := strings.TrimSpace(pipeline.JobFullName)
+	if jobFullName == "" {
+		return nil
+	}
+	jobSet, err := reader.GetJobParamSet(ctx, jobFullName)
+	if err != nil {
+		logx.Warn("release_order", "jenkins_live_params_read_failed",
+			logx.F("pipeline_id", pipeline.ID),
+			logx.F("job_full_name", jobFullName),
+			logx.F("error", err.Error()),
+		)
+		return nil
+	}
+	liveByName := make(map[string]pipelineparamdomain.JenkinsParamSnapshot, len(jobSet.Params))
+	for _, item := range jobSet.Params {
+		name := strings.ToLower(strings.TrimSpace(item.Name))
+		if name == "" {
+			continue
+		}
+		liveByName[name] = item
+	}
+	if len(liveByName) == 0 {
+		return nil
+	}
+
+	paramDefs, _, err := uc.paramRepo.ListByPipeline(ctx, pipelineparamdomain.ListFilter{
+		PipelineID:   strings.TrimSpace(pipeline.ID),
+		ExecutorType: pipelineparamdomain.ExecutorTypeJenkins,
+		Status:       pipelineparamdomain.StatusActive,
+		Page:         1,
+		PageSize:     500,
+	})
+	if err != nil {
+		logx.Warn("release_order", "jenkins_local_params_read_failed",
+			logx.F("pipeline_id", pipeline.ID),
+			logx.F("error", err.Error()),
+		)
+		return nil
+	}
+	defByName := make(map[string]pipelineparamdomain.ExecutorParamDef, len(paramDefs))
+	for _, item := range paramDefs {
+		name := strings.ToLower(strings.TrimSpace(item.ExecutorParamName))
+		if name == "" {
+			continue
+		}
+		defByName[name] = item
+	}
+	if len(defByName) == 0 {
+		return nil
+	}
+
+	scopeLabel := strings.ToUpper(string(execution.PipelineScope))
+	mismatches := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, item := range orderParams {
+		if item.PipelineScope != execution.PipelineScope {
+			continue
+		}
+		name := strings.ToLower(strings.TrimSpace(item.ExecutorParamName))
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		paramDef, ok := defByName[name]
+		if !ok {
+			continue
+		}
+		liveParam, ok := liveByName[name]
+		if !ok {
+			continue
+		}
+		paramLabel := executorParamNameOrKey(item.ExecutorParamName, firstNonEmpty(item.ParamKey, paramDef.ParamKey, paramDef.ID))
+		mismatches = append(mismatches, compareJenkinsChoiceCandidates(scopeLabel, paramLabel, paramDef, liveParam)...)
+	}
+	return mismatches
+}
+
 // buildJenkinsExecutionParams 组装业务执行所需的输入数据。
 func (uc *ReleaseOrderManager) buildJenkinsExecutionParams(
 	ctx context.Context,
@@ -2819,9 +3104,15 @@ func (uc *ReleaseOrderManager) buildJenkinsExecutionParams(
 	}
 
 	appKey := ""
+	artifactValues := map[string]string{}
 	if uc.appRepo != nil && strings.TrimSpace(order.ApplicationID) != "" {
 		if appRecord, appErr := uc.appRepo.GetByID(ctx, strings.TrimSpace(order.ApplicationID)); appErr == nil {
 			appKey = strings.TrimSpace(appRecord.Key)
+			values, artifactErr := uc.resolveApplicationArtifactParamValues(ctx, appRecord)
+			if artifactErr != nil {
+				return nil, artifactErr
+			}
+			artifactValues = values
 		}
 	}
 
@@ -2836,7 +3127,7 @@ func (uc *ReleaseOrderManager) buildJenkinsExecutionParams(
 		if strings.TrimSpace(buildParams[executorParamName]) != "" {
 			continue
 		}
-		value := strings.TrimSpace(uc.resolveTemplateExecutionParamValue(order, execution.PipelineScope, item, orderParams, executions, appKey))
+		value := strings.TrimSpace(uc.resolveTemplateExecutionParamValue(order, execution.PipelineScope, item, orderParams, executions, appKey, artifactValues))
 		if value == "" {
 			if item.Required {
 				return nil, fmt.Errorf("%w: 未解析到 %s，无法继续执行 %s 管线", ErrInvalidInput, firstNonEmpty(strings.TrimSpace(item.ParamName), strings.TrimSpace(item.ParamKey), executorParamName), strings.ToUpper(string(execution.PipelineScope)))
@@ -2856,8 +3147,12 @@ func (uc *ReleaseOrderManager) resolveTemplateExecutionParamValue(
 	orderParams []domain.ReleaseOrderParam,
 	executions []domain.ReleaseOrderExecution,
 	appKey string,
+	artifactValues map[string]string,
 ) string {
 	paramKey := strings.TrimSpace(item.ParamKey)
+	if isCIOnlyStandardParamKey(paramKey) || isCIOnlyStandardParamKey(item.SourceParamKey) {
+		return findReleaseParamValue(orderParams, domain.PipelineScopeCI, firstNonEmpty(strings.TrimSpace(item.SourceParamKey), paramKey))
+	}
 	if value := findReleaseParamValue(orderParams, scope, paramKey); value != "" {
 		return value
 	}
@@ -2869,10 +3164,10 @@ func (uc *ReleaseOrderManager) resolveTemplateExecutionParamValue(
 	case domain.TemplateParamValueSourceCIParam:
 		return firstNonEmpty(
 			findReleaseParamValue(orderParams, domain.PipelineScopeCI, item.SourceParamKey),
-			uc.resolveStandardFieldValue(order, orderParams, executions, appKey, item.SourceParamKey),
+			uc.resolveStandardFieldValue(order, orderParams, executions, appKey, artifactValues, item.SourceParamKey),
 		)
 	case domain.TemplateParamValueSourceBuiltin:
-		return uc.resolveStandardFieldValue(order, orderParams, executions, appKey, item.SourceParamKey)
+		return uc.resolveStandardFieldValue(order, orderParams, executions, appKey, artifactValues, item.SourceParamKey)
 	default:
 		return ""
 	}
@@ -2884,6 +3179,7 @@ func (uc *ReleaseOrderManager) resolveStandardFieldValue(
 	orderParams []domain.ReleaseOrderParam,
 	executions []domain.ReleaseOrderExecution,
 	appKey string,
+	artifactValues map[string]string,
 	key string,
 ) string {
 	normalizedKey := strings.ToLower(strings.TrimSpace(key))
@@ -2903,6 +3199,13 @@ func (uc *ReleaseOrderManager) resolveStandardFieldValue(
 			findReleaseParamValue(orderParams, domain.PipelineScopeCI, "project_name"),
 			strings.TrimSpace(order.SonService),
 		)
+	case "release_name":
+		return firstNonEmpty(
+			findReleaseParamValue(orderParams, domain.PipelineScopeCD, "release_name"),
+			findReleaseParamValue(orderParams, domain.PipelineScopeCI, "release_name"),
+			findReleaseParamValue(orderParams, "", "release_name"),
+			strings.TrimSpace(order.ReleaseName),
+		)
 	case "branch", "git_ref":
 		return firstNonEmpty(
 			findReleaseParamValue(orderParams, domain.PipelineScopeCD, "branch", "git_ref"),
@@ -2915,6 +3218,15 @@ func (uc *ReleaseOrderManager) resolveStandardFieldValue(
 		return strings.TrimSpace(appKey)
 	case "app_name":
 		return strings.TrimSpace(order.ApplicationName)
+	case standardParamGOSArtifactURL:
+		return findReleaseParamValue(orderParams, domain.PipelineScopeCI, standardParamGOSArtifactURL)
+	case "oss_endpoint", "oss_bucket", "oss_dir", "oss_acl", "oss_access_key_id", "oss_access_key_secret":
+		return firstNonEmpty(
+			findReleaseParamValue(orderParams, domain.PipelineScopeCD, normalizedKey),
+			findReleaseParamValue(orderParams, domain.PipelineScopeCI, normalizedKey),
+			findReleaseParamValue(orderParams, "", normalizedKey),
+			strings.TrimSpace(artifactValues[normalizedKey]),
+		)
 	default:
 		return firstNonEmpty(
 			findReleaseParamValue(orderParams, domain.PipelineScopeCD, normalizedKey),
@@ -3822,7 +4134,7 @@ func deriveOrderStatusFromSteps(steps []domain.ReleaseOrderStep) (domain.OrderSt
 			case domain.StepStatusFailed:
 				return domain.OrderStatusFailed, true
 			case domain.StepStatusSuccess:
-				return domain.OrderStatusSuccess, true
+				continue
 			case domain.StepStatusPending, domain.StepStatusRunning:
 				allSuccess = false
 				continue

@@ -513,7 +513,7 @@ FROM pipelines`)
 		listBuilder.WriteString(" WHERE ")
 		listBuilder.WriteString(strings.Join(where, " AND "))
 	}
-	listBuilder.WriteString(" ORDER BY updated_at DESC LIMIT ? OFFSET ?;")
+	listBuilder.WriteString(" ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?;")
 
 	offset := (filter.Page - 1) * filter.PageSize
 	queryArgs := append(args, filter.PageSize, offset)

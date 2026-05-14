@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import Antd from 'ant-design-vue'
+import { message } from 'ant-design-vue'
 import 'ant-design-vue/dist/reset.css'
 import './style.css'
 import App from './App.vue'
@@ -10,11 +11,28 @@ import { useAuthStore } from './stores/auth'
 
 const PRELOAD_RELOAD_KEY = 'gos-vite-preload-reload-path'
 const PRELOAD_RELOAD_QUERY = '__gos_reload'
+const UNAUTHORIZED_NOTICE_THROTTLE_MS = 2500
+let lastUnauthorizedNotice = {
+  token: '',
+  shownAt: 0,
+}
 
 function buildReloadURL(currentURL: string) {
   const url = new URL(currentURL, window.location.origin)
   url.searchParams.set(PRELOAD_RELOAD_QUERY, String(Date.now()))
   return `${url.pathname}${url.search}${url.hash}`
+}
+
+function shouldShowUnauthorizedNotice(token: string) {
+  const now = Date.now()
+  if (token !== lastUnauthorizedNotice.token || now - lastUnauthorizedNotice.shownAt > UNAUTHORIZED_NOTICE_THROTTLE_MS) {
+    lastUnauthorizedNotice = {
+      token,
+      shownAt: now,
+    }
+    return true
+  }
+  return false
 }
 
 if (typeof window !== 'undefined') {
@@ -40,10 +58,18 @@ async function bootstrap() {
   const authStore = useAuthStore(pinia)
   registerHTTPInterceptors({
     getAccessToken: () => authStore.accessToken,
-    onUnauthorized: () => {
+    onUnauthorized: (code?: string, backendMessage?: string) => {
       const currentPath = String(router.currentRoute.value.fullPath || '')
       if (currentPath.startsWith('/login')) {
         return
+      }
+      const currentToken = String(authStore.accessToken || '').trim()
+      if (shouldShowUnauthorizedNotice(currentToken)) {
+        const text =
+          code === 'SESSION_REPLACED'
+            ? backendMessage || '您的账号在其他地方登入'
+            : backendMessage || '登录状态已失效，请重新登录'
+        message.warning(text)
       }
       authStore.clearAuthState()
       void router.replace({

@@ -2,6 +2,7 @@
 import {
   ArrowDownOutlined,
   ArrowUpOutlined,
+  CopyOutlined,
   DeploymentUnitOutlined,
   ExclamationCircleOutlined,
   PlusOutlined,
@@ -18,6 +19,7 @@ import { checkGitOpsScanPath, listGitOpsFieldCandidates, listGitOpsValuesCandida
 import { listNotificationHooks } from '../../api/notification'
 import { listPlatformParamDicts } from '../../api/platform-param'
 import { getPipelineBindingByID, listPipelineBindings, listApplicationExecutorParamDefs } from '../../api/pipeline'
+import { getPipelineScanResult, listPipelineScanRules } from '../../api/pipeline-scan'
 import { getReleaseSettings } from '../../api/system'
 import { listUserOptions } from '../../api/user'
 import {
@@ -32,6 +34,7 @@ import type { Application } from '../../types/application'
 import type { AgentTask } from '../../types/agent'
 import type { NotificationHook } from '../../types/notification'
 import type { PipelineBinding, ExecutorParamDef } from '../../types/pipeline'
+import type { PipelineScanRule } from '../../types/pipeline-scan'
 import type { GitOpsFieldCandidate, GitOpsValuesCandidate } from '../../types/gitops'
 import type { PlatformParamDict } from '../../types/platform-param'
 import type { UserOption } from '../../types/user'
@@ -39,6 +42,7 @@ import type {
   ReleasePipelineScope,
   ReleaseTemplate,
   ReleaseTemplateBinding,
+  ReleaseTemplateComplianceFinding,
   ReleaseTemplateHook,
   ReleaseTemplateHookExecuteStage,
   ReleaseTemplateHookPayload,
@@ -53,9 +57,10 @@ import type {
   UpdateReleaseTemplatePayload,
 } from '../../types/release'
 import { extractHTTPErrorMessage } from '../../utils/http-error'
+import { buildCloneName } from '../../utils/clone-name'
 import { useAuthStore } from '../../stores/auth'
 
-type FormMode = 'create' | 'edit'
+type FormMode = 'create' | 'edit' | 'clone'
 type CDMode = 'pipeline' | 'argocd'
 
 type ScopeState = {
@@ -92,6 +97,7 @@ interface BindingOption {
   value: string
   binding_type: PipelineBinding['binding_type']
   provider: PipelineBinding['provider']
+  pipeline_id: string
 }
 
 interface GitOpsRuleFormItem {
@@ -136,6 +142,7 @@ interface TemplateExecutionUnit {
 const builtinTemplateSourceKeys = new Set([
   'app_key',
   'app_name',
+  'release_name',
   'env',
   'env_code',
   'branch',
@@ -149,6 +156,8 @@ const submitting = ref(false)
 const deletingID = ref('')
 const dataSource = ref<ReleaseTemplate[]>([])
 const total = ref(0)
+const complianceDetailVisible = ref(false)
+const complianceDetailTemplate = ref<ReleaseTemplate | null>(null)
 
 const modalVisible = ref(false)
 const modalMode = ref<FormMode>('create')
@@ -203,6 +212,13 @@ const scopeBindingWarnings = reactive<Record<ReleasePipelineScope, string>>({
   ci: '',
   cd: '',
 })
+const scopeComplianceWarnings = reactive<Record<ReleasePipelineScope, string>>({
+  ci: '',
+  cd: '',
+})
+const templateComplianceFindings = ref<ReleaseTemplateComplianceFinding[]>([])
+const templateValidationRuleCache = ref<PipelineScanRule[] | null>(null)
+const pipelineComplianceWarningCache = ref<Record<string, string>>({})
 const templateBindingWarnings = ref<Record<string, string>>({})
 const templateBindingWarningCache = ref<Record<string, string>>({})
 const loadingBindings = ref(false)
@@ -275,7 +291,7 @@ const initialColumns: TableColumnsType<ReleaseTemplate> = [
   { title: '应用', dataIndex: 'application_name', key: 'application_name', width: 180 },
   { title: '执行单元', dataIndex: 'binding_name', key: 'binding_name', width: 180 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
-  { title: '操作', key: 'actions', width: 200, fixed: 'right' },
+  { title: '操作', key: 'actions', width: 240, fixed: 'right' },
 ]
 const { columns } = useResizableColumns(initialColumns, { minWidth: 100, maxWidth: 560, hitArea: 10 })
 
@@ -296,6 +312,18 @@ const statusOptions = [
 const templateApplicationFilterOptions = computed<SelectOption[]>(() => applicationOptions.value)
 
 const templateStatusFilterOptions = computed<SelectOption[]>(() => [...statusOptions])
+
+const complianceDetailFindings = computed(() => complianceDetailTemplate.value?.compliance_findings || [])
+
+const complianceDetailScopes = computed<ReleasePipelineScope[]>(() => {
+  const scopes = new Set<ReleasePipelineScope>()
+  complianceDetailFindings.value.forEach((item) => {
+    if (item.pipeline_scope === 'ci' || item.pipeline_scope === 'cd') {
+      scopes.add(item.pipeline_scope)
+    }
+  })
+  return (['ci', 'cd'] as ReleasePipelineScope[]).filter((scope) => scopes.has(scope))
+})
 
 const applicationFilterValue = computed<string | undefined>({
   get: () => filters.application_id || undefined,
@@ -682,7 +710,15 @@ async function loadHookEnvOptions(extraValues: string[] = [], silent = false) {
   }
 }
 
-const modalTitle = computed(() => (modalMode.value === 'create' ? '新增发布模板' : '编辑发布模板'))
+const modalTitle = computed(() => {
+  if (modalMode.value === 'edit') {
+    return '编辑发布模板'
+  }
+  if (modalMode.value === 'clone') {
+    return '克隆发布模板'
+  }
+  return '新增发布模板'
+})
 
 const bindingOptionsByScope = computed<Record<ReleasePipelineScope, BindingOption[]>>(() => ({
   ci: bindingOptions.value.filter((item) => item.binding_type === 'ci' && item.provider === 'jenkins'),
@@ -767,8 +803,141 @@ const builtinTemplateSourceOptions = computed<SelectOption[]>(() =>
     })),
 )
 
+const builtinPlatformParamKeySet = computed(() => {
+  const keys = new Set<string>()
+  platformParamDicts.value.forEach((item) => {
+    const key = String(item.param_key || '').trim().toLowerCase()
+    if (item.status === 1 && item.builtin && key) {
+      keys.add(key)
+    }
+  })
+  return keys
+})
+
 function selectedBinding(scope: ReleasePipelineScope) {
   return bindingOptionsByScope.value[scope].find((item) => item.value === scopeStates[scope].binding_id)
+}
+
+function isTemplateViolated(record: ReleaseTemplate) {
+  return record.compliance_status === 'violated'
+}
+
+function templateComplianceWarning(record: ReleaseTemplate) {
+  return isTemplateViolated(record)
+    ? (record.compliance_summary || '发布模板违反已启用的管线规范')
+    : ''
+}
+
+function templateComplianceFindingsByScope(scope: ReleasePipelineScope) {
+  return templateComplianceFindings.value.filter((item) => item.pipeline_scope === scope)
+}
+
+function formatComplianceFinding(item: ReleaseTemplateComplianceFinding) {
+  const ruleName = String(item.rule_name || item.rule_code || '管线规范').trim()
+  const pipelineName = String(item.pipeline_name || item.pipeline_id || '').trim()
+  return pipelineName ? `${pipelineName} · ${ruleName}` : ruleName
+}
+
+function openTemplateComplianceDetail(record: ReleaseTemplate) {
+  complianceDetailTemplate.value = record
+  complianceDetailVisible.value = true
+}
+
+function closeTemplateComplianceDetail() {
+  complianceDetailVisible.value = false
+  complianceDetailTemplate.value = null
+}
+
+function complianceDetailFindingsByScope(scope: ReleasePipelineScope) {
+  return complianceDetailFindings.value.filter((item) => item.pipeline_scope === scope)
+}
+
+function complianceScopeText(scope: ReleasePipelineScope) {
+  return scope === 'ci' ? 'CI 管线' : 'CD 管线'
+}
+
+function complianceSeverityColor(severity: string) {
+  const value = String(severity || '').trim().toLowerCase()
+  if (value === 'error') {
+    return 'red'
+  }
+  if (value === 'warning') {
+    return 'orange'
+  }
+  return 'blue'
+}
+
+function complianceSeverityText(severity: string) {
+  const value = String(severity || '').trim().toLowerCase()
+  if (value === 'error') {
+    return '错误'
+  }
+  if (value === 'warning') {
+    return '警告'
+  }
+  if (value === 'info') {
+    return '提示'
+  }
+  return severity || '提示'
+}
+
+function complianceFindingLineText(item: ReleaseTemplateComplianceFinding) {
+  const lineNo = Number(item.line_no || 0)
+  return lineNo > 0 ? `第 ${lineNo} 行` : '未定位到行号'
+}
+
+async function loadTemplateValidationRules() {
+  if (templateValidationRuleCache.value) {
+    return templateValidationRuleCache.value
+  }
+  try {
+    const response = await listPipelineScanRules({ enabled: true, page: 1, page_size: 100 })
+    templateValidationRuleCache.value = response.data || []
+  } catch {
+    templateValidationRuleCache.value = []
+  }
+  return templateValidationRuleCache.value
+}
+
+async function refreshScopeComplianceWarning(scope: ReleasePipelineScope) {
+  scopeComplianceWarnings[scope] = ''
+  if (!scopeStates[scope].enabled || (scope === 'cd' && !isCDUsingPipeline())) {
+    return
+  }
+  const binding = selectedBinding(scope)
+  const pipelineID = String(binding?.pipeline_id || '').trim()
+  if (!pipelineID) {
+    return
+  }
+  const cacheKey = `${scope}:${pipelineID}`
+  if (pipelineComplianceWarningCache.value[cacheKey] !== undefined) {
+    scopeComplianceWarnings[scope] = pipelineComplianceWarningCache.value[cacheKey] || ''
+    return
+  }
+  const rules = await loadTemplateValidationRules()
+  const scopedRules = rules.filter((item) => item.enabled && (item.template_validation_scopes || []).includes(scope))
+  if (!scopedRules.length) {
+    pipelineComplianceWarningCache.value[cacheKey] = ''
+    return
+  }
+  const ruleIDs = new Set(scopedRules.map((item) => String(item.id || '').trim()).filter(Boolean))
+  const ruleCodes = new Set(scopedRules.map((item) => String(item.rule_code || '').trim()).filter(Boolean))
+  try {
+    const response = await getPipelineScanResult(pipelineID)
+    const finding = (response.data.findings || []).find((item) => {
+      if (item.status && item.status !== 'open') {
+        return false
+      }
+      return ruleIDs.has(String(item.rule_id || '').trim()) || ruleCodes.has(String(item.rule_code || '').trim())
+    })
+    const warning = finding
+      ? `${scope.toUpperCase()} 管线违反发布模板校验：${finding.rule_name || finding.rule_code || '管线规范'}`
+      : ''
+    pipelineComplianceWarningCache.value[cacheKey] = warning
+    scopeComplianceWarnings[scope] = warning
+  } catch {
+    pipelineComplianceWarningCache.value[cacheKey] = ''
+  }
 }
 
 function isCDUsingArgoCD() {
@@ -783,15 +952,41 @@ function defaultTemplateParamValueSource(scope: ReleasePipelineScope): ReleaseTe
   return 'release_input'
 }
 
+function isBuiltinMappedExecutorParam(item?: ExecutorParamDef | null) {
+  const paramKey = String(item?.param_key || '').trim().toLowerCase()
+  return Boolean(paramKey && builtinPlatformParamKeySet.value.has(paramKey))
+}
+
+function resolveBuiltinMappedExecutorParamLabel(item?: ExecutorParamDef | null) {
+  const paramKey = String(item?.param_key || '').trim().toLowerCase()
+  if (!paramKey) {
+    return '-'
+  }
+  return `${resolvePlatformParamName(paramKey)} (${paramKey})`
+}
+
+function enforceBuiltinMappedTemplateParamConfig(config: TemplateParamConfigState, item?: ExecutorParamDef | null) {
+  if (!isBuiltinMappedExecutorParam(item)) {
+    return config
+  }
+  const paramKey = String(item?.param_key || '').trim().toLowerCase()
+  config.value_source = 'builtin'
+  config.source_param_key = paramKey
+  config.fixed_value = ''
+  return config
+}
+
 function createTemplateParamConfigState(
   scope: ReleasePipelineScope,
   partial?: Partial<TemplateParamConfigState>,
+  item?: ExecutorParamDef | null,
 ): TemplateParamConfigState {
-  return {
+  const config = {
     value_source: partial?.value_source || defaultTemplateParamValueSource(scope),
     source_param_key: String(partial?.source_param_key || '').trim().toLowerCase(),
     fixed_value: String(partial?.fixed_value || ''),
   }
+  return enforceBuiltinMappedTemplateParamConfig(config, item)
 }
 
 function selectedScopeParamDefs(scope: ReleasePipelineScope) {
@@ -801,18 +996,19 @@ function selectedScopeParamDefs(scope: ReleasePipelineScope) {
 
 function syncScopeParamConfigs(scope: ReleasePipelineScope) {
   const state = scopeStates[scope]
+  const paramByID = new Map(state.selectable_params.map((item) => [item.id, item]))
   const nextConfigs: Record<string, TemplateParamConfigState> = {}
   state.selected_param_def_ids.forEach((id) => {
-    nextConfigs[id] = createTemplateParamConfigState(scope, scopeParamConfigs[scope][id])
+    nextConfigs[id] = createTemplateParamConfigState(scope, scopeParamConfigs[scope][id], paramByID.get(id) || null)
   })
   scopeParamConfigs[scope] = nextConfigs
 }
 
-function getTemplateParamConfig(scope: ReleasePipelineScope, paramDefID: string) {
+function getTemplateParamConfig(scope: ReleasePipelineScope, paramDefID: string, item?: ExecutorParamDef | null) {
   if (!scopeParamConfigs[scope][paramDefID]) {
-    scopeParamConfigs[scope][paramDefID] = createTemplateParamConfigState(scope)
+    scopeParamConfigs[scope][paramDefID] = createTemplateParamConfigState(scope, undefined, item)
   }
-  return scopeParamConfigs[scope][paramDefID]
+  return enforceBuiltinMappedTemplateParamConfig(scopeParamConfigs[scope][paramDefID], item)
 }
 
 function handleTemplateParamValueSourceChange(
@@ -820,7 +1016,12 @@ function handleTemplateParamValueSourceChange(
   paramDefID: string,
   value: ReleaseTemplateParamValueSource,
 ) {
-  const config = getTemplateParamConfig(scope, paramDefID)
+  const paramDef = scopeStates[scope].selectable_params.find((item) => item.id === paramDefID) || null
+  const config = getTemplateParamConfig(scope, paramDefID, paramDef)
+  if (isBuiltinMappedExecutorParam(paramDef)) {
+    enforceBuiltinMappedTemplateParamConfig(config, paramDef)
+    return
+  }
   config.value_source = value
   if (value !== 'fixed') {
     config.fixed_value = ''
@@ -867,8 +1068,10 @@ function resolveTemplateParamSourceLabel(scope: ReleasePipelineScope, config: Te
 }
 
 function buildTemplateParamConfigs(scope: ReleasePipelineScope): ReleaseTemplateParamConfigPayload[] {
+  const paramByID = new Map(scopeStates[scope].selectable_params.map((item) => [item.id, item]))
   return scopeStates[scope].selected_param_def_ids.map((id) => {
-    const config = getTemplateParamConfig(scope, id)
+    const paramDef = paramByID.get(id) || null
+    const config = getTemplateParamConfig(scope, id, paramDef)
     return {
       executor_param_def_id: id,
       value_source: config.value_source,
@@ -1231,6 +1434,9 @@ function resetFormState() {
   loadedTemplateBindings.value = []
   scopeBindingWarnings.ci = ''
   scopeBindingWarnings.cd = ''
+  scopeComplianceWarnings.ci = ''
+  scopeComplianceWarnings.cd = ''
+  templateComplianceFindings.value = []
   gitOpsFieldCandidates.value = []
   gitOpsValuesCandidates.value = []
   gitopsRules.value = []
@@ -1328,7 +1534,7 @@ function buildPayload(): ReleaseTemplatePayload | UpdateReleaseTemplatePayload {
   })
   return {
     name: formState.name.trim(),
-    ...(modalMode.value === 'create' ? { application_id: formState.application_id.trim() } : {}),
+    ...(modalMode.value !== 'edit' ? { application_id: formState.application_id.trim() } : {}),
     ci_binding_id: scopeStates.ci.enabled ? scopeStates.ci.binding_id.trim() || undefined : undefined,
     cd_binding_id: scopeStates.cd.enabled && isCDUsingPipeline() ? scopeStates.cd.binding_id.trim() || undefined : undefined,
     cd_provider: scopeStates.cd.enabled ? (isCDUsingPipeline() ? (selectedBinding('cd')?.provider || 'jenkins') : 'argocd') : undefined,
@@ -1615,6 +1821,7 @@ async function loadBindings(applicationID: string, options?: { force?: boolean; 
       value: item.id,
       binding_type: item.binding_type,
       provider: item.provider,
+      pipeline_id: item.pipeline_id,
     }))
     bindingOptionsCache.value[appID] = nextOptions
     bindingOptions.value = [...nextOptions]
@@ -1691,6 +1898,8 @@ async function handleApplicationChange(value: string | undefined) {
   loadedTemplateBindings.value = []
   scopeBindingWarnings.ci = ''
   scopeBindingWarnings.cd = ''
+  scopeComplianceWarnings.ci = ''
+  scopeComplianceWarnings.cd = ''
   gitopsRules.value = []
   gitOpsType.value = 'kustomize'
   const tasks: Array<Promise<unknown>> = [loadBindings(formState.application_id)]
@@ -1706,6 +1915,7 @@ async function handleScopeBindingChange(scope: ReleasePipelineScope, value: stri
   scopeParamConfigs[scope] = {}
   await loadSelectableParams(scope)
   await refreshScopeBindingWarning(scope)
+  await refreshScopeComplianceWarning(scope)
 }
 
 function handleCDModeChange(value: string | number) {
@@ -1720,12 +1930,14 @@ function handleCDModeChange(value: string | number) {
     scopeStates.cd.selectable_params = []
     scopeStates.cd.loading_params = false
     scopeParamConfigs.cd = {}
+    scopeComplianceWarnings.cd = ''
     void reloadCurrentGitOpsCandidates()
     return
   }
   scopeStates.cd.selected_param_def_ids = []
   scopeParamConfigs.cd = {}
   void loadSelectableParams('cd')
+  void refreshScopeComplianceWarning('cd')
 }
 
 async function handleScopeEnabledChange(scope: ReleasePipelineScope, checked: boolean) {
@@ -1733,6 +1945,7 @@ async function handleScopeEnabledChange(scope: ReleasePipelineScope, checked: bo
   if (!checked) {
     resetScopeState(scope)
     scopeBindingWarnings[scope] = ''
+    scopeComplianceWarnings[scope] = ''
     if (scope === 'cd') {
       gitopsRules.value = []
       gitOpsType.value = 'kustomize'
@@ -1743,10 +1956,12 @@ async function handleScopeEnabledChange(scope: ReleasePipelineScope, checked: bo
   if (scope === 'cd' && isCDUsingArgoCD()) {
     void reloadCurrentGitOpsCandidates()
     await refreshScopeBindingWarning(scope)
+    await refreshScopeComplianceWarning(scope)
     return
   }
   await loadSelectableParams(scope)
   await refreshScopeBindingWarning(scope)
+  await refreshScopeComplianceWarning(scope)
 }
 
 function handleGitOpsTypeChange(value: ReleaseTemplateGitOpsType) {
@@ -1972,8 +2187,8 @@ function applyBindingsToForm(bindings: ReleaseTemplateBinding[]) {
   scopeStates.cd.loading_params = false
 }
 
-async function openEditModal(record: ReleaseTemplate) {
-  modalMode.value = 'edit'
+async function openEditModal(record: ReleaseTemplate, mode: Extract<FormMode, 'edit' | 'clone'> = 'edit') {
+  modalMode.value = mode
   resetFormState()
   modalVisible.value = true
   modalLoading.value = true
@@ -1993,14 +2208,21 @@ async function openEditModal(record: ReleaseTemplate) {
     preloadTasks.push(loadHookEnvOptions([], true))
     const [response] = await Promise.all([detailPromise, ...preloadTasks])
     const { template, bindings, params, gitops_rules, hooks } = response.data
-    formState.id = template.id
-    formState.name = template.name
+    formState.id = mode === 'clone' ? '' : template.id
+    formState.name = mode === 'clone' ? buildCloneName(template.name) : template.name
     formState.application_id = template.application_id
     formState.status = template.status
     formState.approval_enabled = Boolean(template.approval_enabled)
     formState.approval_mode = (template.approval_mode || 'any') as ReleaseTemplateApprovalMode
     approvalApproverIDs.value = [...(template.approval_approver_ids || [])]
     formState.remark = template.remark
+    templateComplianceFindings.value = [...(template.compliance_findings || [])]
+    ;(['ci', 'cd'] as ReleasePipelineScope[]).forEach((scope) => {
+      const findings = templateComplianceFindingsByScope(scope)
+      scopeComplianceWarnings[scope] = findings.length
+        ? `${scope.toUpperCase()} 管线违反发布模板校验：${findings.map(formatComplianceFinding).join('；')}`
+        : ''
+    })
     gitOpsType.value = normalizedGitOpsType(template.gitops_type)
 
     loadedTemplateBindings.value = bindings
@@ -2084,10 +2306,14 @@ async function openEditModal(record: ReleaseTemplate) {
     }
   } catch (error) {
     modalVisible.value = false
-    message.error(extractHTTPErrorMessage(error, '发布模板详情加载失败'))
+    message.error(extractHTTPErrorMessage(error, mode === 'clone' ? '发布模板克隆配置加载失败' : '发布模板详情加载失败'))
   } finally {
     modalLoading.value = false
   }
+}
+
+function openCloneModal(record: ReleaseTemplate) {
+  void openEditModal(record, 'clone')
 }
 
 function closeModal() {
@@ -2177,9 +2403,9 @@ async function submitForm() {
 
   submitting.value = true
   try {
-    if (modalMode.value === 'create') {
+    if (modalMode.value !== 'edit') {
       await createReleaseTemplate(buildPayload() as ReleaseTemplatePayload)
-      message.success('发布模板创建成功')
+      message.success(modalMode.value === 'clone' ? '发布模板克隆成功' : '发布模板创建成功')
     } else {
       await updateReleaseTemplate(formState.id, buildPayload() as UpdateReleaseTemplatePayload)
       message.success('发布模板更新成功')
@@ -2188,7 +2414,10 @@ async function submitForm() {
     await loadTemplates()
   } catch (error) {
     message.error(
-      extractHTTPErrorMessage(error, modalMode.value === 'create' ? '发布模板创建失败' : '发布模板更新失败'),
+      extractHTTPErrorMessage(
+        error,
+        modalMode.value === 'edit' ? '发布模板更新失败' : modalMode.value === 'clone' ? '发布模板克隆失败' : '发布模板创建失败',
+      ),
     )
   } finally {
     submitting.value = false
@@ -2275,9 +2504,21 @@ onBeforeUnmount(() => {
               >
                 绑定异常
               </a-tag>
+              <button
+                v-if="isTemplateViolated(record)"
+                type="button"
+                class="template-compliance-chip-button"
+                title="查看违规概览"
+                @click.stop="openTemplateComplianceDetail(record)"
+              >
+                <span class="dashboard-chip dashboard-chip-warning template-compliance-chip-text">管线违规</span>
+              </button>
             </div>
             <div v-if="templateBindingWarnings[record.id]" class="template-binding-warning-text">
               {{ templateBindingWarnings[record.id] }}
+            </div>
+            <div v-if="templateComplianceWarning(record)" class="template-binding-warning-text">
+              {{ templateComplianceWarning(record) }}
             </div>
           </template>
           <template v-else-if="column.key === 'binding_name'">
@@ -2301,6 +2542,12 @@ onBeforeUnmount(() => {
           <template v-else-if="column.key === 'actions'">
             <a-space v-if="canManageTemplate">
               <a-button type="link" size="small" @click="openEditModal(record)">编辑</a-button>
+              <a-button type="link" size="small" @click="openCloneModal(record)">
+                <template #icon>
+                  <CopyOutlined />
+                </template>
+                克隆
+              </a-button>
               <a-popconfirm
                 title="确认删除当前发布模板吗？"
                 ok-text="删除"
@@ -2330,6 +2577,74 @@ onBeforeUnmount(() => {
         />
       </div>
     </div>
+
+    <a-modal
+      :open="complianceDetailVisible"
+      :width="600"
+      title="管线违规概览"
+      :footer="null"
+      @cancel="closeTemplateComplianceDetail"
+    >
+      <div v-if="complianceDetailTemplate" class="template-compliance-detail">
+        <div class="template-compliance-detail-summary">
+          <div>
+            <div class="template-compliance-detail-title">{{ complianceDetailTemplate.name || '-' }}</div>
+            <div class="template-compliance-detail-app">{{ complianceDetailTemplate.application_name || '-' }}</div>
+          </div>
+          <a-tag class="dashboard-chip dashboard-chip-warning">违规</a-tag>
+        </div>
+        <div class="template-compliance-detail-message">
+          {{ complianceDetailTemplate.compliance_summary || '发布模板违反已启用的管线规范' }}
+        </div>
+
+        <a-empty
+          v-if="!complianceDetailFindings.length"
+          description="暂无详细违规项，请根据列表摘要检查模板绑定的管线规范"
+        />
+        <div v-else class="template-compliance-detail-scopes">
+          <section
+            v-for="scope in complianceDetailScopes"
+            :key="scope"
+            class="template-compliance-detail-scope"
+          >
+            <div class="template-compliance-detail-scope-title">
+              <span>{{ complianceScopeText(scope) }}</span>
+              <a-tag>{{ complianceDetailFindingsByScope(scope).length }} 项</a-tag>
+            </div>
+            <div class="template-compliance-finding-list">
+              <div
+                v-for="finding in complianceDetailFindingsByScope(scope)"
+                :key="`${scope}-${finding.pipeline_id}-${finding.rule_id}-${finding.rule_code}-${finding.line_no}`"
+                class="template-compliance-finding"
+              >
+                <div class="template-compliance-finding-head">
+                  <div>
+                    <div class="template-compliance-finding-pipeline">
+                      {{ finding.pipeline_name || finding.pipeline_id || '-' }}
+                    </div>
+                    <div class="template-compliance-finding-rule">
+                      {{ finding.rule_name || finding.rule_code || '管线规范' }}
+                    </div>
+                  </div>
+                  <div class="template-compliance-finding-tags">
+                    <a-tag :color="complianceSeverityColor(finding.severity)">
+                      {{ complianceSeverityText(finding.severity) }}
+                    </a-tag>
+                    <a-tag>{{ complianceFindingLineText(finding) }}</a-tag>
+                  </div>
+                </div>
+                <div v-if="finding.message" class="template-compliance-finding-message">
+                  {{ finding.message }}
+                </div>
+                <div v-if="finding.suggestion" class="template-compliance-finding-suggestion">
+                  建议：{{ finding.suggestion }}
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </a-modal>
 
     <a-modal
       :open="modalVisible"
@@ -2372,7 +2687,7 @@ onBeforeUnmount(() => {
               <a-form-item label="应用" name="application_id" :rules="[{ required: true, message: '请选择应用' }]">
                 <a-select
                   v-model:value="formState.application_id"
-                  :disabled="modalMode === 'edit'"
+                  :disabled="modalMode !== 'create'"
                   show-search
                   option-filter-prop="label"
                   placeholder="请选择应用"
@@ -2500,6 +2815,13 @@ onBeforeUnmount(() => {
                 show-icon
                 :message="scopeBindingWarnings.ci"
               />
+              <a-alert
+                v-if="scopeComplianceWarnings.ci"
+                class="scope-binding-alert"
+                type="warning"
+                show-icon
+                :message="scopeComplianceWarnings.ci"
+              />
 
               <div class="scope-table-wrapper">
                 <a-table
@@ -2544,14 +2866,21 @@ onBeforeUnmount(() => {
                       <div class="template-param-config-item-meta">{{ item.executor_param_name }}</div>
                     </div>
                     <a-tag class="dashboard-chip dashboard-chip-neutral">
-                      {{ resolveTemplateParamSourceLabel('ci', getTemplateParamConfig('ci', item.id)) }}
+                      {{ resolveTemplateParamSourceLabel('ci', getTemplateParamConfig('ci', item.id, item)) }}
                     </a-tag>
                   </div>
                   <a-row :gutter="[12, 12]" class="template-param-config-grid">
-                    <a-col class="template-param-source-col" :span="24">
+                    <a-col v-if="isBuiltinMappedExecutorParam(item)" class="template-param-value-col" :span="24">
+                      <a-form-item label="取值方式" class="template-param-inline-item">
+                        <div class="template-param-builtin-lock">
+                          已映射内置字段 {{ resolveBuiltinMappedExecutorParamLabel(item) }}，发布链路自动赋值
+                        </div>
+                      </a-form-item>
+                    </a-col>
+                    <a-col v-else class="template-param-source-col" :span="24">
                       <a-form-item label="取值方式" class="template-param-inline-item">
                         <a-segmented
-                          :value="getTemplateParamConfig('ci', item.id).value_source"
+                          :value="getTemplateParamConfig('ci', item.id, item).value_source"
                           :options="[
                             { label: '发布时填写', value: 'release_input' },
                             { label: '固定值', value: 'fixed' },
@@ -2562,32 +2891,32 @@ onBeforeUnmount(() => {
                       </a-form-item>
                     </a-col>
                     <a-col
-                      v-if="getTemplateParamConfig('ci', item.id).value_source === 'fixed'"
+                      v-if="!isBuiltinMappedExecutorParam(item) && getTemplateParamConfig('ci', item.id, item).value_source === 'fixed'"
                       class="template-param-value-col"
                       :span="24"
                     >
                       <a-form-item label="固定值" class="template-param-inline-item">
                         <a-input
-                          :value="getTemplateParamConfig('ci', item.id).fixed_value"
+                          :value="getTemplateParamConfig('ci', item.id, item).fixed_value"
                           placeholder="请输入模板固定值"
-                          @update:value="(value: string) => (getTemplateParamConfig('ci', item.id).fixed_value = value)"
+                          @update:value="(value: string) => (getTemplateParamConfig('ci', item.id, item).fixed_value = value)"
                         />
                       </a-form-item>
                     </a-col>
                     <a-col
-                      v-else-if="getTemplateParamConfig('ci', item.id).value_source === 'builtin'"
+                      v-else-if="!isBuiltinMappedExecutorParam(item) && getTemplateParamConfig('ci', item.id, item).value_source === 'builtin'"
                       class="template-param-value-col"
                       :span="24"
                     >
                       <a-form-item label="发布基础字段" class="template-param-inline-item">
                         <a-select
-                          :value="getTemplateParamConfig('ci', item.id).source_param_key || undefined"
+                          :value="getTemplateParamConfig('ci', item.id, item).source_param_key || undefined"
                           allow-clear
                           show-search
                           option-filter-prop="label"
                           placeholder="请选择发布基础字段"
-                          :options="resolveTemplateParamSourceOptions('ci', getTemplateParamConfig('ci', item.id))"
-                          @change="(value: string | undefined) => (getTemplateParamConfig('ci', item.id).source_param_key = String(value || '').trim().toLowerCase())"
+                          :options="resolveTemplateParamSourceOptions('ci', getTemplateParamConfig('ci', item.id, item))"
+                          @change="(value: string | undefined) => (getTemplateParamConfig('ci', item.id, item).source_param_key = String(value || '').trim().toLowerCase())"
                         />
                       </a-form-item>
                     </a-col>
@@ -2653,6 +2982,13 @@ onBeforeUnmount(() => {
                 type="warning"
                 show-icon
                 :message="scopeBindingWarnings.cd"
+              />
+              <a-alert
+                v-if="isCDUsingPipeline() && scopeComplianceWarnings.cd"
+                class="scope-binding-alert"
+                type="warning"
+                show-icon
+                :message="scopeComplianceWarnings.cd"
               />
 
               <a-collapse v-if="isCDUsingArgoCD()" v-model:activeKey="argocdInfoActiveKeys" class="argocd-info-collapse" ghost>
@@ -2723,14 +3059,21 @@ onBeforeUnmount(() => {
                       <div class="template-param-config-item-meta">{{ item.executor_param_name }}</div>
                     </div>
                     <a-tag class="dashboard-chip dashboard-chip-neutral">
-                      {{ resolveTemplateParamSourceLabel('cd', getTemplateParamConfig('cd', item.id)) }}
+                      {{ resolveTemplateParamSourceLabel('cd', getTemplateParamConfig('cd', item.id, item)) }}
                     </a-tag>
                   </div>
                   <a-row :gutter="[12, 12]" class="template-param-config-grid">
-                    <a-col class="template-param-source-col" :span="24">
+                    <a-col v-if="isBuiltinMappedExecutorParam(item)" class="template-param-value-col" :span="24">
+                      <a-form-item label="取值方式" class="template-param-inline-item">
+                        <div class="template-param-builtin-lock">
+                          已映射内置字段 {{ resolveBuiltinMappedExecutorParamLabel(item) }}，发布链路自动赋值
+                        </div>
+                      </a-form-item>
+                    </a-col>
+                    <a-col v-else class="template-param-source-col" :span="24">
                       <a-form-item label="取值方式" class="template-param-inline-item">
                         <a-segmented
-                          :value="getTemplateParamConfig('cd', item.id).value_source"
+                          :value="getTemplateParamConfig('cd', item.id, item).value_source"
                           :options="[
                             { label: '发布时填写', value: 'release_input' },
                             { label: '固定值', value: 'fixed' },
@@ -2742,32 +3085,32 @@ onBeforeUnmount(() => {
                       </a-form-item>
                     </a-col>
                     <a-col
-                      v-if="getTemplateParamConfig('cd', item.id).value_source === 'fixed'"
+                      v-if="!isBuiltinMappedExecutorParam(item) && getTemplateParamConfig('cd', item.id, item).value_source === 'fixed'"
                       class="template-param-value-col"
                       :span="24"
                     >
                       <a-form-item label="固定值" class="template-param-inline-item">
                         <a-input
-                          :value="getTemplateParamConfig('cd', item.id).fixed_value"
+                          :value="getTemplateParamConfig('cd', item.id, item).fixed_value"
                           placeholder="请输入模板固定值"
-                          @update:value="(value: string) => (getTemplateParamConfig('cd', item.id).fixed_value = value)"
+                          @update:value="(value: string) => (getTemplateParamConfig('cd', item.id, item).fixed_value = value)"
                         />
                       </a-form-item>
                     </a-col>
                     <a-col
-                      v-else-if="['ci_param', 'builtin'].includes(getTemplateParamConfig('cd', item.id).value_source)"
+                      v-else-if="!isBuiltinMappedExecutorParam(item) && ['ci_param', 'builtin'].includes(getTemplateParamConfig('cd', item.id, item).value_source)"
                       class="template-param-value-col"
                       :span="24"
                     >
-                      <a-form-item :label="getTemplateParamConfig('cd', item.id).value_source === 'ci_param' ? 'CI 来源字段' : '发布基础字段'" class="template-param-inline-item">
+                      <a-form-item :label="getTemplateParamConfig('cd', item.id, item).value_source === 'ci_param' ? 'CI 来源字段' : '发布基础字段'" class="template-param-inline-item">
                         <a-select
-                          :value="getTemplateParamConfig('cd', item.id).source_param_key || undefined"
+                          :value="getTemplateParamConfig('cd', item.id, item).source_param_key || undefined"
                           allow-clear
                           show-search
                           option-filter-prop="label"
                           placeholder="请选择来源字段"
-                          :options="resolveTemplateParamSourceOptions('cd', getTemplateParamConfig('cd', item.id))"
-                          @change="(value: string | undefined) => (getTemplateParamConfig('cd', item.id).source_param_key = String(value || '').trim().toLowerCase())"
+                          :options="resolveTemplateParamSourceOptions('cd', getTemplateParamConfig('cd', item.id, item))"
+                          @change="(value: string | undefined) => (getTemplateParamConfig('cd', item.id, item).source_param_key = String(value || '').trim().toLowerCase())"
                         />
                       </a-form-item>
                     </a-col>
@@ -3814,6 +4157,20 @@ onBeforeUnmount(() => {
   margin-bottom: 0;
 }
 
+.template-param-builtin-lock {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 7px 12px;
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.94) 0%, rgba(248, 250, 252, 0.96) 100%);
+  color: #1e3a8a;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
 .hook-config-card {
   margin-top: 16px;
 }
@@ -4116,6 +4473,143 @@ onBeforeUnmount(() => {
 .template-name-text {
   font-weight: 600;
   color: var(--color-text-main);
+}
+
+.template-compliance-chip-button {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.template-compliance-chip-button:focus-visible {
+  outline: 2px solid rgba(245, 158, 11, 0.42);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+
+.template-compliance-chip-text {
+  margin-inline-end: 0;
+}
+
+.template-compliance-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.template-compliance-detail-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.86);
+}
+
+.template-compliance-detail-title {
+  color: var(--color-text-main);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.template-compliance-detail-app {
+  margin-top: 2px;
+  color: var(--color-text-soft);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.template-compliance-detail-message {
+  color: var(--color-warning-strong, #b45309);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.template-compliance-detail-scopes {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.template-compliance-detail-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.template-compliance-detail-scope-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--color-text-main);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.template-compliance-finding-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.template-compliance-finding {
+  padding: 12px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.74);
+}
+
+.template-compliance-finding-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.template-compliance-finding-pipeline {
+  color: var(--color-text-main);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.template-compliance-finding-rule {
+  margin-top: 2px;
+  color: var(--color-text-soft);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.template-compliance-finding-tags {
+  display: inline-flex;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.template-compliance-finding-tags :deep(.ant-tag) {
+  margin-inline-end: 0;
+}
+
+.template-compliance-finding-message,
+.template-compliance-finding-suggestion {
+  margin-top: 8px;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.template-compliance-finding-suggestion {
+  color: #64748b;
 }
 
 .template-binding-warning-text {

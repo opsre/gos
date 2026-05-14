@@ -1,5 +1,10 @@
 import axios from 'axios'
 
+interface BackendErrorPayload {
+  code?: string
+  error?: string
+}
+
 function resolveDefaultAPIBaseURL() {
   if (typeof window === 'undefined') {
     return 'http://localhost:8081'
@@ -37,7 +42,7 @@ let responseInterceptorRegistered = false
 
 export function registerHTTPInterceptors(options: {
   getAccessToken: () => string
-  onUnauthorized: () => void
+  onUnauthorized: (code?: string, message?: string) => void
 }) {
   if (!requestInterceptorRegistered) {
     http.interceptors.request.use((config) => {
@@ -58,7 +63,8 @@ export function registerHTTPInterceptors(options: {
       (error) => {
         const status = Number(error?.response?.status || 0)
         if (status === 401) {
-          options.onUnauthorized()
+          const payload = error?.response?.data as BackendErrorPayload | undefined
+          options.onUnauthorized(String(payload?.code || ''), String(payload?.error || ''))
         }
         return Promise.reject(error)
       },

@@ -540,7 +540,7 @@ onMounted(() => {
   height: 42px;
   padding-inline: 14px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
   background: rgba(255, 255, 255, 0.42) !important;
   color: #0f172a !important;
   font-weight: 700;

@@ -550,6 +550,17 @@ func (uc *ReleaseOrderManager) GetApplicationRollbackPrecheck(
 		)
 		output.Params = toApplicationRollbackPrecheckParams(sourceParams)
 	case RollbackSupportedActionReplay:
+		if replayErr := ensureReplaySourceOrderCanReplay(sourceOrder); replayErr != nil {
+			output.Executable = false
+			output.Reason = replayErr.Error()
+			output.Items = append(output.Items, ReleaseOrderPrecheckItem{
+				Key:     "source_order",
+				Name:    "来源发布单",
+				Status:  ReleaseOrderPrecheckItemStatusBlocked,
+				Message: output.Reason,
+			})
+			return output, nil
+		}
 		sourceReplayExecution, resolveErr := resolveReplayExecution(sourceExecutions)
 		if resolveErr != nil {
 			return ApplicationRollbackPrecheckOutput{}, resolveErr

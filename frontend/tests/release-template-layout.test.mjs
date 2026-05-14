@@ -169,3 +169,88 @@ test('release template param mapping controls avoid segmented overlap in narrow 
   const segmentedGroupRule = extractStyleRule('.template-param-config-item :deep(.ant-segmented-group)')
   assert.match(segmentedGroupRule, /flex-wrap:\s*wrap/, 'segmented buttons should wrap instead of overflowing into the next control')
 })
+
+test('release template builtin sources include release name', () => {
+  assert.match(source, /const builtinTemplateSourceKeys = new Set\(\[[\s\S]*'release_name'[\s\S]*\]\)/, 'release_name should be selectable as a template built-in source')
+})
+
+test('release template surfaces pipeline compliance violations without blocking edit', () => {
+  assert.match(
+    source,
+    /import \{ getPipelineScanResult, listPipelineScanRules \} from '..\/..\/api\/pipeline-scan'/,
+    'template editor should be able to preview selected pipeline scan violations',
+  )
+  assert.match(
+    source,
+    /function isTemplateViolated\(record: ReleaseTemplate\)/,
+    'template list should identify violated templates from backend compliance state',
+  )
+  assert.match(
+    source,
+    /v-if="isTemplateViolated\(record\)"[\s\S]*管线违规/,
+    'template list should show a pipeline violation tag',
+  )
+  assert.match(
+    source,
+    /templateComplianceWarning\(record\)/,
+    'template list should render the violation summary returned by the backend',
+  )
+  assert.match(
+    source,
+    /scopeComplianceWarnings = reactive<Record<ReleasePipelineScope, string>>/,
+    'template editor should track scope-level violation warnings',
+  )
+  assert.match(
+    source,
+    /async function refreshScopeComplianceWarning\(scope: ReleasePipelineScope\)/,
+    'template editor should refresh compliance warnings when pipeline bindings change',
+  )
+  assert.match(
+    source,
+    /await refreshScopeComplianceWarning\(scope\)/,
+    'binding changes should trigger compliance preview without blocking save',
+  )
+  assert.match(
+    source,
+    /v-if="scopeComplianceWarnings\.ci"[\s\S]*:message="scopeComplianceWarnings\.ci"/,
+    'CI card should show compliance warning details',
+  )
+  assert.match(
+    source,
+    /v-if="isCDUsingPipeline\(\) && scopeComplianceWarnings\.cd"[\s\S]*:message="scopeComplianceWarnings\.cd"/,
+    'CD pipeline card should show compliance warning details',
+  )
+})
+
+test('release template locks executor params mapped to builtin standard fields', () => {
+  assert.match(
+    source,
+    /const builtinPlatformParamKeySet = computed\(\(\) =>/,
+    'release template should derive builtin platform keys from the standard dictionary',
+  )
+  assert.match(
+    source,
+    /function isBuiltinMappedExecutorParam\(item\?: ExecutorParamDef \| null\)/,
+    'release template should detect executor params already mapped to builtin fields',
+  )
+  assert.match(
+    source,
+    /function enforceBuiltinMappedTemplateParamConfig\(config: TemplateParamConfigState, item\?: ExecutorParamDef \| null\)/,
+    'release template should force builtin mapped params to builtin source before display and submit',
+  )
+  assert.match(
+    source,
+    /config\.value_source = 'builtin'[\s\S]*config\.source_param_key = paramKey[\s\S]*config\.fixed_value = ''/,
+    'builtin mapped params should be saved as builtin source with their platform key',
+  )
+  assert.match(
+    source,
+    /v-if="isBuiltinMappedExecutorParam\(item\)"[\s\S]*已映射内置字段[\s\S]*发布链路自动赋值[\s\S]*v-else[\s\S]*<a-segmented/,
+    'builtin mapped rows should render a readonly auto-fill message instead of the value-source segmented control',
+  )
+  assert.match(
+    source,
+    /handleTemplateParamValueSourceChange\([\s\S]*if \(isBuiltinMappedExecutorParam\(paramDef\)\)/,
+    'manual value source changes should be ignored for builtin mapped params',
+  )
+})

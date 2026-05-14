@@ -29,5 +29,6 @@ type Repository interface {
 	CreateSession(ctx context.Context, item UserSession) error
 	GetSessionByAccessToken(ctx context.Context, token string) (UserSession, error)
 	DeleteSessionByAccessToken(ctx context.Context, token string) error
+	RevokeSessionsByUserID(ctx context.Context, userID string, reason string, revokedAt time.Time) (int64, error)
 	DeleteExpiredSessions(ctx context.Context, now time.Time) (int64, error)
 }

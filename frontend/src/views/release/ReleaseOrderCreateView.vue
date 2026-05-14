@@ -34,6 +34,7 @@ import { extractHTTPErrorMessage } from '../../utils/http-error'
 interface SelectOption {
   label: string
   value: string
+  disabled?: boolean
 }
 
 interface ChoiceMeta {
@@ -112,13 +113,6 @@ const formState = reactive<CreateFormState>({
   remark: '',
 })
 
-const rules: Record<string, Rule[]> = {
-  application_id: [{ required: true, message: '请选择应用', trigger: 'change' }],
-  template_id: [{ required: true, message: '请选择发布模板', trigger: 'change' }],
-  release_name: [{ required: true, message: '请输入发布名称', trigger: 'blur' }],
-  env_code: [{ required: true, message: '请选择环境', trigger: 'change' }],
-}
-
 const scopeLabels: Record<ReleasePipelineScope, string> = {
   ci: 'CI',
   cd: 'CD',
@@ -166,13 +160,6 @@ const currentUserDisplayName = computed(() => {
   return String(profile.display_name || '').trim() || String(profile.username || '').trim() || '-'
 })
 
-const formCreatorDisplayName = computed(() => {
-  if (isEditMode.value && editingOrder.value) {
-    return String(editingOrder.value.triggered_by || '').trim() || currentUserDisplayName.value
-  }
-  return currentUserDisplayName.value
-})
-
 const selectedApplicationRecord = computed(() =>
   applicationRecords.value.find((item) => item.id === formState.application_id.trim()) || null,
 )
@@ -183,6 +170,38 @@ const releaseBranchOptions = computed<SelectOption[]>(() =>
     value: item.branch,
   })),
 )
+
+function templateHasBuiltinSource(keys: string[]) {
+  const targetKeys = new Set(keys.map((item) => String(item || '').trim().toLowerCase()).filter(Boolean))
+  return templateParams.value.some((item) => {
+    const source = String(item.value_source || '').trim().toLowerCase()
+    const key = String(item.source_param_key || '').trim().toLowerCase()
+    return source === 'builtin' && targetKeys.has(key)
+  })
+}
+
+const showEnvironmentField = computed(() => templateHasBuiltinSource(['env', 'env_code']))
+const showReleaseBranchField = computed(() => templateHasBuiltinSource(['branch', 'git_ref']))
+
+const effectiveEnvCode = computed(() => {
+  const explicitEnvCode = formState.env_code.trim()
+  if (explicitEnvCode) {
+    return explicitEnvCode
+  }
+  if (showEnvironmentField.value) {
+    return ''
+  }
+  return String(authorizedEnvOptions.value[0]?.value || '').trim()
+})
+
+const rules = computed<Record<string, Rule[]>>(() => ({
+  application_id: [{ required: true, message: '请选择应用', trigger: 'change' }],
+  template_id: [{ required: true, message: '请选择发布模板', trigger: 'change' }],
+  release_name: [{ required: true, message: '请输入发布名称', trigger: 'blur' }],
+  ...(showEnvironmentField.value
+    ? { env_code: [{ required: true, message: '请选择环境', trigger: 'change' }] }
+    : {}),
+}))
 
 const bindingMapByScope = computed<Record<ReleasePipelineScope, ReleaseTemplateBinding | null>>(() => ({
   ci: templateBindings.value.find((item) => item.pipeline_scope === 'ci' && item.enabled) || null,
@@ -205,31 +224,36 @@ const visibleScopes = computed(() => {
   return (['ci', 'cd'] as ReleasePipelineScope[]).filter((scope) => bindingMapByScope.value[scope])
 })
 
-const templateSummaryDescription = computed(() => {
-  const approvalHint =
-    selectedTemplate.value?.approval_enabled && selectedTemplate.value.approval_approver_ids.length > 0
-      ? '当前模板已启用审批，暂不支持极速发布；'
-      : ''
-  const scopeText = visibleScopes.value.map((scope) => scope.toUpperCase()).join(' + ')
-  return `${approvalHint}已启用 ${scopeText} 流程，高级参数仅展示需要申请人填写的字段`
+const enabledScopeSummary = computed(() => visibleScopes.value.map((scope) => scope.toUpperCase()).join(' + ') || '-')
+const advancedParamFillHint = '仅展示需要申请人填写的字段'
+const advancedParamApprovalHint = computed(() => {
+  if (selectedTemplate.value?.approval_enabled && selectedTemplate.value.approval_approver_ids.length > 0) {
+    return '当前模板已启用审批，暂不支持极速发布'
+  }
+  return ''
+})
+const advancedParamAriaLabel = computed(() => {
+  const templateName = selectedTemplate.value?.name ? `当前模板：${selectedTemplate.value.name}` : '当前模板未选择'
+  const approvalText = advancedParamApprovalHint.value ? `，${advancedParamApprovalHint.value}` : ''
+  return `${templateName}，已启用 ${enabledScopeSummary.value} 流程${approvalText}，${advancedParamFillHint}`
 })
 
 const scopeCardList = computed(() =>
-  visibleScopes.value.map((scope) => ({
-    scope,
-    title: scopeLabels[scope],
-    binding: bindingMapByScope.value[scope],
-    params: visibleAdvancedScopeParams(scope),
-    loading: scopeStates[scope].loading,
-    error: scopeStates[scope].error,
-  })),
+  visibleScopes.value
+    .map((scope) => ({
+      scope,
+      title: scopeLabels[scope],
+      binding: bindingMapByScope.value[scope],
+      params: visibleAdvancedScopeParams(scope),
+      loading: scopeStates[scope].loading,
+      error: scopeStates[scope].error,
+    }))
+    .filter((item) => item.loading || item.error || item.params.length > 0),
 )
-
-const advancedParamSummaryHint = computed(() => '高级参数包含 CI/CD 字段，已映射或沿用的参数不重复展示。')
 
 const hasScopeErrors = computed(() => visibleScopes.value.some((scope) => Boolean(scopeStates[scope].error)))
 const isParamLoading = computed(() => loadingTemplateDetail.value || visibleScopes.value.some((scope) => scopeStates[scope].loading))
-const canSubmitRelease = computed(() => Boolean(formState.application_id && formState.template_id && formState.release_name.trim() && selectedTemplate.value) && !hasScopeErrors.value && !isParamLoading.value && !loadingEditOrder.value)
+const canSubmitRelease = computed(() => Boolean(formState.application_id && formState.template_id && formState.release_name.trim() && selectedTemplate.value && effectiveEnvCode.value) && !hasScopeErrors.value && !isParamLoading.value && !loadingEditOrder.value)
 const fastReleaseDisabledReason = computed(() => {
   if (isEditMode.value) {
     return '编辑模式下不支持极速发布'
@@ -297,10 +321,18 @@ function resetTemplateState() {
 
 function formatTemplateOptionLabel(item: ReleaseTemplate) {
   const summary = [item.binding_name, item.binding_type].filter(Boolean).join(' / ')
+  const violation = item.compliance_status === 'violated'
+    ? `违规：${item.compliance_summary || '管线规范不通过'}`
+    : ''
   if (!summary) {
-    return item.name
+    return violation ? `${item.name}（${violation}）` : item.name
   }
-  return `${item.name} · ${summary}`
+  const label = `${item.name} · ${summary}`
+  return violation ? `${label}（${violation}）` : label
+}
+
+function isReleaseTemplateSelectable(item: ReleaseTemplate) {
+  return item.compliance_status !== 'violated'
 }
 
 function applyRouteQuery() {
@@ -495,16 +527,17 @@ async function loadTemplateOptions() {
     templateOptions.value = templates.map((item) => ({
       label: formatTemplateOptionLabel(item),
       value: item.id,
+      disabled: !isReleaseTemplateSelectable(item),
     }))
 
     let nextTemplateID = ''
-    if (preferredTemplateID.value && templateOptions.value.some((item) => item.value === preferredTemplateID.value)) {
+    if (preferredTemplateID.value && templateOptions.value.some((item) => item.value === preferredTemplateID.value && !item.disabled)) {
       nextTemplateID = preferredTemplateID.value
       preferredTemplateID.value = ''
     } else if (preferredBindingID.value) {
       nextTemplateID = await findTemplateByBinding(templates, preferredBindingID.value)
       preferredBindingID.value = ''
-    } else if (templates.length === 1 && templates[0]) {
+    } else if (templates.length === 1 && templates[0] && isReleaseTemplateSelectable(templates[0])) {
       nextTemplateID = templates[0].id
     }
 
@@ -513,6 +546,8 @@ async function loadTemplateOptions() {
       await loadSelectedTemplateDetail()
     } else if (templates.length === 0) {
       templateWarning.value = '当前应用下还没有启用中的发布模板，请先到“发布模板”页面完成配置'
+    } else if (!templates.some(isReleaseTemplateSelectable)) {
+      templateWarning.value = '当前应用下的发布模板均违反管线规范，请先调整模板绑定的管线'
     } else {
       templateWarning.value = '请选择一个发布模板后继续填写参数'
     }
@@ -634,6 +669,18 @@ async function loadSelectedTemplateDetail() {
   loadingTemplateDetail.value = true
   try {
     const response = await getReleaseTemplateByID(templateID)
+    if (response.data.template.compliance_status === 'violated') {
+      selectedTemplate.value = null
+      templateBindings.value = []
+      templateParams.value = []
+      formState.template_id = ''
+      resetParamValues()
+      templateWarning.value = response.data.template.compliance_summary
+        ? `发布模板违反管线规范：${response.data.template.compliance_summary}`
+        : '发布模板违反管线规范，不能用于新建发布单'
+      message.warning(templateWarning.value)
+      return
+    }
     selectedTemplate.value = response.data.template
     templateBindings.value = response.data.bindings
     templateParams.value = response.data.params
@@ -1033,8 +1080,8 @@ async function submitRelease(options?: { fast?: boolean; buildOnly?: boolean }) 
       application_id: formState.application_id.trim(),
       template_id: formState.template_id.trim(),
       release_name: formState.release_name.trim(),
-      env_code: formState.env_code.trim(),
-      git_ref: formState.git_ref.trim() || undefined,
+      env_code: effectiveEnvCode.value,
+      git_ref: showReleaseBranchField.value ? (formState.git_ref.trim() || undefined) : undefined,
       trigger_type: 'manual',
       triggered_by: currentUserDisplayName.value !== '-' ? currentUserDisplayName.value : undefined,
       remark: formState.remark.trim() || undefined,
@@ -1238,16 +1285,8 @@ onMounted(async () => {
         </a-row>
 
         <a-row :gutter="12" class="form-row-compact">
-          <a-col :xs="24" :md="12">
-            <a-form-item class="form-item-compact">
-              <template #label>
-                <span class="field-label-with-hint">创建者 <span class="field-readonly-hint">只读</span></span>
-              </template>
-              <a-input :value="formCreatorDisplayName" disabled />
-            </a-form-item>
-          </a-col>
-          <a-col :xs="24" :md="12">
-            <a-form-item class="form-item-compact" name="env_code">
+          <a-col v-if="showEnvironmentField" :xs="24" :md="8">
+            <a-form-item class="form-item-compact release-env-form-item" name="env_code">
               <template #label>
                 <span class="field-label-with-hint">环境 <span class="field-required-hint">必填</span></span>
               </template>
@@ -1260,10 +1299,7 @@ onMounted(async () => {
               />
             </a-form-item>
           </a-col>
-        </a-row>
-
-        <a-row :gutter="12" class="form-row-compact">
-          <a-col :xs="24" :md="12">
+          <a-col v-if="showReleaseBranchField" :xs="24" :md="showEnvironmentField ? 16 : 24">
             <a-form-item class="form-item-compact">
               <template #label>
                 <span class="field-label-with-hint">发布分支</span>
@@ -1285,7 +1321,18 @@ onMounted(async () => {
               />
             </a-form-item>
           </a-col>
-          <a-col :xs="24" :md="12">
+          <a-col v-else :xs="24" :md="showEnvironmentField ? 16 : 24">
+            <a-form-item class="form-item-compact" name="remark">
+              <template #label>
+                <span class="field-label-with-hint">备注</span>
+              </template>
+              <a-input v-model:value="formState.remark" placeholder="本次发布说明" allow-clear />
+            </a-form-item>
+          </a-col>
+        </a-row>
+
+        <a-row v-if="showReleaseBranchField" :gutter="12" class="form-row-compact">
+          <a-col :span="24">
             <a-form-item class="form-item-compact" name="remark">
               <template #label>
                 <span class="field-label-with-hint">备注</span>
@@ -1296,15 +1343,7 @@ onMounted(async () => {
         </a-row>
 
         <a-alert
-          v-if="selectedTemplate"
-          class="template-alert template-alert-success"
-          type="success"
-          show-icon
-          :message="`当前模板：${selectedTemplate.name}`"
-          :description="templateSummaryDescription"
-        />
-        <a-alert
-          v-else-if="templateWarning"
+          v-if="templateWarning && !selectedTemplate"
           class="template-alert template-alert-warning"
           type="warning"
           show-icon
@@ -1317,15 +1356,40 @@ onMounted(async () => {
           <div class="release-param-heading-main">
             <span class="form-section-bar"></span>
             <h3 class="form-section-heading-title">高级参数</h3>
-            <a-tooltip trigger="click" :title="advancedParamSummaryHint" placement="topLeft">
+            <a-popover
+              trigger="click"
+              placement="topLeft"
+              overlay-class-name="advanced-param-hint-popover"
+            >
+              <template #content>
+                <div class="advanced-param-hint-card">
+                  <div class="advanced-param-hint-title">参数说明</div>
+                  <div class="advanced-param-hint-row">
+                    <span class="advanced-param-hint-label">当前模板</span>
+                    <span class="advanced-param-hint-value">{{ selectedTemplate?.name || '-' }}</span>
+                  </div>
+                  <div class="advanced-param-hint-row">
+                    <span class="advanced-param-hint-label">执行流程</span>
+                    <span class="advanced-param-hint-value">{{ enabledScopeSummary }}</span>
+                  </div>
+                  <div v-if="advancedParamApprovalHint" class="advanced-param-hint-row advanced-param-hint-row-warning">
+                    <span class="advanced-param-hint-label">审批限制</span>
+                    <span class="advanced-param-hint-value">{{ advancedParamApprovalHint }}</span>
+                  </div>
+                  <div class="advanced-param-hint-row">
+                    <span class="advanced-param-hint-label">填写范围</span>
+                    <span class="advanced-param-hint-value">{{ advancedParamFillHint }}</span>
+                  </div>
+                </div>
+              </template>
               <button
                 class="advanced-param-heading-hint"
                 type="button"
-                :aria-label="advancedParamSummaryHint"
+                :aria-label="advancedParamAriaLabel"
               >
                 <ExclamationCircleOutlined />
               </button>
-            </a-tooltip>
+            </a-popover>
           </div>
         </div>
 
@@ -1337,9 +1401,9 @@ onMounted(async () => {
           >
             <a-alert v-if="item.error" class="scope-alert scope-alert-error" type="error" show-icon :message="item.error" />
 
-            <a-spin :spinning="item.loading && visibleAdvancedScopeParams(item.scope).length === 0" tip="正在加载高级参数...">
+            <a-spin :spinning="item.loading && item.params.length === 0" tip="正在加载高级参数...">
               <a-empty
-                v-if="!item.loading && visibleAdvancedScopeParams(item.scope).length === 0"
+                v-if="!item.loading && item.params.length === 0"
                 :description="item.binding?.provider === 'jenkins'
                   ? `当前 ${item.title} 没有需要申请人补充的高级参数`
                   : item.binding?.provider === 'argocd'
@@ -1347,9 +1411,9 @@ onMounted(async () => {
                     : '当前执行单元暂无可填写的高级参数'"
               />
               <div v-else class="scope-param-form">
-                <a-row v-for="rowIndex in Math.ceil(visibleAdvancedScopeParams(item.scope).length / 2)" :key="`${item.scope}-row-${rowIndex}`" :gutter="12" class="form-row-compact">
+                <a-row v-for="rowIndex in Math.ceil(item.params.length / 2)" :key="`${item.scope}-row-${rowIndex}`" :gutter="12" class="form-row-compact">
                   <a-col
-                    v-for="param in visibleAdvancedScopeParams(item.scope).slice((rowIndex - 1) * 2, (rowIndex - 1) * 2 + 2)"
+                    v-for="param in item.params.slice((rowIndex - 1) * 2, (rowIndex - 1) * 2 + 2)"
                     :key="param.id"
                     :xs="24"
                     :md="12"
@@ -1423,15 +1487,15 @@ onMounted(async () => {
                   <span>先确定发布归属和执行链路</span>
                 </div>
               </li>
-              <li class="create-process-item">
-                <span class="create-process-index">
-                  <BranchesOutlined />
-                </span>
-                <div class="create-process-copy">
-                  <strong>确认环境与分支</strong>
-                  <span>环境决定权限范围，分支用于发布基础字段</span>
-                </div>
-              </li>
+                <li class="create-process-item">
+                  <span class="create-process-index">
+                    <BranchesOutlined />
+                  </span>
+                  <div class="create-process-copy">
+                    <strong>确认发布信息</strong>
+                    <span>基础字段按模板映射展示</span>
+                  </div>
+                </li>
               <li class="create-process-item">
                 <span class="create-process-index">
                   <CheckCircleOutlined />
@@ -1453,17 +1517,17 @@ onMounted(async () => {
             </ol>
           </section>
 
-          <section class="create-side-card create-side-tips">
-            <div class="create-side-card-header">
-              <span class="create-side-card-kicker">发布前检查</span>
-              <h3 class="create-side-card-title">先确认模板和环境</h3>
-            </div>
-            <ul class="create-tips-list">
-              <li>应用和环境会决定当前账号是否有创建权限</li>
-              <li>模板启用审批人后只能创建发布单，不能极速发布</li>
-              <li>模板使用分支基础字段时，发布分支需要填写</li>
-            </ul>
-          </section>
+              <section class="create-side-card create-side-tips">
+                <div class="create-side-card-header">
+                  <span class="create-side-card-kicker">发布前检查</span>
+                  <h3 class="create-side-card-title">先确认模板配置</h3>
+                </div>
+                <ul class="create-tips-list">
+                  <li>应用会决定当前账号是否有创建权限</li>
+                  <li>模板启用审批人后只能创建发布单，不能极速发布</li>
+                  <li>只有模板映射到发布基础字段时，才会展示对应填写项</li>
+                </ul>
+              </section>
         </aside>
       </div>
     </a-form>
@@ -1504,7 +1568,7 @@ onMounted(async () => {
   gap: 8px;
   height: 42px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
   background: rgba(255, 255, 255, 0.42) !important;
   color: #0f172a !important;
   box-shadow:
@@ -1670,6 +1734,68 @@ onMounted(async () => {
   outline: none;
 }
 
+:global(.advanced-param-hint-popover) {
+  max-width: min(320px, calc(100vw - 32px));
+}
+
+:global(.advanced-param-hint-popover .ant-popover-inner) {
+  border-radius: 14px;
+  border: 1px solid rgba(203, 213, 225, 0.78);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow:
+    0 18px 42px rgba(15, 23, 42, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+:global(.advanced-param-hint-popover .ant-popover-inner-content) {
+  padding: 0;
+}
+
+.advanced-param-hint-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 296px;
+  padding: 14px;
+}
+
+.advanced-param-hint-title {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.advanced-param-hint-row {
+  display: grid;
+  grid-template-columns: 66px minmax(0, 1fr);
+  gap: 10px;
+  align-items: flex-start;
+  padding-top: 10px;
+  border-top: 1px solid rgba(226, 232, 240, 0.88);
+}
+
+.advanced-param-hint-label {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.7;
+}
+
+.advanced-param-hint-value {
+  min-width: 0;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+.advanced-param-hint-row-warning .advanced-param-hint-label,
+.advanced-param-hint-row-warning .advanced-param-hint-value {
+  color: #b45309;
+}
+
 .field-label-with-hint {
   display: inline-flex;
   align-items: center;
@@ -1719,6 +1845,10 @@ onMounted(async () => {
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.01em;
+}
+
+.release-env-form-item :deep(.ant-form-item-control) {
+  padding-top: 4px;
 }
 
 .application-form-plain :deep(.ant-form-item-explain),
@@ -1834,16 +1964,6 @@ onMounted(async () => {
 .scope-alert :deep(.ant-alert-description) {
   color: var(--color-text-secondary);
   line-height: 1.8;
-}
-
-.template-alert-success {
-  background: linear-gradient(180deg, #f0fdf4 0%, #ecfdf5 100%);
-  border-color: #86efac;
-}
-
-.template-alert-success :deep(.ant-alert-message),
-.template-alert-success :deep(.ant-alert-icon) {
-  color: #15803d;
 }
 
 .template-alert-warning {

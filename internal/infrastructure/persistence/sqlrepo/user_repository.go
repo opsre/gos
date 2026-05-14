@@ -39,7 +39,7 @@ func (r *UserRepository) InitSchema(ctx context.Context) error {
 			return execErr
 		}
 	}
-	return nil
+	return r.migrateUserSessionSchema(ctx)
 }
 
 // schemaStatements 封装当前模块的业务处理逻辑。
@@ -106,6 +106,8 @@ func (r *UserRepository) schemaStatements() ([]string, error) {
 	expired_at BIGINT NOT NULL,
 	client_ip VARCHAR(64) NOT NULL DEFAULT '',
 	user_agent VARCHAR(300) NOT NULL DEFAULT '',
+	revoked_at BIGINT NULL,
+	revoked_reason VARCHAR(64) NOT NULL DEFAULT '',
 	created_at BIGINT NOT NULL,
 	UNIQUE KEY uk_sus_token (access_token),
 	KEY idx_sus_user (user_id),
@@ -171,6 +173,8 @@ func (r *UserRepository) schemaStatements() ([]string, error) {
 	expired_at INTEGER NOT NULL,
 	client_ip TEXT NOT NULL DEFAULT '',
 	user_agent TEXT NOT NULL DEFAULT '',
+	revoked_at INTEGER NULL,
+	revoked_reason TEXT NOT NULL DEFAULT '',
 	created_at INTEGER NOT NULL
 );`,
 			`CREATE INDEX IF NOT EXISTS idx_sus_user ON sys_user_session (user_id);`,
@@ -179,6 +183,93 @@ func (r *UserRepository) schemaStatements() ([]string, error) {
 	default:
 		return nil, fmt.Errorf("unsupported db driver: %s", r.dbDriver)
 	}
+}
+
+// migrateUserSessionSchema 补齐历史 session 表字段。
+func (r *UserRepository) migrateUserSessionSchema(ctx context.Context) error {
+	switch r.dbDriver {
+	case "mysql":
+		exists, err := r.mysqlColumnExists(ctx, "sys_user_session", "revoked_at")
+		if err != nil {
+			return err
+		}
+		if !exists {
+			if _, err := r.db.ExecContext(ctx, `ALTER TABLE sys_user_session ADD COLUMN revoked_at BIGINT NULL AFTER user_agent;`); err != nil {
+				return err
+			}
+		}
+		exists, err = r.mysqlColumnExists(ctx, "sys_user_session", "revoked_reason")
+		if err != nil {
+			return err
+		}
+		if !exists {
+			if _, err := r.db.ExecContext(ctx, `ALTER TABLE sys_user_session ADD COLUMN revoked_reason VARCHAR(64) NOT NULL DEFAULT '' AFTER revoked_at;`); err != nil {
+				return err
+			}
+		}
+	case "sqlite":
+		columns, err := r.sqliteTableColumns(ctx, "sys_user_session")
+		if err != nil {
+			return err
+		}
+		if _, ok := columns["revoked_at"]; !ok {
+			if _, err := r.db.ExecContext(ctx, `ALTER TABLE sys_user_session ADD COLUMN revoked_at INTEGER NULL;`); err != nil {
+				return err
+			}
+		}
+		if _, ok := columns["revoked_reason"]; !ok {
+			if _, err := r.db.ExecContext(ctx, `ALTER TABLE sys_user_session ADD COLUMN revoked_reason TEXT NOT NULL DEFAULT '';`); err != nil {
+				return err
+			}
+		}
+	default:
+		return fmt.Errorf("unsupported db driver: %s", r.dbDriver)
+	}
+	return nil
+}
+
+// mysqlColumnExists 封装当前模块的业务处理逻辑。
+func (r *UserRepository) mysqlColumnExists(ctx context.Context, table string, column string) (bool, error) {
+	const q = `
+SELECT COUNT(1)
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+  AND COLUMN_NAME = ?;`
+	var count int
+	if err := r.db.QueryRowContext(ctx, q, table, column).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// sqliteTableColumns 封装当前模块的业务处理逻辑。
+func (r *UserRepository) sqliteTableColumns(ctx context.Context, table string) (map[string]struct{}, error) {
+	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(`PRAGMA table_info(%s);`, table))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	columns := make(map[string]struct{})
+	for rows.Next() {
+		var (
+			cid        int
+			name       string
+			columnType string
+			notNull    int
+			defaultVal sql.NullString
+			pk         int
+		)
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultVal, &pk); err != nil {
+			return nil, err
+		}
+		columns[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return columns, nil
 }
 
 // EnsureSeedData 校验前置条件，不满足时写入对应错误响应。
@@ -233,6 +324,7 @@ func (r *UserRepository) ensureBuiltinPermissions(ctx context.Context, now time.
 		{ID: "perm-pipeline-manage", Code: "pipeline.manage", Name: "管理管线", Module: "pipeline", Action: "manage", Description: "编辑管线绑定"},
 		{ID: "perm-platform-param-manage", Code: "platform_param.manage", Name: "管理标准字库", Module: "platform_param", Action: "manage", Description: "标准字库增删改查"},
 		{ID: "perm-pipeline-param-manage", Code: "pipeline_param.manage", Name: "管理管线参数", Module: "pipeline_param", Action: "manage", Description: "管线参数映射维护"},
+		{ID: "perm-artifact-repo-manage", Code: "artifact_repo.manage", Name: "管理制品库", Module: "artifact_repo", Action: "manage", Description: "制品库配置增删改查"},
 		{ID: "perm-component-view", Code: "component.view", Name: "查看组件管理", Module: "component", Action: "view", Description: "访问组件管理模块"},
 		{ID: "perm-component-argocd-view", Code: "component.argocd.view", Name: "查看ArgoCD管理", Module: "component", Action: "argocd_view", Description: "查看 ArgoCD 应用列表与详情"},
 		{ID: "perm-component-argocd-manage", Code: "component.argocd.manage", Name: "管理ArgoCD", Module: "component", Action: "argocd_manage", Description: "执行 ArgoCD 手动同步与连接检查"},
@@ -773,8 +865,12 @@ func (r *UserRepository) DeleteUserParamPermission(ctx context.Context, id strin
 func (r *UserRepository) CreateSession(ctx context.Context, item domain.UserSession) error {
 	const q = `
 INSERT INTO sys_user_session (
-	id, user_id, access_token, expired_at, client_ip, user_agent, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?);`
+	id, user_id, access_token, expired_at, client_ip, user_agent, revoked_at, revoked_reason, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`
+	var revokedAt any
+	if item.RevokedAt != nil {
+		revokedAt = item.RevokedAt.UTC().UnixNano()
+	}
 	_, err := r.db.ExecContext(
 		ctx, q,
 		item.ID,
@@ -783,6 +879,8 @@ INSERT INTO sys_user_session (
 		item.ExpiredAt.UTC().UnixNano(),
 		item.ClientIP,
 		item.UserAgent,
+		revokedAt,
+		strings.TrimSpace(item.RevokedReason),
 		item.CreatedAt.UTC().UnixNano(),
 	)
 	if err != nil {
@@ -797,7 +895,7 @@ INSERT INTO sys_user_session (
 // GetSessionByAccessToken 查询并返回指定资源数据。
 func (r *UserRepository) GetSessionByAccessToken(ctx context.Context, token string) (domain.UserSession, error) {
 	const q = `
-SELECT id, user_id, access_token, expired_at, client_ip, user_agent, created_at
+SELECT id, user_id, access_token, expired_at, client_ip, user_agent, revoked_at, revoked_reason, created_at
 FROM sys_user_session
 WHERE access_token = ?;`
 	row := r.db.QueryRowContext(ctx, q, strings.TrimSpace(token))
@@ -816,6 +914,29 @@ func (r *UserRepository) DeleteSessionByAccessToken(ctx context.Context, token s
 	const q = `DELETE FROM sys_user_session WHERE access_token = ?;`
 	_, err := r.db.ExecContext(ctx, q, strings.TrimSpace(token))
 	return err
+}
+
+// DeleteSessionsByUserID 删除指定用户的所有登录会话。
+func (r *UserRepository) RevokeSessionsByUserID(ctx context.Context, userID string, reason string, revokedAt time.Time) (int64, error) {
+	const q = `
+UPDATE sys_user_session
+SET revoked_at = ?, revoked_reason = ?
+WHERE user_id = ? AND revoked_at IS NULL;`
+	res, err := r.db.ExecContext(
+		ctx,
+		q,
+		revokedAt.UTC().UnixNano(),
+		strings.TrimSpace(reason),
+		strings.TrimSpace(userID),
+	)
+	if err != nil {
+		return 0, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return affected, nil
 }
 
 // DeleteExpiredSessions 删除业务资源并返回处理结果。
@@ -950,6 +1071,7 @@ func scanUserSession(s userScanner) (domain.UserSession, error) {
 	var (
 		item            domain.UserSession
 		expiredUnixNano int64
+		revokedUnixNano sql.NullInt64
 		createdUnixNano int64
 	)
 	if err := s.Scan(
@@ -959,11 +1081,18 @@ func scanUserSession(s userScanner) (domain.UserSession, error) {
 		&expiredUnixNano,
 		&item.ClientIP,
 		&item.UserAgent,
+		&revokedUnixNano,
+		&item.RevokedReason,
 		&createdUnixNano,
 	); err != nil {
 		return domain.UserSession{}, err
 	}
 	item.ExpiredAt = time.Unix(0, expiredUnixNano).UTC()
+	if revokedUnixNano.Valid {
+		revokedAt := time.Unix(0, revokedUnixNano.Int64).UTC()
+		item.RevokedAt = &revokedAt
+	}
+	item.RevokedReason = strings.TrimSpace(item.RevokedReason)
 	item.CreatedAt = time.Unix(0, createdUnixNano).UTC()
 	return item, nil
 }

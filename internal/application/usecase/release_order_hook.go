@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -126,13 +127,22 @@ func (uc *ReleaseOrderManager) ensureMainReleaseFinishStep(
 	orderID string,
 	mainStatus domain.OrderStatus,
 ) error {
-	stepStatus := domain.StepStatusSuccess
-	message := "主发布流程完成"
 	if mainStatus != domain.OrderStatusSuccess {
-		stepStatus = domain.StepStatusFailed
-		message = "主发布流程失败"
+		return uc.markStepFinished(ctx, orderID, "global:release_finish", domain.StepStatusFailed, "主发布流程失败")
 	}
-	return uc.markStepFinished(ctx, orderID, "global:release_finish", stepStatus, message)
+	current, err := uc.repo.GetStepByCode(ctx, orderID, "global:release_finish")
+	if err != nil {
+		if errors.Is(err, domain.ErrStepNotFound) {
+			return nil
+		}
+		return err
+	}
+	now := uc.now()
+	startedAt := current.StartedAt
+	if startedAt == nil {
+		startedAt = &now
+	}
+	return uc.markStep(ctx, orderID, "global:release_finish", domain.StepStatusRunning, "主发布流程完成，等待发布后 Hook 执行", startedAt, nil)
 }
 
 // collectHookSteps 封装当前模块的业务处理逻辑。
@@ -302,14 +312,18 @@ func (uc *ReleaseOrderManager) syncHooksForStage(
 					if err := uc.markStepFinished(ctx, order.ID, step.StepCode, domain.StepStatusSuccess, "Hook 执行失败已忽略："+dispatchErr.Error()); err != nil {
 						return updated, false, blockingHookFailed, err
 					}
-				} else {
-					if err := uc.markStepFinished(ctx, order.ID, step.StepCode, domain.StepStatusFailed, dispatchErr.Error()); err != nil {
-						return updated, false, blockingHookFailed, err
-					}
-					blockingHookFailed = true
+					updated = true
+					return updated, false, blockingHookFailed, nil
+				}
+				if err := uc.markStepFinished(ctx, order.ID, step.StepCode, domain.StepStatusFailed, dispatchErr.Error()); err != nil {
+					return updated, false, blockingHookFailed, err
 				}
 				updated = true
-				return updated, false, blockingHookFailed, nil
+				if hookFailureBlocksRelease(hookCfg) {
+					blockingHookFailed = true
+					return updated, false, blockingHookFailed, nil
+				}
+				continue
 			}
 			updated = updated || stepUpdated
 			return updated, false, blockingHookFailed, nil
@@ -322,17 +336,29 @@ func (uc *ReleaseOrderManager) syncHooksForStage(
 			if !finished {
 				return updated, false, blockingHookFailed, nil
 			}
-			if failed && hookCfg.FailurePolicy == domain.TemplateHookFailurePolicyBlockRelease {
+			if failed && hookFailureBlocksRelease(hookCfg) {
 				blockingHookFailed = true
 			}
 		case domain.StepStatusFailed:
-			if hookCfg.FailurePolicy == domain.TemplateHookFailurePolicyBlockRelease {
+			if hookFailureBlocksRelease(hookCfg) {
 				blockingHookFailed = true
 			}
 		}
 	}
 
 	return updated, true, blockingHookFailed, nil
+}
+
+func hookFailureBlocksRelease(hook domain.ReleaseTemplateHook) bool {
+	if hook.FailurePolicy != domain.TemplateHookFailurePolicyBlockRelease {
+		return false
+	}
+	switch hook.HookType {
+	case domain.TemplateHookTypeNotificationHook, domain.TemplateHookTypeWebhookNotification:
+		return false
+	default:
+		return true
+	}
 }
 
 // loadTemplateHooksForOrder 封装当前模块的业务处理逻辑。
@@ -601,6 +627,26 @@ func buildNotificationHookRequest(ctx context.Context, source notificationdomain
 		payload["markdown"] = map[string]string{
 			"content": content,
 		}
+	case notificationdomain.SourceTypeFeishu:
+		feishuTitle := buildFeishuNotificationTitle(title, source.VerificationParam)
+		payload["msg_type"] = "interactive"
+		payload["card"] = map[string]any{
+			"config": map[string]bool{
+				"wide_screen_mode": true,
+			},
+			"header": map[string]any{
+				"title": map[string]string{
+					"tag":     "plain_text",
+					"content": feishuTitle,
+				},
+			},
+			"elements": []map[string]string{
+				{
+					"tag":     "markdown",
+					"content": strings.TrimSpace(firstNonEmpty(body, feishuTitle)),
+				},
+			},
+		}
 	default:
 		return nil, fmt.Errorf("%w: unsupported notification source type %s", ErrInvalidInput, source.SourceType)
 	}
@@ -614,6 +660,16 @@ func buildNotificationHookRequest(ctx context.Context, source notificationdomain
 	}
 	req.Header.Set("Content-Type", "application/json")
 	return req, nil
+}
+
+// buildFeishuNotificationTitle 组装业务执行所需的输入数据。
+func buildFeishuNotificationTitle(title string, keyword string) string {
+	normalizedTitle := strings.TrimSpace(firstNonEmpty(title, "GOS Release Notification"))
+	keyword = strings.TrimSpace(keyword)
+	if keyword == "" || strings.Contains(normalizedTitle, keyword) {
+		return normalizedTitle
+	}
+	return strings.TrimSpace(keyword + " " + normalizedTitle)
 }
 
 // buildDingTalkWebhookURL 组装业务执行所需的输入数据。
@@ -827,15 +883,18 @@ func (uc *ReleaseOrderManager) buildHookTaskVariables(
 		return nil, err
 	}
 	appKey := ""
+	artifactValues := map[string]string{}
 	if uc.appRepo != nil && strings.TrimSpace(order.ApplicationID) != "" {
 		if appItem, appErr := uc.appRepo.GetByID(ctx, order.ApplicationID); appErr == nil {
 			appKey = strings.TrimSpace(appItem.Key)
+			artifactValues, _ = uc.resolveApplicationArtifactParamValues(ctx, appItem)
 		}
 	}
 
 	keys := []string{
 		"app_key",
 		"app_name",
+		"release_name",
 		"project_name",
 		"env",
 		"env_code",
@@ -843,10 +902,11 @@ func (uc *ReleaseOrderManager) buildHookTaskVariables(
 		"git_ref",
 		"image_version",
 		"image_tag",
+		standardParamGOSArtifactURL,
 	}
 	values := make(map[string]string, len(keys)+4)
 	for _, key := range keys {
-		if value := strings.TrimSpace(uc.resolveStandardFieldValue(order, orderParams, executions, appKey, key)); value != "" {
+		if value := strings.TrimSpace(uc.resolveStandardFieldValue(order, orderParams, executions, appKey, artifactValues, key)); value != "" {
 			values[key] = value
 		}
 	}
@@ -865,6 +925,9 @@ func (uc *ReleaseOrderManager) buildHookTaskVariables(
 	for _, item := range orderParams {
 		key := strings.ToLower(strings.TrimSpace(item.ParamKey))
 		if key == "" {
+			continue
+		}
+		if isCIOnlyStandardParamKey(key) && item.PipelineScope != domain.PipelineScopeCI {
 			continue
 		}
 		if _, exists := values[key]; exists {

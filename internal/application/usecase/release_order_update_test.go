@@ -6,6 +6,8 @@ import (
 	"time"
 
 	appdomain "gos/internal/domain/application"
+	artifactrepodomain "gos/internal/domain/artifactrepo"
+	executorparamdomain "gos/internal/domain/executorparam"
 	domain "gos/internal/domain/release"
 )
 
@@ -327,6 +329,221 @@ func TestCreateReleaseOrderDoesNotPromoteCIBranchToGitRefWithoutBuiltinMapping(t
 	}
 	if order.ReleaseName != "CI only release" {
 		t.Fatalf("created release_name = %q, want %q", order.ReleaseName, "CI only release")
+	}
+}
+
+// TestMaterializeCreateTemplateParamsResolvesBuiltinReleaseName 发布名称作为内置字段时应能写入管线参数快照。
+func TestMaterializeCreateTemplateParamsResolvesBuiltinReleaseName(t *testing.T) {
+	t.Parallel()
+
+	manager := &ReleaseOrderManager{}
+	resolved, err := manager.materializeCreateTemplateParams(
+		context.Background(),
+		appdomain.Application{Key: "app-1"},
+		[]domain.ReleaseTemplateParam{
+			{
+				PipelineScope:     domain.PipelineScopeCI,
+				ParamKey:          "release_title",
+				ParamName:         "发布标题",
+				ExecutorParamName: "RELEASE_TITLE",
+				ValueSource:       domain.TemplateParamValueSourceBuiltin,
+				SourceParamKey:    "release_name",
+				Required:          true,
+			},
+		},
+		nil,
+		"prod",
+		"release/2026-05-09",
+		"portal-service",
+		"20260509.1",
+		"门户正式发布",
+	)
+	if err != nil {
+		t.Fatalf("materializeCreateTemplateParams failed: %v", err)
+	}
+	if len(resolved) != 1 {
+		t.Fatalf("resolved params length = %d, want 1", len(resolved))
+	}
+	if got := resolved[0].ParamValue; got != "门户正式发布" {
+		t.Fatalf("resolved release_name value = %q, want %q", got, "门户正式发布")
+	}
+	if got := resolved[0].ValueSource; got != domain.ValueSourceBuiltin {
+		t.Fatalf("resolved value source = %q, want %q", got, domain.ValueSourceBuiltin)
+	}
+}
+
+// TestMaterializeCreateTemplateParamsUsesExecutorDefaultForBuiltin 内置字段无平台摘要值时应使用执行器参数默认值。
+func TestMaterializeCreateTemplateParamsUsesExecutorDefaultForBuiltin(t *testing.T) {
+	t.Parallel()
+
+	manager := &ReleaseOrderManager{
+		paramRepo: &releasePrecheckParamRepoFake{
+			defs: map[string]executorparamdomain.ExecutorParamDef{
+				"ep-oss-endpoint": {
+					ID:                "ep-oss-endpoint",
+					ExecutorParamName: "OSS_ENDPOINT",
+					ParamKey:          "oss_endpoint",
+					DefaultValue:      "oss-cn-shanghai.aliyuncs.com",
+					Status:            executorparamdomain.StatusActive,
+				},
+			},
+		},
+	}
+	resolved, err := manager.materializeCreateTemplateParams(
+		context.Background(),
+		appdomain.Application{Key: "app-1"},
+		[]domain.ReleaseTemplateParam{
+			{
+				ExecutorParamDefID: "ep-oss-endpoint",
+				PipelineScope:      domain.PipelineScopeCI,
+				ParamKey:           "oss_endpoint",
+				ParamName:          "OSS Endpoint",
+				ExecutorParamName:  "OSS_ENDPOINT",
+				ValueSource:        domain.TemplateParamValueSourceBuiltin,
+				SourceParamKey:     "oss_endpoint",
+			},
+		},
+		nil,
+		"dev",
+		"release/v1",
+		"portal-service",
+		"20260512.1",
+		"门户测试发布",
+	)
+	if err != nil {
+		t.Fatalf("materializeCreateTemplateParams failed: %v", err)
+	}
+	if len(resolved) != 1 {
+		t.Fatalf("resolved params length = %d, want 1", len(resolved))
+	}
+	if got := resolved[0].ParamValue; got != "oss-cn-shanghai.aliyuncs.com" {
+		t.Fatalf("resolved builtin default value = %q, want %q", got, "oss-cn-shanghai.aliyuncs.com")
+	}
+	if got := resolved[0].ValueSource; got != domain.ValueSourceBuiltin {
+		t.Fatalf("resolved value source = %q, want %q", got, domain.ValueSourceBuiltin)
+	}
+}
+
+// TestMaterializeCreateTemplateParamsReadsOSSSecretsFromApplicationArtifactRepository OSS 密钥类内置字段应从应用绑定制品库取值。
+func TestMaterializeCreateTemplateParamsReadsOSSSecretsFromApplicationArtifactRepository(t *testing.T) {
+	t.Parallel()
+
+	artifactRepo := newArtifactRepositoryFake()
+	artifactRepo.items["repo-oss"] = artifactrepodomain.ArtifactRepository{
+		ID:              "repo-oss",
+		RepositoryType:  artifactrepodomain.RepositoryTypeOSS,
+		Endpoint:        "oss-cn-shanghai.aliyuncs.com",
+		Bucket:          "gc-oa",
+		Directory:       "tempUpdate",
+		AccessKeyID:     "ak-from-artifact-repo",
+		AccessKeySecret: "secret-from-artifact-repo",
+		ACL:             artifactrepodomain.ACLPrivate,
+		Status:          artifactrepodomain.StatusEnabled,
+	}
+	manager := &ReleaseOrderManager{}
+	manager.SetArtifactRepository(artifactRepo)
+
+	resolved, err := manager.materializeCreateTemplateParams(
+		context.Background(),
+		appdomain.Application{
+			Key:                  "app-1",
+			ArtifactRepositoryID: "repo-oss",
+		},
+		[]domain.ReleaseTemplateParam{
+			{
+				PipelineScope:     domain.PipelineScopeCI,
+				ParamKey:          "oss_access_key_id",
+				ParamName:         "OSS AccessKey ID",
+				ExecutorParamName: "OSS_ACCESS_KEY_ID",
+				ValueSource:       domain.TemplateParamValueSourceBuiltin,
+				SourceParamKey:    "oss_access_key_id",
+			},
+			{
+				PipelineScope:     domain.PipelineScopeCI,
+				ParamKey:          "oss_access_key_secret",
+				ParamName:         "OSS AccessKey Secret",
+				ExecutorParamName: "OSS_ACCESS_KEY_SECRET",
+				ValueSource:       domain.TemplateParamValueSourceBuiltin,
+				SourceParamKey:    "oss_access_key_secret",
+			},
+		},
+		nil,
+		"dev",
+		"release/v1",
+		"portal-service",
+		"20260512.1",
+		"门户测试发布",
+	)
+	if err != nil {
+		t.Fatalf("materializeCreateTemplateParams failed: %v", err)
+	}
+	values := map[string]string{}
+	for _, item := range resolved {
+		values[item.ParamKey] = item.ParamValue
+	}
+	if got := values["oss_access_key_id"]; got != "ak-from-artifact-repo" {
+		t.Fatalf("oss_access_key_id = %q, want artifact repository access key id", got)
+	}
+	if got := values["oss_access_key_secret"]; got != "secret-from-artifact-repo" {
+		t.Fatalf("oss_access_key_secret = %q, want artifact repository access key secret", got)
+	}
+}
+
+// TestResolveStandardFieldValueUsesCIOnlyForGOSArtifactURL GOS 制品地址只能从 CI 单元取值。
+func TestResolveStandardFieldValueUsesCIOnlyForGOSArtifactURL(t *testing.T) {
+	t.Parallel()
+
+	manager := &ReleaseOrderManager{}
+	got := manager.resolveStandardFieldValue(domain.ReleaseOrder{}, []domain.ReleaseOrderParam{
+		{
+			PipelineScope: domain.PipelineScopeCD,
+			ParamKey:      "gos_artifact_url",
+			ParamValue:    "https://cd.example.com/should-not-use.jar",
+		},
+		{
+			PipelineScope: domain.PipelineScopeCI,
+			ParamKey:      "gos_artifact_url",
+			ParamValue:    "https://ci.example.com/app.jar",
+		},
+	}, nil, "", nil, "gos_artifact_url")
+	if got != "https://ci.example.com/app.jar" {
+		t.Fatalf("gos_artifact_url = %q, want CI value", got)
+	}
+}
+
+// TestResolveTemplateExecutionParamValueUsesCIOnlyForGOSArtifactURL CD 参数引用 GOS 制品地址时也必须从 CI 单元取值。
+func TestResolveTemplateExecutionParamValueUsesCIOnlyForGOSArtifactURL(t *testing.T) {
+	t.Parallel()
+
+	manager := &ReleaseOrderManager{}
+	got := manager.resolveTemplateExecutionParamValue(
+		domain.ReleaseOrder{},
+		domain.PipelineScopeCD,
+		domain.ReleaseTemplateParam{
+			PipelineScope:     domain.PipelineScopeCD,
+			ParamKey:          "gos_artifact_url",
+			ExecutorParamName: "GOS_ARTIFACT_URL",
+			ValueSource:       domain.TemplateParamValueSourceBuiltin,
+			SourceParamKey:    "gos_artifact_url",
+		},
+		[]domain.ReleaseOrderParam{
+			{
+				PipelineScope: domain.PipelineScopeCD,
+				ParamKey:      "gos_artifact_url",
+				ParamValue:    "https://cd.example.com/should-not-use.jar",
+			},
+			{
+				PipelineScope: domain.PipelineScopeCI,
+				ParamKey:      "gos_artifact_url",
+				ParamValue:    "https://ci.example.com/app.jar",
+			},
+		},
+		nil,
+		"",
+		nil,
+	)
+	if got != "https://ci.example.com/app.jar" {
+		t.Fatalf("CD gos_artifact_url = %q, want CI value", got)
 	}
 }
 

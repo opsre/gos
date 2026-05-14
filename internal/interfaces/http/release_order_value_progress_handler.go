@@ -13,6 +13,8 @@ type ReleaseOrderValueProgressResponse struct {
 	ParamName         string     `json:"param_name"`
 	ExecutorParamName string     `json:"executor_param_name"`
 	Required          bool       `json:"required"`
+	PipelineParam     bool       `json:"pipeline_param"`
+	ValueKind         string     `json:"value_kind"`
 	Status            string     `json:"status"`
 	Value             string     `json:"value"`
 	ValueSource       string     `json:"value_source"`
@@ -63,6 +65,8 @@ func (h *ReleaseOrderHandler) ListValueProgress(c *gin.Context) {
 			ParamName:         item.ParamName,
 			ExecutorParamName: item.ExecutorParamName,
 			Required:          item.Required,
+			PipelineParam:     item.PipelineParam,
+			ValueKind:         string(item.ValueKind),
 			Status:            string(item.Status),
 			Value:             item.Value,
 			ValueSource:       item.ValueSource,

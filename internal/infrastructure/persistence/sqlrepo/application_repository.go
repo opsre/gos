@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS applications (
 	status VARCHAR(32) NOT NULL,
 	artifact_type VARCHAR(64) NOT NULL,
 	language VARCHAR(64) NOT NULL,
+	artifact_repository_id VARCHAR(64) NOT NULL DEFAULT '',
+	artifact_directory VARCHAR(512) NOT NULL DEFAULT '',
 	gitops_branch_mappings JSON NULL,
 	release_branches JSON NULL,
 	created_at BIGINT NOT NULL,
@@ -62,6 +64,8 @@ CREATE TABLE IF NOT EXISTS applications (
 	status TEXT NOT NULL,
 	artifact_type TEXT NOT NULL,
 	language TEXT NOT NULL,
+	artifact_repository_id TEXT NOT NULL DEFAULT '',
+	artifact_directory TEXT NOT NULL DEFAULT '',
 	gitops_branch_mappings TEXT NOT NULL DEFAULT '[]',
 	release_branches TEXT NOT NULL DEFAULT '[]',
 	created_at INTEGER NOT NULL,
@@ -117,6 +121,30 @@ func (r *ApplicationRepository) migrateSchema(ctx context.Context) error {
 				return err
 			}
 		}
+		exists, err = r.mysqlColumnExists(ctx, "applications", "artifact_repository_id")
+		if err != nil {
+			return err
+		}
+		if !exists {
+			if _, err = r.db.ExecContext(
+				ctx,
+				`ALTER TABLE applications ADD COLUMN artifact_repository_id VARCHAR(64) NOT NULL DEFAULT '' AFTER language;`,
+			); err != nil {
+				return err
+			}
+		}
+		exists, err = r.mysqlColumnExists(ctx, "applications", "artifact_directory")
+		if err != nil {
+			return err
+		}
+		if !exists {
+			if _, err = r.db.ExecContext(
+				ctx,
+				`ALTER TABLE applications ADD COLUMN artifact_directory VARCHAR(512) NOT NULL DEFAULT '' AFTER artifact_repository_id;`,
+			); err != nil {
+				return err
+			}
+		}
 		exists, err = r.mysqlColumnExists(ctx, "applications", "release_branches")
 		if err != nil {
 			return err
@@ -158,6 +186,22 @@ func (r *ApplicationRepository) migrateSchema(ctx context.Context) error {
 				return err
 			}
 		}
+		if _, ok := columns["artifact_repository_id"]; !ok {
+			if _, err = r.db.ExecContext(
+				ctx,
+				`ALTER TABLE applications ADD COLUMN artifact_repository_id TEXT NOT NULL DEFAULT '';`,
+			); err != nil {
+				return err
+			}
+		}
+		if _, ok := columns["artifact_directory"]; !ok {
+			if _, err = r.db.ExecContext(
+				ctx,
+				`ALTER TABLE applications ADD COLUMN artifact_directory TEXT NOT NULL DEFAULT '';`,
+			); err != nil {
+				return err
+			}
+		}
 		if _, ok := columns["release_branches"]; ok {
 			return nil
 		}
@@ -175,8 +219,8 @@ func (r *ApplicationRepository) migrateSchema(ctx context.Context) error {
 func (r *ApplicationRepository) Create(ctx context.Context, app domain.Application) error {
 	const q = `
 INSERT INTO applications (
-	id, name, app_key, project_id, repo_url, description, owner_user_id, owner, status, artifact_type, language, gitops_branch_mappings, release_branches, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
+	id, name, app_key, project_id, repo_url, description, owner_user_id, owner, status, artifact_type, language, artifact_repository_id, artifact_directory, gitops_branch_mappings, release_branches, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
 
 	mappingsJSON, err := marshalGitOpsBranchMappings(app.GitOpsBranchMappings)
 	if err != nil {
@@ -201,6 +245,8 @@ INSERT INTO applications (
 		string(app.Status),
 		app.ArtifactType,
 		app.Language(),
+		app.ArtifactRepositoryID,
+		app.ArtifactDirectory,
 		mappingsJSON,
 		releaseBranchesJSON,
 		app.CreatedAt.UTC().UnixNano(),
@@ -218,7 +264,7 @@ INSERT INTO applications (
 // GetByID 查询并返回指定资源数据。
 func (r *ApplicationRepository) GetByID(ctx context.Context, id string) (domain.Application, error) {
 	const q = `
-SELECT a.id, a.name, a.app_key, a.project_id, COALESCE(p.name, ''), COALESCE(p.project_key, ''), a.repo_url, a.description, a.owner_user_id, a.owner, a.status, a.artifact_type, a.language, a.gitops_branch_mappings, a.release_branches, a.created_at, a.updated_at
+SELECT a.id, a.name, a.app_key, a.project_id, COALESCE(p.name, ''), COALESCE(p.project_key, ''), a.repo_url, a.description, a.owner_user_id, a.owner, a.status, a.artifact_type, a.language, a.artifact_repository_id, a.artifact_directory, a.gitops_branch_mappings, a.release_branches, a.created_at, a.updated_at
 FROM applications a
 LEFT JOIN projects p ON p.id = a.project_id
 WHERE a.id = ?;`
@@ -282,7 +328,7 @@ func (r *ApplicationRepository) List(ctx context.Context, filter domain.ListFilt
 	}
 
 	builder.WriteString(`
-SELECT a.id, a.name, a.app_key, a.project_id, COALESCE(p.name, ''), COALESCE(p.project_key, ''), a.repo_url, a.description, a.owner_user_id, a.owner, a.status, a.artifact_type, a.language, a.gitops_branch_mappings, a.release_branches, a.created_at, a.updated_at
+SELECT a.id, a.name, a.app_key, a.project_id, COALESCE(p.name, ''), COALESCE(p.project_key, ''), a.repo_url, a.description, a.owner_user_id, a.owner, a.status, a.artifact_type, a.language, a.artifact_repository_id, a.artifact_directory, a.gitops_branch_mappings, a.release_branches, a.created_at, a.updated_at
 FROM applications a
 LEFT JOIN projects p ON p.id = a.project_id`)
 	if len(where) > 0 {
@@ -318,7 +364,7 @@ LEFT JOIN projects p ON p.id = a.project_id`)
 func (r *ApplicationRepository) Update(ctx context.Context, id string, input domain.UpdateInput, updatedAt time.Time) (domain.Application, error) {
 	const q = `
 UPDATE applications
-SET name = ?, app_key = ?, project_id = ?, repo_url = ?, description = ?, owner_user_id = ?, owner = ?, status = ?, artifact_type = ?, language = ?, gitops_branch_mappings = ?, release_branches = ?, updated_at = ?
+SET name = ?, app_key = ?, project_id = ?, repo_url = ?, description = ?, owner_user_id = ?, owner = ?, status = ?, artifact_type = ?, language = ?, artifact_repository_id = ?, artifact_directory = ?, gitops_branch_mappings = ?, release_branches = ?, updated_at = ?
 WHERE id = ?;`
 
 	mappingsJSON, err := marshalGitOpsBranchMappings(input.GitOpsBranchMappings)
@@ -343,6 +389,8 @@ WHERE id = ?;`
 		string(input.Status),
 		input.ArtifactType,
 		input.Language,
+		input.ArtifactRepositoryID,
+		input.ArtifactDirectory,
 		mappingsJSON,
 		releaseBranchesJSON,
 		updatedAt.UTC().UnixNano(),
@@ -414,6 +462,8 @@ func scanApplication(s scanner) (domain.Application, error) {
 		&statusRaw,
 		&app.ArtifactType,
 		&langRaw,
+		&app.ArtifactRepositoryID,
+		&app.ArtifactDirectory,
 		&mappingsRaw,
 		&releaseBranchesRaw,
 		&createdAt,

@@ -462,6 +462,14 @@ func (uc *AuthSessionManager) Login(ctx context.Context, input LoginInput) (Logi
 	}
 
 	_ = uc.cleanupExpiredSessions(ctx)
+	if _, err := uc.repo.RevokeSessionsByUserID(ctx, user.ID, "replaced_by_login", uc.now()); err != nil {
+		logx.Error("auth", "login_failed", err,
+			logx.F("username", username),
+			logx.F("user_id", user.ID),
+			logx.F("reason", "delete_existing_sessions_failed"),
+		)
+		return LoginOutput{}, err
+	}
 
 	token, err := generateSecureToken(32)
 	if err != nil {
@@ -531,6 +539,14 @@ func (uc *AuthSessionManager) ResolveUserByToken(ctx context.Context, token stri
 		return userdomain.User{}, userdomain.UserSession{}, err
 	}
 	now := uc.now()
+	if session.RevokedAt != nil || strings.TrimSpace(session.RevokedReason) != "" {
+		logx.Warn("auth", "resolve_token_failed",
+			logx.F("token_suffix", suffixToken(token)),
+			logx.F("session_id", session.ID),
+			logx.F("reason", strings.TrimSpace(session.RevokedReason)),
+		)
+		return userdomain.User{}, userdomain.UserSession{}, userdomain.ErrSessionRevoked
+	}
 	if !session.ExpiredAt.After(now) {
 		_ = uc.repo.DeleteSessionByAccessToken(ctx, token)
 		logx.Warn("auth", "resolve_token_failed",

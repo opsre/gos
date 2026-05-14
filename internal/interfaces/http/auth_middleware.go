@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -41,6 +42,14 @@ func authMiddleware(resolver SessionUserResolver) gin.HandlerFunc {
 
 		user, _, err := resolver.ResolveUserByToken(c.Request.Context(), token)
 		if err != nil {
+			if errors.Is(err, userdomain.ErrSessionRevoked) {
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"code":  "SESSION_REPLACED",
+					"error": "您的账号在其他地方登入",
+				})
+				c.Abort()
+				return
+			}
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			c.Abort()
 			return

@@ -89,7 +89,28 @@ test('release order create page uses plain form sections and required hints', ()
   assert.match(source, /<h3 class="form-section-heading-title">发布基础<\/h3>/, 'base section title should be explicit')
   assert.match(source, /应用 <span class="field-required-hint">必填<\/span>/, 'application field should use required hint tag')
   assert.match(source, /发布模板 <span class="field-required-hint">必填<\/span>/, 'template field should use required hint tag')
-  assert.match(source, /环境 <span class="field-required-hint">必填<\/span>/, 'environment field should use required hint tag')
+  assert.match(source, /const showEnvironmentField = computed\(\(\) => templateHasBuiltinSource\(\['env', 'env_code'\]\)\)/, 'environment should only be shown when the template maps env builtins')
+  assert.match(source, /const showReleaseBranchField = computed\(\(\) => templateHasBuiltinSource\(\['branch', 'git_ref'\]\)\)/, 'release branch should only be shown when the template maps branch builtins')
+  assert.match(source, /v-if="showEnvironmentField"[\s\S]*环境 <span class="field-required-hint">必填<\/span>/, 'environment field should be conditional on builtin mapping')
+  assert.match(source, /v-if="showReleaseBranchField"[\s\S]*发布分支/, 'release branch field should be conditional on builtin mapping')
+  assert.match(
+    source,
+    /<a-row :gutter="12" class="form-row-compact">\s*<a-col v-if="showEnvironmentField" :xs="24" :md="8"[\s\S]*class="form-item-compact release-env-form-item"[\s\S]*环境 <span class="field-required-hint">必填<\/span>[\s\S]*<a-col v-if="showReleaseBranchField" :xs="24" :md="showEnvironmentField \? 16 : 24"[\s\S]*发布分支[\s\S]*<a-col v-else :xs="24" :md="showEnvironmentField \? 16 : 24"[\s\S]*备注/,
+    'environment and release branch should share the first row when branch is shown, otherwise remark should share the row with environment',
+  )
+  assert.match(
+    source,
+    /\.release-env-form-item :deep\(\.ant-form-item-control\)[\s\S]*padding-top:\s*4px/,
+    'environment control should sit slightly lower than the row baseline',
+  )
+  assert.match(
+    source,
+    /<a-row v-if="showReleaseBranchField" :gutter="12" class="form-row-compact">\s*<a-col :span="24">[\s\S]*备注/,
+    'remark should move to a final full-width row when release branch is shown',
+  )
+  assert.match(source, /env_code: effectiveEnvCode\.value/, 'hidden environment field should still submit the resolved environment value')
+  assert.match(source, /git_ref: showReleaseBranchField\.value \? \(formState\.git_ref\.trim\(\) \|\| undefined\) : undefined/, 'hidden branch field should not submit stale branch values')
+  assert.doesNotMatch(source, /创建者[\s\S]*formCreatorDisplayName/, 'base fields should not show the creator readonly field')
   assert.doesNotMatch(source, /<a-card class="form-card"/, 'create form should not use the old heavy card shell')
 
   const layoutRule = extractStyleRule('.create-layout')
@@ -108,13 +129,13 @@ test('release order create page adds standardized sidebar guidance cards', () =>
   )
   assert.match(
     source,
-    /选择应用与模板[\s\S]*确认环境与分支[\s\S]*填写执行参数[\s\S]*创建发布单/,
+    /选择应用与模板[\s\S]*确认发布信息[\s\S]*填写执行参数[\s\S]*创建发布单/,
     'release create process should describe the main release creation steps',
   )
   assert.match(
     source,
-    /应用和环境会决定当前账号是否有创建权限[\s\S]*模板启用审批人后只能创建发布单，不能极速发布[\s\S]*模板使用分支基础字段时，发布分支需要填写/,
-    'release preflight tips should explain permission, approval and branch constraints',
+    /应用会决定当前账号是否有创建权限[\s\S]*模板启用审批人后只能创建发布单，不能极速发布[\s\S]*只有模板映射到发布基础字段时，才会展示对应填写项/,
+    'release preflight tips should explain permission, approval and mapped base fields',
   )
 
   const sideCardRule = extractStyleRule('.create-side-card')
@@ -160,13 +181,23 @@ test('release order create page consolidates ci cd fields under advanced params'
   )
   assert.match(
     source,
-    /visibleAdvancedScopeParams\(item\.scope\)/,
-    'primary param rows should render only visible advanced params',
+    /\.filter\(\(item\) => item\.loading \|\| item\.error \|\| item\.params\.length > 0\)/,
+    'advanced params should hide scopes that only contain auto-filled builtin params',
+  )
+  assert.match(
+    source,
+    /v-for="param in item\.params\.slice/,
+    'primary param rows should render from prefiltered visible advanced params',
   )
   assert.doesNotMatch(
     source,
-    /release-auto-param-inline|release-auto-param-detail/,
-    'hidden mapped params should not be summarized or exposed in release order page details',
+    /readonlyBuiltinMappedScopeParams|release-auto-param-list|release-auto-param-item|已映射内置字段[\s\S]*发布链路自动赋值/,
+    'new release orders should hide builtin auto-filled params instead of showing readonly cards',
+  )
+  assert.doesNotMatch(
+    source,
+    /function scopedAdvancedParamDisplayCount\(scope: ReleasePipelineScope\)/,
+    'advanced params empty state should not count hidden builtin auto-filled params',
   )
   assert.match(
     source,
@@ -185,14 +216,20 @@ test('release order create page consolidates ci cd fields under advanced params'
   )
   assert.match(
     source,
-    /<a-tooltip[\s\S]*trigger="click"[\s\S]*:title="advancedParamSummaryHint"[\s\S]*<button[\s\S]*class="advanced-param-heading-hint"[\s\S]*type="button"[\s\S]*:aria-label="advancedParamSummaryHint"/,
-    'advanced params hint icon should show the explanation on click and remain accessible',
+    /<a-popover[\s\S]*trigger="click"[\s\S]*overlay-class-name="advanced-param-hint-popover"[\s\S]*<template #content>[\s\S]*class="advanced-param-hint-card"[\s\S]*<button[\s\S]*class="advanced-param-heading-hint"[\s\S]*type="button"[\s\S]*:aria-label="advancedParamAriaLabel"/,
+    'advanced params hint icon should show a structured explanation popover on click and remain accessible',
   )
   assert.match(
     source,
-    /高级参数包含 CI\/CD 字段，已映射或沿用的参数不重复展示。/,
-    'advanced params hint should explain CI/CD fields concisely',
+    /class="advanced-param-hint-title"[\s\S]*参数说明[\s\S]*class="advanced-param-hint-row"[\s\S]*当前模板[\s\S]*selectedTemplate\?\.name[\s\S]*执行流程[\s\S]*enabledScopeSummary[\s\S]*填写范围[\s\S]*advancedParamFillHint/,
+    'advanced params hint should split template, flow and fill guidance into readable rows',
   )
+  assert.match(
+    source,
+    /\.advanced-param-hint-popover[\s\S]*\.advanced-param-hint-card[\s\S]*\.advanced-param-hint-row/,
+    'advanced params popover should include dedicated styling hooks',
+  )
+  assert.doesNotMatch(source, /class="template-alert template-alert-success"[\s\S]*当前模板：/, 'selected template summary should not render as a separate alert')
   assert.doesNotMatch(source, /当前模板已启用 \$\{scopeText\} 执行字段/, 'advanced params hint should avoid verbose runtime scope wording')
   assert.doesNotMatch(
     source,
@@ -213,5 +250,38 @@ test('release order create page consolidates ci cd fields under advanced params'
     source,
     /<template v-else>\s*<a-input[\s\S]*resolveTemplateParamDisplayValue/,
     'hidden params should not stay in the primary form as disabled input fields',
+  )
+  assert.doesNotMatch(
+    source,
+    /release-auto-param-control[\s\S]*<a-select|release-auto-param-control[\s\S]*<a-input/,
+    'builtin mapped readonly rows should not render selectable or editable controls',
+  )
+})
+
+test('release order create disables violated release templates', () => {
+  assert.match(
+    source,
+    /disabled:\s*!isReleaseTemplateSelectable\(item\)/,
+    'template dropdown options should disable violated templates',
+  )
+  assert.match(
+    source,
+    /function isReleaseTemplateSelectable\(item: ReleaseTemplate\)[\s\S]*item\.compliance_status !== 'violated'/,
+    'template selection should be based on backend compliance status',
+  )
+  assert.match(
+    source,
+    /违规：\$\{item\.compliance_summary \|\| '管线规范不通过'\}/,
+    'violated template labels should explain that the template is non-compliant',
+  )
+  assert.match(
+    source,
+    /if \(response\.data\.template\.compliance_status === 'violated'\)[\s\S]*formState\.template_id = ''[\s\S]*发布模板违反管线规范/,
+    'direct route or stale selections should be rejected after template detail load',
+  )
+  assert.match(
+    source,
+    /!templates\.some\(isReleaseTemplateSelectable\)[\s\S]*当前应用下的发布模板均违反管线规范/,
+    'empty selectable state should tell users to adjust template pipeline bindings',
   )
 })

@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -297,5 +298,120 @@ func TestCreatePipelineReplayByOrderAllowsDeployFailedSource(t *testing.T) {
 	}
 	if created.OperationType != domain.OperationTypeReplay {
 		t.Fatalf("OperationType = %s, want %s", created.OperationType, domain.OperationTypeReplay)
+	}
+}
+
+// TestCreatePipelineReplayByOrderRejectsReplaySourceBeforeParamValidation 创建业务资源并返回处理结果。
+func TestCreatePipelineReplayByOrderRejectsReplaySourceBeforeParamValidation(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	manager.now = func() time.Time { return now }
+
+	template := domain.ReleaseTemplate{
+		ID:              "rt-replay-source-replay",
+		Name:            "replay-template",
+		ApplicationID:   "app-1",
+		ApplicationName: "App 1",
+		BindingID:       "app-1",
+		BindingName:     "App 1",
+		BindingType:     "application",
+		Status:          domain.TemplateStatusActive,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	bindings := []domain.ReleaseTemplateBinding{
+		{
+			ID:            "rtb-ci-replay-source-replay",
+			TemplateID:    template.ID,
+			PipelineScope: domain.PipelineScopeCI,
+			BindingID:     "binding-ci",
+			BindingName:   "Jenkins CI",
+			Provider:      "jenkins",
+			PipelineID:    "pipeline-ci",
+			Enabled:       true,
+			SortNo:        1,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		},
+	}
+	paramsRule := []domain.ReleaseTemplateParam{
+		{
+			ID:                 "rtp-ci-branch-replay-source-replay",
+			TemplateID:         template.ID,
+			TemplateBindingID:  bindings[0].ID,
+			PipelineScope:      domain.PipelineScopeCI,
+			BindingID:          bindings[0].BindingID,
+			ExecutorParamDefID: "ep-branch-replay-source-replay",
+			ParamKey:           "branch",
+			ParamName:          "分支",
+			ExecutorParamName:  "BRANCH",
+			ValueSource:        domain.TemplateParamValueSourceReleaseInput,
+			Required:           true,
+			SortNo:             1,
+			CreatedAt:          now,
+			UpdatedAt:          now,
+		},
+	}
+	if err := repo.CreateTemplate(ctx, template, bindings, paramsRule, nil, nil); err != nil {
+		t.Fatalf("CreateTemplate failed: %v", err)
+	}
+
+	sourceOrder := testReleaseOrder("ro-replay-source-replay", "RO-REPLAY-SOURCE-REPLAY", domain.OrderStatusSuccess, now)
+	sourceOrder.OperationType = domain.OperationTypeReplay
+	sourceOrder.TemplateID = template.ID
+	sourceOrder.TemplateName = template.Name
+	sourceOrder.BindingID = bindings[0].BindingID
+	sourceExecution := domain.ReleaseOrderExecution{
+		ID:             "exec-replay-source-replay-ci",
+		ReleaseOrderID: sourceOrder.ID,
+		PipelineScope:  domain.PipelineScopeCI,
+		BindingID:      bindings[0].BindingID,
+		BindingName:    bindings[0].BindingName,
+		Provider:       bindings[0].Provider,
+		PipelineID:     bindings[0].PipelineID,
+		Status:         domain.ExecutionStatusSuccess,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	sourceParams := []domain.ReleaseOrderParam{
+		{
+			ID:                "rop-replay-source-replay-branch",
+			ReleaseOrderID:    sourceOrder.ID,
+			PipelineScope:     domain.PipelineScopeCI,
+			BindingID:         bindings[0].BindingID,
+			ParamKey:          "branch",
+			ExecutorParamName: "BRANCH",
+			ParamValue:        "release/source-replay",
+			ValueSource:       domain.ValueSourceReleaseInput,
+			CreatedAt:         now,
+		},
+		{
+			ID:                "rop-replay-source-replay-app-key",
+			ReleaseOrderID:    sourceOrder.ID,
+			PipelineScope:     domain.PipelineScopeCI,
+			BindingID:         bindings[0].BindingID,
+			ParamKey:          "app_key",
+			ExecutorParamName: "app_key",
+			ParamValue:        "demo-app",
+			ValueSource:       domain.ValueSourceApplication,
+			CreatedAt:         now,
+		},
+	}
+	if err := repo.Create(ctx, sourceOrder, []domain.ReleaseOrderExecution{sourceExecution}, sourceParams, nil); err != nil {
+		t.Fatalf("Create source order failed: %v", err)
+	}
+
+	_, err := manager.CreatePipelineReplayByOrder(ctx, sourceOrder.ID, "tester", "tester")
+	if err == nil {
+		t.Fatalf("CreatePipelineReplayByOrder should fail")
+	}
+	if !strings.Contains(err.Error(), "重放单不支持再次重放，继续重发请从原始单发起") {
+		t.Fatalf("error = %q, want replay-source guard", err.Error())
+	}
+	if strings.Contains(err.Error(), "当前模板已不再包含") {
+		t.Fatalf("error = %q, should not expose template param validation", err.Error())
 	}
 }

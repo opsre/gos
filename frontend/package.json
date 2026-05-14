@@ -2,6 +2,7 @@
   "name": "frontend",
   "private": true,
   "version": "0.0.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "VITE_DISABLE_HMR=1 vite --host 0.0.0.0 --port 5174 --strictPort --force",

@@ -177,20 +177,20 @@ test('release detail backgrounds preserve hero and redesign non-hero sections', 
   )
   assert.match(
     source,
-    /class="detail-card detail-section-card"[\s\S]*title="阶段与日志"[\s\S]*class="detail-collapse value-progress-collapse"[\s\S]*class="value-progress-collapse-title">取值进度/,
-    'value progress should render in the main column directly below stage logs',
+    /class="detail-collapse base-info-collapse"[\s\S]*header="基础信息与参数快照"[\s\S]*class="detail-collapse value-progress-collapse"[\s\S]*class="value-progress-collapse-title">取值进度/,
+    'base information and parameter snapshots should render above value progress in the main column',
   )
   const mainStageOrderRule = extractStyleRule('.dashboard-main > .detail-section-card')
   assert.match(mainStageOrderRule, /order:\s*1/, 'stage logs and value progress should render before secondary collapses')
 
+  const baseInfoOrderRule = extractStyleRule('.dashboard-main > .base-info-collapse')
+  assert.match(baseInfoOrderRule, /order:\s*2/, 'base information and snapshots should render above value progress')
+
   const valueProgressOrderRule = extractStyleRule('.dashboard-main > .value-progress-collapse')
-  assert.match(valueProgressOrderRule, /order:\s*2/, 'value progress should render directly below stage logs')
+  assert.match(valueProgressOrderRule, /order:\s*3/, 'value progress should render below base information and snapshots')
 
   const timelineOrderRule = extractStyleRule('.dashboard-main > .timeline-collapse')
-  assert.match(timelineOrderRule, /order:\s*3/, 'execution timeline should render below value progress')
-
-  const baseInfoOrderRule = extractStyleRule('.dashboard-main > .base-info-collapse')
-  assert.match(baseInfoOrderRule, /order:\s*4/, 'base information and snapshots should render below the execution timeline')
+  assert.match(timelineOrderRule, /order:\s*4/, 'execution timeline should render below value progress')
 
   const valueProgressCollapseMatch = source.match(
     /<a-collapse[\s\S]*class="detail-collapse value-progress-collapse"[\s\S]*<\/a-collapse>/,

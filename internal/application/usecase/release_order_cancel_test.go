@@ -168,6 +168,15 @@ CREATE TABLE IF NOT EXISTS sys_user (
 	if err := repo.InitSchema(context.Background()); err != nil {
 		t.Fatalf("InitSchema failed: %v", err)
 	}
+	if err := sqlrepo.NewProjectRepository(db, "sqlite").InitSchema(context.Background()); err != nil {
+		t.Fatalf("project InitSchema failed: %v", err)
+	}
+	if err := sqlrepo.NewApplicationRepository(db, "sqlite").InitSchema(context.Background()); err != nil {
+		t.Fatalf("application InitSchema failed: %v", err)
+	}
+	if err := sqlrepo.NewArtifactRepositoryConfigRepository(db, "sqlite").InitSchema(context.Background()); err != nil {
+		t.Fatalf("artifact repository InitSchema failed: %v", err)
+	}
 
 	return NewReleaseOrderManager(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), repo
 }

@@ -1,4 +1,4 @@
-export type NotificationSourceType = 'dingtalk' | 'wecom'
+export type NotificationSourceType = 'dingtalk' | 'wecom' | 'feishu'
 export type NotificationConditionOperator =
   | 'equals'
   | 'not_equals'
@@ -28,6 +28,16 @@ export interface NotificationSourcePayload {
   verification_param?: string
   enabled: boolean
   remark?: string
+}
+
+export interface NotificationSourceWebhookTestPayload extends NotificationSourcePayload {
+  source_id?: string
+}
+
+export interface NotificationSourceWebhookTestResponse {
+  success: boolean
+  message: string
+  status_code: number
 }
 
 export interface NotificationSourceListParams {

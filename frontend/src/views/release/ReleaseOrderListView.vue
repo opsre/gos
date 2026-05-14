@@ -440,6 +440,40 @@ function optionLabel(options: SelectOption[], value: string) {
   return options.find((item) => item.value === value)?.label || value;
 }
 
+function routeQueryText(key: string) {
+  const value = route.query[key];
+  if (Array.isArray(value)) {
+    return String(value[0] || "").trim();
+  }
+  return String(value || "").trim();
+}
+
+function buildReleaseListQuery() {
+  const query: Record<string, string> = {
+    page: String(filters.page),
+    page_size: String(filters.pageSize),
+  };
+  Object.entries({
+    application_id: activeQuery.application_id,
+    keyword: activeQuery.keyword,
+    concurrent_batch_no: activeQuery.concurrent_batch_no,
+    concurrent_batch_name: activeQuery.concurrent_batch_name,
+    triggered_by: activeQuery.triggered_by,
+    env_code: activeQuery.env_code,
+    operation_type: activeQuery.operation_type,
+    status: activeQuery.status,
+    trigger_type: activeQuery.trigger_type,
+    created_at_from: activeQuery.created_at_from,
+    created_at_to: activeQuery.created_at_to,
+  }).forEach(([key, value]) => {
+    const text = String(value || "").trim();
+    if (text) {
+      query[key] = text;
+    }
+  });
+  return query;
+}
+
 function applyActiveQueryFromFilters() {
   activeQuery.application_id = filters.application_id;
   activeQuery.keyword = filters.keyword.trim();
@@ -1887,16 +1921,37 @@ function clearFilterTag(key: string) {
 }
 
 function applyRouteQuery() {
-  const applicationID = String(route.query.application_id || "").trim();
-  if (applicationID) {
-    filters.application_id = applicationID;
+  filters.application_id = routeQueryText("application_id");
+  filters.keyword = routeQueryText("keyword");
+  filters.concurrent_batch_no = routeQueryText("concurrent_batch_no");
+  filters.concurrent_batch_name = routeQueryText("concurrent_batch_name");
+  filters.triggered_by = routeQueryText("triggered_by");
+  filters.env_code = routeQueryText("env_code");
+
+  const operationType = routeQueryText("operation_type");
+  if (operationTypeOptions.some((item) => item.value === operationType)) {
+    filters.operation_type = operationType as ReleaseOperationType | "";
   }
-  const status = String(route.query.status || "").trim() as ReleaseOrderStatus | "";
-  if (status) {
-    filters.status = status;
+  const status = routeQueryText("status");
+  if (statusOptions.some((item) => item.value === status)) {
+    filters.status = status as ReleaseOrderStatus | "";
   }
-  const createdAtFrom = String(route.query.created_at_from || "").trim();
-  const createdAtTo = String(route.query.created_at_to || "").trim();
+  const triggerType = routeQueryText("trigger_type");
+  if (triggerTypeOptions.some((item) => item.value === triggerType)) {
+    filters.trigger_type = triggerType as ReleaseTriggerType | "";
+  }
+
+  const page = Number(routeQueryText("page"));
+  if (Number.isInteger(page) && page > 0) {
+    filters.page = page;
+  }
+  const pageSize = Number(routeQueryText("page_size"));
+  if (Number.isInteger(pageSize) && pageSize > 0) {
+    filters.pageSize = pageSize;
+  }
+
+  const createdAtFrom = routeQueryText("created_at_from");
+  const createdAtTo = routeQueryText("created_at_to");
   if (createdAtFrom || createdAtTo) {
     const fromText = createdAtFrom
       ? dayjs(createdAtFrom).format("YYYY-MM-DD")
@@ -1920,7 +1975,10 @@ function toCreate() {
 }
 
 function toDetail(id: string) {
-  void router.push(`/releases/${id}`);
+  void router.push({
+    path: `/releases/${id}`,
+    query: buildReleaseListQuery(),
+  });
 }
 
 function handleEdit(record: ReleaseOrder) {
@@ -2192,7 +2250,10 @@ async function handleRollback(record: ReleaseOrder) {
     const response = await rollbackReleaseOrderByID(record.id);
     message.success(`已创建一键重发单：${response.data.order_no}`);
     await loadOverviewStats({ force: true, silent: true });
-    void router.push(`/releases/${response.data.id}`);
+    void router.push({
+      path: `/releases/${response.data.id}`,
+      query: buildReleaseListQuery(),
+    });
   } catch (error) {
     message.error(extractHTTPErrorMessage(error, "一键重发创建失败"));
   } finally {
@@ -2209,7 +2270,10 @@ async function handleReplay(record: ReleaseOrder) {
     const response = await replayReleaseOrderByID(record.id);
     message.success(replaySuccessText(record, response.data.order_no));
     await loadOverviewStats({ force: true, silent: true });
-    void router.push(`/releases/${response.data.id}`);
+    void router.push({
+      path: `/releases/${response.data.id}`,
+      query: buildReleaseListQuery(),
+    });
   } catch (error) {
     message.error(extractHTTPErrorMessage(error, replayFailureText(record)));
   } finally {
@@ -3519,7 +3583,7 @@ function handleOverviewChartResize() {
   gap: 8px;
   height: 42px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
   background: rgba(255, 255, 255, 0.42) !important;
   color: #0f172a !important;
   box-shadow:

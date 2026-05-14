@@ -83,6 +83,11 @@ type Repository interface {
 		scope PipelineScope,
 		input ExecutionUpdateInput,
 	) (ReleaseOrderExecution, error)
+	UpsertArtifactMetadata(ctx context.Context, item ReleaseOrderArtifactMetadata) (ReleaseOrderArtifactMetadata, error)
+	GetArtifactMetadataByID(ctx context.Context, id string) (ReleaseOrderArtifactMetadata, error)
+	DeleteArtifactMetadata(ctx context.Context, id string) error
+	ListArtifactMetadata(ctx context.Context, releaseOrderID string) ([]ReleaseOrderArtifactMetadata, error)
+	ListArtifactMetadataSummaries(ctx context.Context, filter ArtifactMetadataListFilter) ([]ReleaseOrderArtifactMetadataSummary, int64, error)
 	ListParams(ctx context.Context, releaseOrderID string) ([]ReleaseOrderParam, error)
 	ListSteps(ctx context.Context, releaseOrderID string) ([]ReleaseOrderStep, error)
 	GetStepByCode(ctx context.Context, releaseOrderID string, stepCode string) (ReleaseOrderStep, error)
@@ -158,6 +163,24 @@ type ListFilter struct {
 	OperationType               OperationType
 	Status                      OrderStatus
 	TriggerType                 TriggerType
+	CreatedAtFrom               *time.Time
+	CreatedAtTo                 *time.Time
+	Page                        int
+	PageSize                    int
+}
+
+type ArtifactMetadataListFilter struct {
+	ProjectID                   string
+	ApplicationID               string
+	ApplicationIDs              []string
+	VisibleApplicationEnvScopes []ApplicationEnvScope
+	VisibleToUserID             string
+	ReleaseOrderID              string
+	Keyword                     string
+	ArtifactName                string
+	ArtifactType                string
+	PipelineScope               PipelineScope
+	RepositoryID                string
 	CreatedAtFrom               *time.Time
 	CreatedAtTo                 *time.Time
 	Page                        int

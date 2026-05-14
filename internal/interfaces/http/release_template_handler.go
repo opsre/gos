@@ -88,23 +88,39 @@ type ReleaseTemplateParamConfigRequest struct {
 }
 
 type ReleaseTemplateResponse struct {
-	ID                    string    `json:"id"`
-	Name                  string    `json:"name"`
-	ApplicationID         string    `json:"application_id"`
-	ApplicationName       string    `json:"application_name"`
-	BindingID             string    `json:"binding_id"`
-	BindingName           string    `json:"binding_name"`
-	BindingType           string    `json:"binding_type"`
-	GitOpsType            string    `json:"gitops_type"`
-	Status                string    `json:"status"`
-	ApprovalEnabled       bool      `json:"approval_enabled"`
-	ApprovalMode          string    `json:"approval_mode"`
-	ApprovalApproverIDs   []string  `json:"approval_approver_ids"`
-	ApprovalApproverNames []string  `json:"approval_approver_names"`
-	Remark                string    `json:"remark"`
-	ParamCount            int       `json:"param_count"`
-	CreatedAt             time.Time `json:"created_at"`
-	UpdatedAt             time.Time `json:"updated_at"`
+	ID                    string                                     `json:"id"`
+	Name                  string                                     `json:"name"`
+	ApplicationID         string                                     `json:"application_id"`
+	ApplicationName       string                                     `json:"application_name"`
+	BindingID             string                                     `json:"binding_id"`
+	BindingName           string                                     `json:"binding_name"`
+	BindingType           string                                     `json:"binding_type"`
+	GitOpsType            string                                     `json:"gitops_type"`
+	Status                string                                     `json:"status"`
+	ApprovalEnabled       bool                                       `json:"approval_enabled"`
+	ApprovalMode          string                                     `json:"approval_mode"`
+	ApprovalApproverIDs   []string                                   `json:"approval_approver_ids"`
+	ApprovalApproverNames []string                                   `json:"approval_approver_names"`
+	Remark                string                                     `json:"remark"`
+	ParamCount            int                                        `json:"param_count"`
+	ComplianceStatus      string                                     `json:"compliance_status"`
+	ComplianceSummary     string                                     `json:"compliance_summary"`
+	ComplianceFindings    []ReleaseTemplateComplianceFindingResponse `json:"compliance_findings"`
+	CreatedAt             time.Time                                  `json:"created_at"`
+	UpdatedAt             time.Time                                  `json:"updated_at"`
+}
+
+type ReleaseTemplateComplianceFindingResponse struct {
+	PipelineScope string `json:"pipeline_scope"`
+	PipelineID    string `json:"pipeline_id"`
+	PipelineName  string `json:"pipeline_name"`
+	RuleID        string `json:"rule_id"`
+	RuleCode      string `json:"rule_code"`
+	RuleName      string `json:"rule_name"`
+	Severity      string `json:"severity"`
+	LineNo        int    `json:"line_no"`
+	Message       string `json:"message"`
+	Suggestion    string `json:"suggestion"`
 }
 
 type ReleaseTemplateParamResponse struct {
@@ -561,9 +577,31 @@ func toReleaseTemplateResponse(item releasedomain.ReleaseTemplate) ReleaseTempla
 		ApprovalApproverNames: append([]string(nil), item.ApprovalApproverNames...),
 		Remark:                item.Remark,
 		ParamCount:            item.ParamCount,
+		ComplianceStatus:      string(item.ComplianceStatus),
+		ComplianceSummary:     item.ComplianceSummary,
+		ComplianceFindings:    toReleaseTemplateComplianceFindingResponses(item.ComplianceFindings),
 		CreatedAt:             item.CreatedAt,
 		UpdatedAt:             item.UpdatedAt,
 	}
+}
+
+func toReleaseTemplateComplianceFindingResponses(items []releasedomain.ReleaseTemplateComplianceFinding) []ReleaseTemplateComplianceFindingResponse {
+	resp := make([]ReleaseTemplateComplianceFindingResponse, 0, len(items))
+	for _, item := range items {
+		resp = append(resp, ReleaseTemplateComplianceFindingResponse{
+			PipelineScope: string(item.PipelineScope),
+			PipelineID:    item.PipelineID,
+			PipelineName:  item.PipelineName,
+			RuleID:        item.RuleID,
+			RuleCode:      item.RuleCode,
+			RuleName:      item.RuleName,
+			Severity:      item.Severity,
+			LineNo:        item.LineNo,
+			Message:       item.Message,
+			Suggestion:    item.Suggestion,
+		})
+	}
+	return resp
 }
 
 // toReleaseTemplateParamResponse 将领域对象转换为接口响应结构。

@@ -23,6 +23,8 @@ export interface Application {
   owner: string
   status: ApplicationStatus
   artifact_type: string
+  artifact_repository_id: string
+  artifact_directory: string
   language: string
   gitops_branch_mappings: GitOpsBranchMapping[]
   release_branches: ReleaseBranchOption[]
@@ -39,6 +41,8 @@ export interface ApplicationPayload {
   owner_user_id: string
   status: ApplicationStatus
   artifact_type: string
+  artifact_repository_id: string
+  artifact_directory: string
   language: string
   gitops_branch_mappings: GitOpsBranchMapping[]
   release_branches: ReleaseBranchOption[]

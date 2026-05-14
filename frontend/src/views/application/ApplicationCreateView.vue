@@ -4,6 +4,7 @@ import { message } from 'ant-design-vue'
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { createApplication } from '../../api/application'
+import { listArtifactRepositories } from '../../api/artifact-repository'
 import { listProjects } from '../../api/project'
 import { listUserOptions } from '../../api/user'
 import type { ApplicationPayload } from '../../types/application'
@@ -20,12 +21,19 @@ interface ProjectOption {
   value: string
 }
 
+interface ArtifactRepositoryOption {
+  label: string
+  value: string
+}
+
 const router = useRouter()
 const submitting = ref(false)
 const ownerLoading = ref(false)
 const projectLoading = ref(false)
+const artifactRepositoryLoading = ref(false)
 const ownerOptions = ref<OwnerOption[]>([])
 const projectOptions = ref<ProjectOption[]>([])
+const artifactRepositoryOptions = ref<ArtifactRepositoryOption[]>([])
 const formRef = ref<InstanceType<typeof ApplicationForm> | null>(null)
 
 async function loadOwnerOptions() {
@@ -40,6 +48,21 @@ async function loadOwnerOptions() {
     message.error(extractHTTPErrorMessage(error, '负责人下拉加载失败'))
   } finally {
     ownerLoading.value = false
+  }
+}
+
+async function loadArtifactRepositoryOptions() {
+  artifactRepositoryLoading.value = true
+  try {
+    const response = await listArtifactRepositories({ page: 1, page_size: 100 })
+    artifactRepositoryOptions.value = response.data.map((item) => ({
+      label: `${item.name} (${item.bucket})`,
+      value: item.id,
+    }))
+  } catch (error) {
+    message.error(extractHTTPErrorMessage(error, '制品库下拉加载失败'))
+  } finally {
+    artifactRepositoryLoading.value = false
   }
 }
 
@@ -80,7 +103,7 @@ function handleSubmitFromToolbar() {
 }
 
 onMounted(() => {
-  void Promise.all([loadOwnerOptions(), loadProjectOptions()])
+  void Promise.all([loadOwnerOptions(), loadProjectOptions(), loadArtifactRepositoryOptions()])
 })
 </script>
 
@@ -114,8 +137,10 @@ onMounted(() => {
           ref="formRef"
           :owner-options="ownerOptions"
           :project-options="projectOptions"
+          :artifact-repository-options="artifactRepositoryOptions"
           :owner-loading="ownerLoading"
           :project-loading="projectLoading"
+          :artifact-repository-loading="artifactRepositoryLoading"
           :loading="submitting"
           :show-advanced-config="false"
           :show-actions="false"
@@ -229,7 +254,7 @@ onMounted(() => {
   gap: 8px;
   height: 42px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.34) !important;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
   background: rgba(255, 255, 255, 0.42) !important;
   color: #0f172a !important;
   box-shadow:

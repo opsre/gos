@@ -35,6 +35,8 @@ type UpdateInput struct {
 	Owner                string
 	Status               Status
 	ArtifactType         string
+	ArtifactRepositoryID string
+	ArtifactDirectory    string
 	Language             string
 	GitOpsBranchMappings []GitOpsBranchMapping
 	ReleaseBranches      []ReleaseBranchOption
