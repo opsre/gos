@@ -47,6 +47,7 @@ func (r *NotificationRepository) mysqlSchemaStatements() []string {
 	source_type VARCHAR(32) NOT NULL,
 	webhook_url TEXT NOT NULL,
 	verification_param TEXT NOT NULL,
+	keywords TEXT NOT NULL,
 	enabled TINYINT(1) NOT NULL DEFAULT 1,
 	remark TEXT NOT NULL,
 	created_by VARCHAR(128) NOT NULL,
@@ -96,6 +97,7 @@ func (r *NotificationRepository) sqliteSchemaStatements() []string {
 	source_type TEXT NOT NULL,
 	webhook_url TEXT NOT NULL,
 	verification_param TEXT NOT NULL DEFAULT '',
+	keywords TEXT NOT NULL DEFAULT '',
 	enabled INTEGER NOT NULL DEFAULT 1,
 	remark TEXT NOT NULL DEFAULT '',
 	created_by TEXT NOT NULL DEFAULT '',
@@ -137,31 +139,21 @@ func (r *NotificationRepository) sqliteSchemaStatements() []string {
 func (r *NotificationRepository) migrateSchema(ctx context.Context) error {
 	switch r.dbDriver {
 	case "mysql":
-		exists, err := r.mysqlColumnExists(ctx, "notification_source", "verification_param")
-		if err != nil {
+		if err := r.migrateMySQLColumn(ctx, "notification_source", "verification_param", `ALTER TABLE notification_source ADD COLUMN verification_param TEXT NOT NULL AFTER webhook_url;`); err != nil {
 			return err
 		}
-		if exists {
-			return nil
+		if err := r.migrateMySQLColumn(ctx, "notification_source", "keywords", `ALTER TABLE notification_source ADD COLUMN keywords TEXT NOT NULL AFTER verification_param;`); err != nil {
+			return err
 		}
-		_, err = r.db.ExecContext(
-			ctx,
-			`ALTER TABLE notification_source ADD COLUMN verification_param TEXT NOT NULL AFTER webhook_url;`,
-		)
-		return err
+		return nil
 	case "sqlite":
-		columns, err := r.sqliteTableColumns(ctx, "notification_source")
-		if err != nil {
+		if err := r.migrateSQLiteColumn(ctx, "notification_source", "verification_param", `ALTER TABLE notification_source ADD COLUMN verification_param TEXT NOT NULL DEFAULT '';`); err != nil {
 			return err
 		}
-		if _, ok := columns["verification_param"]; ok {
-			return nil
+		if err := r.migrateSQLiteColumn(ctx, "notification_source", "keywords", `ALTER TABLE notification_source ADD COLUMN keywords TEXT NOT NULL DEFAULT '';`); err != nil {
+			return err
 		}
-		_, err = r.db.ExecContext(
-			ctx,
-			`ALTER TABLE notification_source ADD COLUMN verification_param TEXT NOT NULL DEFAULT '';`,
-		)
-		return err
+		return nil
 	default:
 		return fmt.Errorf("unsupported db driver: %s", r.dbDriver)
 	}
@@ -175,9 +167,9 @@ func (r *NotificationRepository) CreateSource(ctx context.Context, item domain.S
 	}
 	_, err = r.db.ExecContext(ctx, `
 INSERT INTO notification_source (
-	id, name, source_type, webhook_url, verification_param, enabled, remark, created_by, updated_by, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-		item.ID, item.Name, string(item.SourceType), item.WebhookURL, encryptedVerificationParam, notificationBoolToInt(item.Enabled), item.Remark, item.CreatedBy, item.UpdatedBy, item.CreatedAt.UTC().UnixNano(), item.UpdatedAt.UTC().UnixNano(),
+	id, name, source_type, webhook_url, verification_param, keywords, enabled, remark, created_by, updated_by, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+		item.ID, item.Name, string(item.SourceType), item.WebhookURL, encryptedVerificationParam, item.Keywords, notificationBoolToInt(item.Enabled), item.Remark, item.CreatedBy, item.UpdatedBy, item.CreatedAt.UTC().UnixNano(), item.UpdatedAt.UTC().UnixNano(),
 	)
 	if err != nil {
 		return domain.Source{}, err
@@ -193,9 +185,9 @@ func (r *NotificationRepository) UpdateSource(ctx context.Context, item domain.S
 	}
 	result, err := r.db.ExecContext(ctx, `
 UPDATE notification_source
-SET name = ?, source_type = ?, webhook_url = ?, verification_param = ?, enabled = ?, remark = ?, updated_by = ?, updated_at = ?
+SET name = ?, source_type = ?, webhook_url = ?, verification_param = ?, keywords = ?, enabled = ?, remark = ?, updated_by = ?, updated_at = ?
 WHERE id = ?;`,
-		item.Name, string(item.SourceType), item.WebhookURL, encryptedVerificationParam, notificationBoolToInt(item.Enabled), item.Remark, item.UpdatedBy, item.UpdatedAt.UTC().UnixNano(), item.ID,
+		item.Name, string(item.SourceType), item.WebhookURL, encryptedVerificationParam, item.Keywords, notificationBoolToInt(item.Enabled), item.Remark, item.UpdatedBy, item.UpdatedAt.UTC().UnixNano(), item.ID,
 	)
 	if err != nil {
 		return domain.Source{}, err
@@ -209,7 +201,7 @@ WHERE id = ?;`,
 // GetSourceByID 查询并返回指定资源数据。
 func (r *NotificationRepository) GetSourceByID(ctx context.Context, id string) (domain.Source, error) {
 	row := r.db.QueryRowContext(ctx, `
-SELECT id, name, source_type, webhook_url, verification_param, enabled, remark, created_by, updated_by, created_at, updated_at
+SELECT id, name, source_type, webhook_url, verification_param, keywords, enabled, remark, created_by, updated_by, created_at, updated_at
 FROM notification_source WHERE id = ?;`, strings.TrimSpace(id))
 	item, err := scanNotificationSource(row)
 	if err != nil {
@@ -252,7 +244,7 @@ func (r *NotificationRepository) ListSources(ctx context.Context, filter domain.
 		return nil, 0, err
 	}
 	query := `
-SELECT id, name, source_type, webhook_url, verification_param, enabled, remark, created_by, updated_by, created_at, updated_at
+SELECT id, name, source_type, webhook_url, verification_param, keywords, enabled, remark, created_by, updated_by, created_at, updated_at
 FROM notification_source
 WHERE ` + baseWhere + `
 ORDER BY updated_at DESC, created_at DESC
@@ -520,7 +512,7 @@ func scanNotificationSource(scanner interface{ Scan(dest ...any) error }) (domai
 	var encryptedVerificationParam string
 	var enabled int
 	var createdAt, updatedAt int64
-	if err := scanner.Scan(&item.ID, &item.Name, &sourceType, &item.WebhookURL, &encryptedVerificationParam, &enabled, &item.Remark, &item.CreatedBy, &item.UpdatedBy, &createdAt, &updatedAt); err != nil {
+	if err := scanner.Scan(&item.ID, &item.Name, &sourceType, &item.WebhookURL, &encryptedVerificationParam, &item.Keywords, &enabled, &item.Remark, &item.CreatedBy, &item.UpdatedBy, &createdAt, &updatedAt); err != nil {
 		return domain.Source{}, err
 	}
 	verificationParam, err := decryptStoredSecret(encryptedVerificationParam)
@@ -607,6 +599,30 @@ func notificationBoolToInt(v bool) int {
 		return 1
 	}
 	return 0
+}
+
+func (r *NotificationRepository) migrateMySQLColumn(ctx context.Context, table, column, ddl string) error {
+	exists, err := r.mysqlColumnExists(ctx, table, column)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	_, err = r.db.ExecContext(ctx, ddl)
+	return err
+}
+
+func (r *NotificationRepository) migrateSQLiteColumn(ctx context.Context, table, column, ddl string) error {
+	columns, err := r.sqliteTableColumns(ctx, table)
+	if err != nil {
+		return err
+	}
+	if _, ok := columns[column]; ok {
+		return nil
+	}
+	_, err = r.db.ExecContext(ctx, ddl)
+	return err
 }
 
 // mysqlColumnExists 封装当前模块的业务处理逻辑。

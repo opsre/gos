@@ -1,0 +1,1243 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GOS Release - 企业级发布治理平台</title>
+    <meta
+      name="description"
+      content="GOS Release 是面向企业内部交付链路的发布治理平台，将 Jenkins、ArgoCD、GitOps、Agent、制品、审批、通知和 AI 诊断收口到一张可审计的发布单。"
+    />
+    <meta
+      name="keywords"
+      content="GOS Release, 发布治理, CI/CD, Jenkins, ArgoCD, GitOps, 发布单, 制品中心, AI 诊断, 审批流程"
+    />
+    <meta name="theme-color" content="#07090f" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b1424;
+        --bg-2: #0f172a;
+        --band: #1e293b;
+        --surface: rgba(15, 21, 31, 0.82);
+        --surface-strong: rgba(20, 29, 42, 0.94);
+        --line: rgba(148, 163, 184, 0.18);
+        --line-strong: rgba(148, 163, 184, 0.32);
+        --text: #f8fafc;
+        --muted: #a8b3c7;
+        --soft: #728097;
+        --accent: #2563eb;
+        --accent-2: #60a5fa;
+        --accent-3: #bfdbfe;
+        --warn: #f59e0b;
+        --danger: #fb7185;
+        --shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+        --radius: 8px;
+        --max: 1160px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        background:
+          linear-gradient(180deg, rgba(18, 24, 34, 0.9) 0%, var(--bg) 520px),
+          repeating-linear-gradient(
+            90deg,
+            rgba(148, 163, 184, 0.055) 0,
+            rgba(148, 163, 184, 0.055) 1px,
+            transparent 1px,
+            transparent 78px
+          ),
+          var(--bg);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-size: 16px;
+        letter-spacing: 0;
+      }
+
+      body.menu-open {
+        overflow: hidden;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      img {
+        display: block;
+        max-width: 100%;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      .page-shell {
+        position: relative;
+        overflow: hidden;
+      }
+
+      .container {
+        width: min(var(--max), calc(100% - 48px));
+        margin: 0 auto;
+      }
+
+      .site-header {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+        background: rgba(7, 9, 15, 0.84);
+        backdrop-filter: blur(18px);
+      }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 66px;
+        gap: 24px;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+        font-weight: 760;
+        color: #ffffff;
+      }
+
+      .brand-mark {
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border: 1px solid rgba(96, 165, 250, 0.46);
+        border-radius: 8px;
+        background:
+          linear-gradient(180deg, rgba(37, 99, 235, 0.28), rgba(15, 23, 42, 0.42)),
+          rgba(11, 16, 24, 0.9);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.08),
+          inset 0 0 18px rgba(37, 99, 235, 0.16);
+        color: #eff6ff;
+        line-height: 1;
+      }
+
+      .brand-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .nav-links {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: #c7d2e4;
+        font-size: 14px;
+        font-weight: 650;
+      }
+
+      .nav-links a {
+        padding: 9px 12px;
+        border-radius: 8px;
+      }
+
+      .nav-links a:hover,
+      .nav-links a:focus-visible {
+        outline: none;
+        background: rgba(148, 163, 184, 0.12);
+        color: #ffffff;
+      }
+
+      .nav-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .repo-link,
+      .menu-button {
+        display: inline-grid;
+        place-items: center;
+        width: 38px;
+        height: 38px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(15, 23, 42, 0.62);
+        color: #dbeafe;
+        cursor: pointer;
+      }
+
+      .menu-button {
+        display: none;
+      }
+
+      .repo-link:hover,
+      .repo-link:focus-visible,
+      .menu-button:hover,
+      .menu-button:focus-visible {
+        border-color: rgba(96, 165, 250, 0.5);
+        outline: none;
+        color: #ffffff;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        min-height: 40px;
+        padding: 0 16px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 760;
+        line-height: 1;
+        white-space: nowrap;
+        transition:
+          transform 180ms ease,
+          border-color 180ms ease,
+          background 180ms ease;
+      }
+
+      .button:hover,
+      .button:focus-visible {
+        transform: translateY(-1px);
+        outline: none;
+      }
+
+      .button.primary {
+        background: linear-gradient(180deg, #2563eb, #1d4ed8);
+        color: #eff6ff;
+        box-shadow: 0 18px 40px rgba(37, 99, 235, 0.24);
+      }
+
+      .button.secondary {
+        border-color: var(--line-strong);
+        background: rgba(15, 23, 42, 0.72);
+        color: #e5edf8;
+      }
+
+      .button.ghost {
+        border-color: rgba(96, 165, 250, 0.36);
+        background: rgba(37, 99, 235, 0.1);
+        color: #dbeafe;
+      }
+
+      .hero {
+        position: relative;
+        min-height: calc(100vh - 66px);
+        padding: 106px 0 72px;
+        isolation: isolate;
+      }
+
+      .hero::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -2;
+        background:
+          linear-gradient(90deg, rgba(7, 9, 15, 0.98) 0%, rgba(7, 9, 15, 0.78) 42%, rgba(7, 9, 15, 0.2) 72%, rgba(7, 9, 15, 0.72) 100%),
+          linear-gradient(180deg, transparent 0%, rgba(7, 9, 15, 0.58) 72%, var(--bg) 100%);
+      }
+
+      .hero-bg {
+        position: absolute;
+        inset: 54px 0 auto auto;
+        z-index: -3;
+        width: min(72vw, 1100px);
+        height: min(70vh, 720px);
+        object-fit: cover;
+        object-position: left top;
+        opacity: 0.48;
+        filter: saturate(1.08) contrast(1.05);
+        mask-image: linear-gradient(90deg, transparent 0%, #000 18%, #000 76%, transparent 100%);
+      }
+
+      .hero-content {
+        display: grid;
+        grid-template-columns: minmax(0, 0.9fr) minmax(360px, 0.72fr);
+        gap: 54px;
+        align-items: center;
+      }
+
+      .hero-copy {
+        max-width: 760px;
+      }
+
+      .hero-title {
+        margin: 0;
+        font-size: clamp(44px, 5.6vw, 72px);
+        line-height: 1.02;
+        font-weight: 860;
+      }
+
+      .hero-title .gradient-text {
+        display: block;
+        padding-bottom: 6px;
+        background: linear-gradient(92deg, #ffffff 4%, #dbeafe 42%, #60a5fa 72%, #2563eb 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+
+      .hero-title .title-line {
+        display: block;
+        max-width: 720px;
+        color: #f8fafc;
+        font-size: clamp(38px, 4.8vw, 62px);
+      }
+
+      .hero-lede {
+        margin: 24px 0 0;
+        max-width: 680px;
+        color: #bcc7d8;
+        font-size: clamp(18px, 2.2vw, 24px);
+        line-height: 1.72;
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 30px;
+      }
+
+      .hero-points {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        max-width: 720px;
+        margin-top: 30px;
+      }
+
+      .point {
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(12, 18, 27, 0.62);
+      }
+
+      .point strong {
+        display: block;
+        color: #ffffff;
+        font-size: 20px;
+        line-height: 1.1;
+      }
+
+      .point span {
+        display: block;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .hero-panel {
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        border-radius: 8px;
+        background: rgba(8, 13, 20, 0.76);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 14px;
+        border-bottom: 1px solid var(--line);
+        color: #cbd5e1;
+        font-size: 13px;
+      }
+
+      .traffic {
+        display: flex;
+        gap: 7px;
+      }
+
+      .traffic i {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: #64748b;
+      }
+
+      .traffic i:nth-child(1) {
+        background: var(--danger);
+      }
+
+      .traffic i:nth-child(2) {
+        background: var(--warn);
+      }
+
+      .traffic i:nth-child(3) {
+        background: var(--accent);
+      }
+
+      .release-summary {
+        display: grid;
+        gap: 12px;
+        padding: 18px;
+        background: rgba(2, 6, 23, 0.58);
+      }
+
+      .summary-row {
+        display: grid;
+        grid-template-columns: 94px 1fr;
+        gap: 12px;
+        align-items: start;
+      }
+
+      .summary-label {
+        color: var(--soft);
+        font-size: 13px;
+      }
+
+      .summary-value {
+        color: #eaf2ff;
+        font-size: 14px;
+        font-weight: 720;
+        line-height: 1.45;
+      }
+
+      .chain-steps {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 8px;
+        margin-top: 6px;
+      }
+
+      .chain-step {
+        min-height: 0;
+        padding: 10px;
+        border: 1px solid rgba(96, 165, 250, 0.18);
+        border-radius: 8px;
+        background: rgba(37, 99, 235, 0.08);
+        color: #bfdbfe;
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .chain-step strong {
+        display: block;
+        margin-bottom: 4px;
+        color: #f8fafc;
+        font-size: 13px;
+        line-height: 1.2;
+      }
+
+      .panel-stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        border-top: 1px solid var(--line);
+      }
+
+      .panel-stat {
+        padding: 16px;
+        border-right: 1px solid var(--line);
+      }
+
+      .panel-stat:last-child {
+        border-right: 0;
+      }
+
+      .panel-stat span {
+        color: var(--soft);
+        font-size: 12px;
+      }
+
+      .panel-stat strong {
+        display: block;
+        margin-top: 6px;
+        color: #f8fafc;
+        font-size: 20px;
+      }
+
+      .section {
+        padding: 88px 0;
+      }
+
+      .section.band {
+        background: linear-gradient(180deg, rgba(14, 21, 31, 0.9), rgba(8, 12, 19, 0.92));
+        border-top: 1px solid rgba(148, 163, 184, 0.1);
+        border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+      }
+
+      .section-head {
+        display: block;
+        margin-bottom: 34px;
+      }
+
+      .section-title {
+        margin: 0;
+        max-width: 920px;
+        color: #f8fafc;
+        font-size: clamp(30px, 3.2vw, 40px);
+        line-height: 1.12;
+        font-weight: 820;
+      }
+
+      .section-text {
+        margin: 16px 0 0;
+        max-width: 720px;
+        color: var(--muted);
+        font-size: 17px;
+        line-height: 1.85;
+      }
+
+      .inline-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 18px;
+        color: #bfdbfe;
+        font-size: 14px;
+        font-weight: 760;
+      }
+
+      .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .feature-card,
+      .scenario-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(15, 23, 42, 0.68);
+      }
+
+      .feature-card {
+        min-height: 250px;
+        padding: 24px;
+      }
+
+      .card-icon {
+        display: inline-grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        border-radius: 8px;
+        background: rgba(37, 99, 235, 0.14);
+        color: #bfdbfe;
+      }
+
+      .feature-card:nth-child(3n + 2) .card-icon {
+        background: rgba(59, 130, 246, 0.14);
+        color: #dbeafe;
+      }
+
+      .feature-card:nth-child(3n) .card-icon {
+        background: rgba(167, 139, 250, 0.12);
+        color: #ddd6fe;
+      }
+
+      .feature-card h3,
+      .scenario-card h3 {
+        margin: 20px 0 0;
+        color: #ffffff;
+        font-size: 20px;
+        line-height: 1.35;
+      }
+
+      .feature-card p,
+      .scenario-card p {
+        margin: 12px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.75;
+      }
+
+      .workflow {
+        display: grid;
+        grid-template-columns: 0.9fr 1.1fr;
+        gap: 34px;
+        align-items: center;
+      }
+
+      .workflow-list {
+        display: grid;
+        gap: 12px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .workflow-list li {
+        display: grid;
+        grid-template-columns: 42px 1fr;
+        gap: 14px;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(15, 23, 42, 0.6);
+      }
+
+      .step-num {
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        border-radius: 8px;
+        background: linear-gradient(180deg, rgba(37, 99, 235, 0.28), rgba(96, 165, 250, 0.12));
+        color: #eff6ff;
+        font-weight: 820;
+      }
+
+      .workflow-list h3 {
+        margin: 0;
+        color: #ffffff;
+        font-size: 18px;
+      }
+
+      .workflow-list p {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.7;
+      }
+
+      .screen-frame {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(5, 9, 15, 0.8);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .screen-frame img {
+        width: 100%;
+        aspect-ratio: 1552 / 923;
+        object-fit: cover;
+        object-position: left top;
+      }
+
+      .screen-caption {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 14px 16px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .status-dot {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: #dbeafe;
+        font-weight: 760;
+      }
+
+      .status-dot::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: #2563eb;
+        box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.16);
+      }
+
+      .gallery {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .gallery-item {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(15, 23, 42, 0.66);
+      }
+
+      .gallery-item img {
+        width: 100%;
+        aspect-ratio: 16 / 10;
+        object-fit: cover;
+        object-position: left top;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .gallery-item h3 {
+        margin: 0;
+        padding: 16px 16px 0;
+        color: #ffffff;
+        font-size: 17px;
+      }
+
+      .gallery-item p {
+        margin: 8px 0 0;
+        padding: 0 16px 18px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.65;
+      }
+
+      .scenario-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .scenario-card {
+        padding: 22px;
+      }
+
+      .scenario-card strong {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 0 10px;
+        border: 1px solid rgba(96, 165, 250, 0.34);
+        border-radius: 8px;
+        background: rgba(37, 99, 235, 0.1);
+        color: #dbeafe;
+        font-size: 12px;
+      }
+
+      .footer {
+        padding: 36px 0;
+        border-top: 1px solid var(--line);
+        background: #05070d;
+      }
+
+      .footer-content {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        color: var(--soft);
+        font-size: 14px;
+      }
+
+      .footer-links {
+        display: flex;
+        gap: 14px;
+      }
+
+      .footer-links a {
+        color: #cbd5e1;
+      }
+
+      .svg-sprite {
+        position: absolute;
+        width: 0;
+        height: 0;
+        overflow: hidden;
+      }
+
+      svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      @media (max-width: 1020px) {
+        .hero-content,
+        .workflow {
+          grid-template-columns: 1fr;
+        }
+
+        .hero-panel {
+          max-width: 680px;
+        }
+
+        .feature-grid,
+        .gallery {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .scenario-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 820px) {
+        .nav-links {
+          position: fixed;
+          inset: 66px 0 auto 0;
+          display: none;
+          grid-template-columns: 1fr;
+          gap: 0;
+          padding: 14px 24px 22px;
+          border-bottom: 1px solid var(--line);
+          background: rgba(7, 9, 15, 0.96);
+        }
+
+        .nav-links.open {
+          display: grid;
+        }
+
+        .nav-links a {
+          padding: 14px 8px;
+          border-radius: 0;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+        }
+
+        .menu-button {
+          display: inline-grid;
+        }
+
+        .nav-actions .button {
+          display: none;
+        }
+
+        .hero {
+          padding-top: 76px;
+        }
+
+        .hero-bg {
+          width: 140vw;
+          height: 52vh;
+          opacity: 0.34;
+          object-position: left top;
+        }
+
+        .hero-content {
+          gap: 34px;
+        }
+
+        .hero-points {
+          grid-template-columns: 1fr;
+        }
+
+        .section {
+          padding: 68px 0;
+        }
+
+      }
+
+      @media (max-width: 620px) {
+        .container {
+          width: min(100% - 32px, var(--max));
+        }
+
+        .nav {
+          height: 62px;
+        }
+
+        .brand-title {
+          max-width: 180px;
+        }
+
+        .hero {
+          min-height: auto;
+          padding: 58px 0 48px;
+        }
+
+        .hero-title {
+          font-size: 46px;
+        }
+
+        .hero-lede {
+          font-size: 17px;
+        }
+
+        .hero-actions {
+          display: grid;
+          grid-template-columns: 1fr;
+        }
+
+        .button {
+          width: 100%;
+        }
+
+        .panel-stats,
+        .chain-steps,
+        .feature-grid,
+        .gallery,
+        .scenario-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .feature-card {
+          min-height: 0;
+        }
+
+        .workflow-list li {
+          grid-template-columns: 1fr;
+        }
+
+        .screen-caption,
+        .footer-content {
+          display: grid;
+          justify-items: start;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition-duration: 0.001ms !important;
+          animation-duration: 0.001ms !important;
+          animation-iteration-count: 1 !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <svg class="svg-sprite" aria-hidden="true" focusable="false">
+      <symbol id="icon-arrow" viewBox="0 0 24 24">
+        <path d="M5 12h14m-6-6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+      </symbol>
+      <symbol id="icon-menu" viewBox="0 0 24 24">
+        <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+      </symbol>
+      <symbol id="icon-shield" viewBox="0 0 24 24">
+        <path d="M12 3 19 6v5c0 4.4-2.8 8.4-7 10-4.2-1.6-7-5.6-7-10V6l7-3Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+      </symbol>
+      <symbol id="icon-flow" viewBox="0 0 24 24">
+        <path d="M6 7h6m0 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm0 0v10m0 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm0 0h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+      </symbol>
+      <symbol id="icon-box" viewBox="0 0 24 24">
+        <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Zm0 9 8-4.5M12 12 4 7.5m8 4.5v9" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+      </symbol>
+      <symbol id="icon-brain" viewBox="0 0 24 24">
+        <path d="M8 4a4 4 0 0 0-4 4c0 .9.3 1.8.8 2.5A4.2 4.2 0 0 0 4 13a4 4 0 0 0 4 4h1v-1m7 1a4 4 0 0 0 4-4c0-.9-.3-1.8-.8-2.5A4.2 4.2 0 0 0 20 8a4 4 0 0 0-4-4h-1v1M9 5v14m6-14v14M9 9H7m10 0h-2m-6 4H6m12 0h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+      </symbol>
+      <symbol id="icon-lock" viewBox="0 0 24 24">
+        <path d="M7 11V8a5 5 0 0 1 10 0v3m-9 0h8a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2Zm4 4v2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+      </symbol>
+      <symbol id="icon-bell" viewBox="0 0 24 24">
+        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+      </symbol>
+      <symbol id="icon-check" viewBox="0 0 24 24">
+        <path d="m5 12 4 4L19 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+      </symbol>
+      <symbol id="icon-github" viewBox="0 0 24 24">
+        <path d="M12 1.8a10.2 10.2 0 0 0-3.22 19.88c.51.09.7-.22.7-.49v-1.8c-2.86.62-3.46-1.22-3.46-1.22-.47-1.2-1.15-1.52-1.15-1.52-.94-.64.07-.63.07-.63 1.04.07 1.59 1.07 1.59 1.07.92 1.58 2.42 1.12 3.01.86.09-.67.36-1.12.66-1.38-2.28-.26-4.68-1.14-4.68-5.08 0-1.12.4-2.04 1.06-2.76-.11-.26-.46-1.31.1-2.72 0 0 .87-.28 2.84 1.05a9.76 9.76 0 0 1 5.18 0c1.97-1.33 2.83-1.05 2.83-1.05.56 1.41.21 2.46.1 2.72.66.72 1.06 1.64 1.06 2.76 0 3.95-2.4 4.82-4.69 5.08.37.32.7.94.7 1.91v2.83c0 .27.19.59.71.49A10.2 10.2 0 0 0 12 1.8Z" fill="currentColor" />
+      </symbol>
+    </svg>
+
+    <div class="page-shell">
+      <header class="site-header">
+        <div class="container nav">
+          <a class="brand" href="#home" aria-label="GOS Release 首页">
+            <span class="brand-mark">G</span>
+            <span class="brand-title">GOS Release</span>
+          </a>
+
+          <nav class="nav-links" id="navLinks" aria-label="主导航">
+            <a href="#features">能力</a>
+            <a href="#workflow">流程</a>
+            <a href="#screens">界面</a>
+            <a href="#scenarios">场景</a>
+          </nav>
+
+          <div class="nav-actions">
+            <a class="repo-link" href="https://github.com/yl1664907302/gos" target="_blank" rel="noopener noreferrer" aria-label="访问 GitHub 仓库" title="GitHub 仓库">
+              <svg><use href="#icon-github" /></svg>
+            </a>
+            <button class="menu-button" id="menuButton" type="button" aria-controls="navLinks" aria-expanded="false" aria-label="打开导航">
+              <svg><use href="#icon-menu" /></svg>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main id="home">
+        <section class="hero" aria-labelledby="hero-title">
+          <img class="hero-bg" src="images/my-applications-page-legend.png" alt="" />
+          <div class="container hero-content">
+            <div class="hero-copy">
+              <h1 class="hero-title" id="hero-title">
+                <span class="gradient-text">GOS Release</span>
+                <span class="title-line">企业级发布治理平台</span>
+              </h1>
+              <p class="hero-lede">
+                一张发布单串起应用、模板、审批、Jenkins、ArgoCD、GitOps、Agent、制品、通知和 AI 诊断，让分散执行回到可治理、可追踪、可复盘的交付链路。
+              </p>
+              <div class="hero-actions" aria-label="主要操作">
+                <a class="button primary" href="#features">
+                  查看能力
+                  <svg><use href="#icon-arrow" /></svg>
+                </a>
+                <a class="button secondary" href="#screens">界面预览</a>
+                <a class="button secondary" href="https://github.com/yl1664907302/gos" target="_blank" rel="noopener noreferrer">
+                  <svg><use href="#icon-github" /></svg>
+                  代码仓库
+                </a>
+              </div>
+              <div class="hero-points" aria-label="平台亮点">
+                <div class="point">
+                  <strong>统一入口</strong>
+                  <span>标准发布、极速发布、回滚、重放集中发起</span>
+                </div>
+                <div class="point">
+                  <strong>模板治理</strong>
+                  <span>固化执行器、参数映射、审批与通知策略</span>
+                </div>
+                <div class="point">
+                  <strong>全链路留痕</strong>
+                  <span>制品、日志、诊断、Hook、通知全部可追溯</span>
+                </div>
+              </div>
+            </div>
+
+            <aside class="hero-panel" aria-label="GOS Release 发布治理概览">
+              <div class="panel-head">
+                <span class="traffic" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span>发布模式</span>
+              </div>
+              <div class="release-summary">
+                <div class="summary-row">
+                  <span class="summary-label">常用模式</span>
+                  <div class="summary-value chain-steps">
+                    <span class="chain-step"><strong>仅 CI</strong>绑定单管线，适合简单发布流程</span>
+                    <span class="chain-step"><strong>Jenkins CI + Jenkins CD</strong>绑定双管线，适合规范化构建与部署流程</span>
+                    <span class="chain-step"><strong>Jenkins CI + ArgoCD</strong>Jenkins 产出镜像或制品，ArgoCD 同步部署，适合 gitops 流程</span>
+                    <span class="chain-step"><strong>Jenkins CI/CD + Agent</strong>Jenkins 产出镜像或制品，Agent 完成部署或其他任务，适合非标生产环境（网络单向）流程</span>
+                  </div>
+                </div>
+                <div class="summary-row">
+                  <span class="summary-label">平台价值</span>
+                  <span class="summary-value">把发布前规则、发布中执行、发布后审计放在同一个上下文里。</span>
+                </div>
+              </div>
+              <div class="panel-stats">
+                <div class="panel-stat">
+                  <span>发布模式</span>
+                  <strong>4 种</strong>
+                </div>
+                <div class="panel-stat">
+                  <span>发布记录</span>
+                  <strong>可审计</strong>
+                </div>
+                <div class="panel-stat">
+                  <span>失败定位</span>
+                  <strong>分钟级</strong>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="section band" id="features" aria-labelledby="features-title">
+          <div class="container">
+            <div class="section-head">
+              <div>
+                <h2 class="section-title" id="features-title">把执行系统上层的治理边界先定下来</h2>
+                <p class="section-text">
+                  GOS 不替代 Jenkins、ArgoCD 或 GitOps。它把这些执行器编排到同一套发布语言里，让申请人少填底层细节，让平台沉淀治理数据。
+                </p>
+              </div>
+              <a class="inline-link" href="#workflow">查看发布流程 <svg><use href="#icon-arrow" /></svg></a>
+            </div>
+
+            <div class="feature-grid">
+              <article class="feature-card">
+                <span class="card-icon"><svg><use href="#icon-flow" /></svg></span>
+                <h3>发布单工作台</h3>
+                <p>从创建、预检、审批、执行、取消到回滚和重放，围绕发布单组织完整生命周期，避免在多个执行系统之间切换。</p>
+              </article>
+              <article class="feature-card">
+                <span class="card-icon"><svg><use href="#icon-shield" /></svg></span>
+                <h3>模板与审批治理</h3>
+                <p>发布模板固化 CI/CD 执行单元、参数映射、审批模式、Hook 和通知策略，把发布规则前置到流程开始前。</p>
+              </article>
+              <article class="feature-card">
+                <span class="card-icon"><svg><use href="#icon-check" /></svg></span>
+                <h3>管线规范校验</h3>
+                <p>对 Jenkins Pipeline 的制品输出、上传命令、参数命名等关键边界做扫描，保留团队自定义步骤的自由度。</p>
+              </article>
+              <article class="feature-card">
+                <span class="card-icon"><svg><use href="#icon-brain" /></svg></span>
+                <h3>AI 阶段诊断</h3>
+                <p>失败阶段自动拉取日志，提取错误上下文、可能原因、证据和建议动作，把排障结果保存在发布上下文中。</p>
+              </article>
+              <article class="feature-card">
+                <span class="card-icon"><svg><use href="#icon-box" /></svg></span>
+                <h3>制品中心</h3>
+                <p>聚合发布过程产物、校验信息、对象路径和下载入口，避免制品链接散落在流水线日志和聊天记录里。</p>
+              </article>
+              <article class="feature-card">
+                <span class="card-icon"><svg><use href="#icon-bell" /></svg></span>
+                <h3>通知与 Hook 闭环</h3>
+                <p>飞书、企微、钉钉通知源和 Markdown 模板统一管理，发布模板按阶段和条件触发通知或 Agent 任务。</p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="workflow" aria-labelledby="workflow-title">
+          <div class="container workflow">
+            <div>
+              <h2 class="section-title" id="workflow-title">从申请到复盘，一条线贯穿</h2>
+              <p class="section-text">
+                发布申请人只面对标准字段和必要选择，平台在背后解析模板、执行器、参数、权限和环境链路。每一步都能回到发布单追踪。
+              </p>
+              <ul class="workflow-list" aria-label="发布流程">
+                <li>
+                  <span class="step-num">01</span>
+                  <div>
+                    <h3>选择应用和模板</h3>
+                    <p>系统根据应用、环境、权限和模板展示可用发布方式，隐藏底层执行器映射细节。</p>
+                  </div>
+                </li>
+                <li>
+                  <span class="step-num">02</span>
+                  <div>
+                    <h3>预检与审批</h3>
+                    <p>校验执行单元、参数完整性、并发锁、模板合规性和管线规范，再进入审批工作台。</p>
+                  </div>
+                </li>
+                <li>
+                  <span class="step-num">03</span>
+                  <div>
+                    <h3>执行与归档</h3>
+                    <p>Jenkins、GitOps、ArgoCD 和 Agent 任务按模板推进，日志、阶段、制品、Hook 和通知持续回写。</p>
+                  </div>
+                </li>
+              </ul>
+            </div>
+
+            <figure class="screen-frame">
+              <img src="images/release-order-detail-legend.png" alt="GOS Release 发布单详情界面" />
+              <figcaption class="screen-caption">
+                <span>发布单详情聚合执行单元、阶段日志、Hook、制品和诊断入口</span>
+                <span class="status-dot">实时追踪</span>
+              </figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section class="section band" id="screens" aria-labelledby="screens-title">
+          <div class="container">
+            <div class="section-head">
+              <div>
+                <h2 class="section-title" id="screens-title">为重复发布设计的工作界面</h2>
+                <p class="section-text">
+                  页面以高频操作和信息扫描为优先级，重点呈现发布状态、模板绑定、制品归档、管线规则和诊断结论。
+                </p>
+              </div>
+            </div>
+
+            <div class="gallery">
+              <article class="gallery-item">
+                <img src="images/my-applications-page-legend.png" alt="应用工作台界面" />
+                <h3>应用工作台</h3>
+                <p>以应用为入口查看发布态势、最近发布单和可发布资源。</p>
+              </article>
+              <article class="gallery-item">
+                <img src="images/new-release-order-page-legend.png" alt="新建发布单界面" />
+                <h3>发布申请</h3>
+                <p>模板驱动字段展示，让申请人只填写本次发布真正需要的内容。</p>
+              </article>
+              <article class="gallery-item">
+                <img src="images/release-detail-artifacts-ai.png" alt="制品和 AI 诊断界面" />
+                <h3>制品与诊断</h3>
+                <p>发布产物、阶段失败原因和建议动作沉淀在同一条发布记录中。</p>
+              </article>
+              <article class="gallery-item">
+                <img src="images/pipeline-rules.png" alt="管线规则管理界面" />
+                <h3>管线规则</h3>
+                <p>通过内置和自定义规则约束平台必须识别的执行边界。</p>
+              </article>
+              <article class="gallery-item">
+                <img src="images/artifact-catalog.png" alt="制品目录界面" />
+                <h3>制品目录</h3>
+                <p>按制品库、项目、应用、执行单元和发布单组织产物资产。</p>
+              </article>
+              <article class="gallery-item">
+                <img src="images/ai-diagnosis-drawer.png" alt="AI 诊断抽屉界面" />
+                <h3>AI 诊断</h3>
+                <p>把失败阶段日志转换为结论、证据、原因和可执行建议。</p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="scenarios" aria-labelledby="scenarios-title">
+          <div class="container">
+            <div class="section-head">
+              <div>
+                <h2 class="section-title" id="scenarios-title">覆盖复杂组织里的真实发布场景</h2>
+                <p class="section-text">
+                  不同团队可以继续使用不同执行器。GOS 负责把入口、模板、权限、参数和审计统一起来。
+                </p>
+              </div>
+            </div>
+
+            <div class="scenario-grid">
+              <article class="scenario-card">
+                <strong>标准发布</strong>
+                <h3>CI/CD 完整链路</h3>
+                <p>构建、部署、审批、制品归档和通知按模板串联，适合日常稳定发布。</p>
+              </article>
+              <article class="scenario-card">
+                <strong>分段部署</strong>
+                <h3>按阶段推进</h3>
+                <p>把部署拆成可观察的步骤，支持暂停、确认、继续和失败定位。</p>
+              </article>
+              <article class="scenario-card">
+                <strong>生产孤岛</strong>
+                <h3>Agent 受控任务</h3>
+                <p>通过 Agent 执行脚本、文件分发和 Hook，适配平台不能直连的环境。</p>
+              </article>
+              <article class="scenario-card">
+                <strong>声明式部署</strong>
+                <h3>GitOps 与 ArgoCD</h3>
+                <p>解析环境、仓库、路径、应用和实例，让 CI 产物继续流向 CD。</p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+      </main>
+
+      <footer class="footer">
+        <div class="container footer-content">
+          <div>
+            <strong>GOS Release</strong>
+            <span> - 让发布从分散执行回到统一治理</span>
+          </div>
+          <div class="footer-links" aria-label="页脚链接">
+            <a href="#features">能力</a>
+            <a href="#screens">界面</a>
+            <a href="https://github.com/yl1664907302/gos" target="_blank" rel="noopener noreferrer">代码仓库</a>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <script>
+      const menuButton = document.querySelector("#menuButton");
+      const navLinks = document.querySelector("#navLinks");
+
+      menuButton?.addEventListener("click", () => {
+        const isOpen = navLinks.classList.toggle("open");
+        document.body.classList.toggle("menu-open", isOpen);
+        menuButton.setAttribute("aria-expanded", String(isOpen));
+      });
+
+      navLinks?.querySelectorAll("a").forEach((link) => {
+        link.addEventListener("click", () => {
+          navLinks.classList.remove("open");
+          document.body.classList.remove("menu-open");
+          menuButton?.setAttribute("aria-expanded", "false");
+        });
+      });
+    </script>
+  </body>
+</html>

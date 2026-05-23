@@ -13,6 +13,7 @@ import (
 	"time"
 
 	agentdomain "gos/internal/domain/agent"
+	appdomain "gos/internal/domain/application"
 	notificationdomain "gos/internal/domain/notification"
 	domain "gos/internal/domain/release"
 	"gos/internal/infrastructure/persistence/sqlrepo"
@@ -287,6 +288,45 @@ func TestBuildHookTaskVariablesUsesCIOnlyForGOSArtifactURL(t *testing.T) {
 	}
 	if got := values["gos_artifact_url"]; got != "https://ci.example.com/app.jar" {
 		t.Fatalf("gos_artifact_url = %q, want CI value", got)
+	}
+}
+
+// TestBuildHookTaskVariablesUsesApplicationForGOSArtifactPath Hook 变量中的 GOS 制品路径来自 App 基础信息。
+func TestBuildHookTaskVariablesUsesApplicationForGOSArtifactPath(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	manager.appRepo = applicationRepositoryStub{
+		app: appdomain.Application{
+			ID:                "app-1",
+			Key:               "app-1",
+			ArtifactDirectory: "release/pay-center",
+		},
+	}
+	ctx := context.Background()
+	now := time.Now().UTC()
+	order := testReleaseOrder("ro-hook-gos-artifact-path", "RO-HOOK-GOS-ARTIFACT-PATH", domain.OrderStatusSuccess, now)
+	order.ApplicationID = "app-1"
+	params := []domain.ReleaseOrderParam{
+		{
+			ID:             "rop-hook-gos-artifact-path-cd",
+			ReleaseOrderID: order.ID,
+			PipelineScope:  domain.PipelineScopeCD,
+			ParamKey:       "gos_artifact_path",
+			ParamValue:     "release/from-cd-param",
+			CreatedAt:      now,
+		},
+	}
+	if err := repo.Create(ctx, order, nil, params, nil); err != nil {
+		t.Fatalf("Create release order failed: %v", err)
+	}
+
+	values, err := manager.buildHookTaskVariables(ctx, order, nil, domain.ReleaseTemplateHook{}, domain.TemplateHookExecuteStagePostRelease)
+	if err != nil {
+		t.Fatalf("buildHookTaskVariables failed: %v", err)
+	}
+	if got := values["gos_artifact_path"]; got != "release/pay-center" {
+		t.Fatalf("gos_artifact_path = %q, want app artifact directory", got)
 	}
 }
 

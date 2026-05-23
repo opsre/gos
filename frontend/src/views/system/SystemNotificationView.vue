@@ -50,6 +50,7 @@ interface SourceFormState {
   source_type: NotificationSourceType
   webhook_url: string
   verification_param: string
+  keywords: string
   enabled: boolean
   remark: string
 }
@@ -202,6 +203,7 @@ const sourceForm = reactive<SourceFormState>({
   source_type: 'dingtalk',
   webhook_url: '',
   verification_param: '',
+  keywords: '',
   enabled: true,
   remark: '',
 })
@@ -483,6 +485,7 @@ const sourceColumns: TableColumnsType<NotificationSource> = [
   { title: '通知源名称', dataIndex: 'name', key: 'name', width: 220 },
   { title: '类型', dataIndex: 'source_type', key: 'source_type', width: 120 },
   { title: '校验配置', dataIndex: 'has_verification_param', key: 'has_verification_param', width: 100 },
+  { title: '关键字', dataIndex: 'keywords', key: 'keywords', width: 100 },
   { title: 'Webhook 地址', dataIndex: 'webhook_url', key: 'webhook_url', ellipsis: true },
   { title: '状态', dataIndex: 'enabled', key: 'enabled', width: 100 },
   { title: '更新时间', dataIndex: 'updated_at', key: 'updated_at', width: 180 },
@@ -620,6 +623,7 @@ function resetSourceForm() {
   sourceForm.source_type = 'dingtalk'
   sourceForm.webhook_url = ''
   sourceForm.verification_param = ''
+  sourceForm.keywords = ''
   sourceForm.enabled = true
   sourceForm.remark = ''
 }
@@ -969,6 +973,7 @@ function openEditSourceModal(item: NotificationSource) {
   sourceForm.source_type = item.source_type
   sourceForm.webhook_url = item.webhook_url
   sourceForm.verification_param = ''
+  sourceForm.keywords = item.keywords || ''
   sourceForm.enabled = item.enabled
   sourceForm.remark = item.remark || ''
   editingSourceHasVerificationParam.value = item.has_verification_param
@@ -988,11 +993,13 @@ function handleSourceFormAfterClose() {
 }
 
 function buildSourcePayload(): NotificationSourcePayload {
+  const isDingTalk = sourceForm.source_type === 'dingtalk'
   return {
     name: sourceForm.name.trim(),
     source_type: sourceForm.source_type,
     webhook_url: sourceForm.webhook_url.trim(),
     verification_param: sourceUsesVerificationParam(sourceForm.source_type) ? sourceForm.verification_param.trim() || undefined : undefined,
+    keywords: isDingTalk ? sourceForm.keywords.trim() || undefined : undefined,
     enabled: sourceForm.enabled,
     remark: sourceForm.remark.trim() || undefined,
   }
@@ -1532,6 +1539,9 @@ onBeforeUnmount(() => {
                   {{ record.has_verification_param ? '已配置' : '未配置' }}
                 </a-tag>
               </template>
+              <template v-else-if="column.key === 'keywords'">
+                <span>{{ record.keywords || '-' }}</span>
+              </template>
               <template v-else-if="column.key === 'enabled'">
                 <a-tag :color="record.enabled ? 'green' : 'default'">{{ record.enabled ? '启用' : '停用' }}</a-tag>
               </template>
@@ -1719,6 +1729,18 @@ onBeforeUnmount(() => {
               :placeholder="sourceVerificationPlaceholder"
             />
             <div v-if="editingSourceHasVerificationParam || sourceForm.source_type === 'feishu'" class="form-help-text">{{ sourceVerificationHelp }}</div>
+          </a-form-item>
+
+          <a-form-item v-if="sourceForm.source_type === 'dingtalk'" name="keywords">
+            <template #label>
+              <span class="source-form-label">安全关键字</span>
+            </template>
+            <a-input
+              v-model:value="sourceForm.keywords"
+              allow-clear
+              placeholder="选填，钉钉机器人安全设置中的自定义关键字"
+            />
+            <div class="form-help-text">消息正文将自动包含该关键字，用于通过钉钉机器人安全校验</div>
           </a-form-item>
 
           <a-form-item name="remark">

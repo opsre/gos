@@ -51,7 +51,7 @@ func TestNormalizeSourceInputKeepsFeishuKeyword(t *testing.T) {
 	t.Parallel()
 
 	manager := &NotificationManager{}
-	source, err := manager.normalizeSourceInput("飞书发布群", "feishu", "https://open.feishu.cn/open-apis/bot/v2/hook/test-token", "GOS放行", true, "")
+	source, err := manager.normalizeSourceInput("飞书发布群", "feishu", "https://open.feishu.cn/open-apis/bot/v2/hook/test-token", "GOS放行", "", true, "")
 	if err != nil {
 		t.Fatalf("normalizeSourceInput failed: %v", err)
 	}

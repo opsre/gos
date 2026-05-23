@@ -611,10 +611,15 @@ func buildNotificationHookRequest(ctx context.Context, source notificationdomain
 	payload := make(map[string]any)
 	switch source.SourceType {
 	case notificationdomain.SourceTypeDingTalk:
+		dingTitle := strings.TrimSpace(firstNonEmpty(title, "GOS Release Notification"))
+		dingText := strings.TrimSpace(firstNonEmpty(body, title))
+		if keywords := strings.TrimSpace(source.Keywords); keywords != "" && !strings.Contains(dingTitle, keywords) && !strings.Contains(dingText, keywords) {
+			dingText = strings.TrimSpace(keywords + "\n\n" + dingText)
+		}
 		payload["msgtype"] = "markdown"
 		payload["markdown"] = map[string]string{
-			"title": strings.TrimSpace(firstNonEmpty(title, "GOS Release Notification")),
-			"text":  strings.TrimSpace(firstNonEmpty(body, title)),
+			"title": dingTitle,
+			"text":  dingText,
 		}
 	case notificationdomain.SourceTypeWeCom:
 		content := strings.TrimSpace(body)
@@ -903,6 +908,7 @@ func (uc *ReleaseOrderManager) buildHookTaskVariables(
 		"image_version",
 		"image_tag",
 		standardParamGOSArtifactURL,
+		standardParamGOSArtifactPath,
 	}
 	values := make(map[string]string, len(keys)+4)
 	for _, key := range keys {

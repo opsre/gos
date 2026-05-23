@@ -40,7 +40,7 @@ const instanceTotal = ref(0)
 const instanceDataSource = ref<ArgoCDInstance[]>([])
 const gitopsInstanceOptions = ref<GitOpsInstance[]>([])
 const envOptions = ref<string[]>([])
-const envBindingMap = ref<Record<string, ArgoCDEnvBinding>>({})
+const envBindingMap = ref<Record<string, ArgoCDEnvBinding[]>>({})
 
 const instanceFilters = reactive({
   page: 1,
@@ -104,7 +104,7 @@ const canManageBindings = computed(
 const bindingRows = computed(() =>
   envOptions.value.map((envCode) => ({
     env_code: envCode,
-    binding: envBindingMap.value[envCode] || null,
+    bindings: envBindingMap.value[envCode] || [],
   })),
 )
 
@@ -306,9 +306,12 @@ async function loadBindings() {
   loadingBindings.value = true
   try {
     const response = await listArgoCDEnvBindings()
-    const next: Record<string, ArgoCDEnvBinding> = {}
+    const next: Record<string, ArgoCDEnvBinding[]> = {}
     ;(response.data || []).forEach((item) => {
-      next[item.env_code] = item
+      if (!next[item.env_code]) {
+        next[item.env_code] = []
+      }
+      next[item.env_code].push(item)
     })
     envBindingMap.value = next
   } catch (error) {
@@ -350,43 +353,53 @@ async function handleCheckInstance(record: ArgoCDInstance) {
   }
 }
 
-function updateBindingValue(envCode: string, instanceID?: string) {
+function updateBindingValue(envCode: string, instanceIDs?: string[] | string) {
   const next = { ...envBindingMap.value }
-  if (!instanceID) {
+  const selectedIDs = Array.isArray(instanceIDs) ? instanceIDs.filter(Boolean) : instanceIDs ? [instanceIDs] : []
+  if (selectedIDs.length === 0) {
     delete next[envCode]
   } else {
-    const existing = next[envCode]
-    const target = instanceDataSource.value.find((item) => item.id === instanceID)
-    next[envCode] = {
-      id: existing?.id || '',
-      env_code: envCode,
-      argocd_instance_id: instanceID,
-      argocd_instance_code: target?.instance_code || existing?.argocd_instance_code || '',
-      argocd_instance_name: target?.name || existing?.argocd_instance_name || '',
-      cluster_name: target?.cluster_name || existing?.cluster_name || '',
-      priority: existing?.priority || 1,
-      status: 'active',
-      created_at: existing?.created_at || '',
-      updated_at: existing?.updated_at || '',
-    }
+    const existingByInstance = new Map((next[envCode] || []).map((item) => [item.argocd_instance_id, item]))
+    next[envCode] = selectedIDs.map((instanceID, index) => {
+      const existing = existingByInstance.get(instanceID)
+      const target = instanceDataSource.value.find((item) => item.id === instanceID)
+      return {
+        id: existing?.id || '',
+        env_code: envCode,
+        argocd_instance_id: instanceID,
+        argocd_instance_code: target?.instance_code || existing?.argocd_instance_code || '',
+        argocd_instance_name: target?.name || existing?.argocd_instance_name || '',
+        cluster_name: target?.cluster_name || existing?.cluster_name || '',
+        priority: index + 1,
+        status: 'active',
+        created_at: existing?.created_at || '',
+        updated_at: existing?.updated_at || '',
+      }
+    })
   }
   envBindingMap.value = next
 }
 
 async function saveBindings() {
   const bindings = bindingRows.value
-    .filter((item) => item.binding?.argocd_instance_id)
-    .map((item) => ({
-      env_code: item.env_code,
-      argocd_instance_id: item.binding!.argocd_instance_id,
-      status: 'active' as ArgoCDRecordStatus,
-    }))
+    .flatMap((item) =>
+      item.bindings
+        .filter((binding) => binding.argocd_instance_id)
+        .map((binding) => ({
+          env_code: item.env_code,
+          argocd_instance_id: binding.argocd_instance_id,
+          status: 'active' as ArgoCDRecordStatus,
+        })),
+    )
   savingBindings.value = true
   try {
     const response = await updateArgoCDEnvBindings({ bindings })
-    const next: Record<string, ArgoCDEnvBinding> = {}
+    const next: Record<string, ArgoCDEnvBinding[]> = {}
     ;(response.data || []).forEach((item) => {
-      next[item.env_code] = item
+      if (!next[item.env_code]) {
+        next[item.env_code] = []
+      }
+      next[item.env_code].push(item)
     })
     envBindingMap.value = next
     message.success('环境绑定已保存')
@@ -520,7 +533,7 @@ onUnmounted(() => {
         <div class="argocd-module-header">
           <div>
             <div class="argocd-module-kicker">02 · 环境绑定</div>
-            <h3 class="argocd-module-title">发布环境默认实例</h3>
+            <h3 class="argocd-module-title">发布环境实例</h3>
           </div>
           <div class="argocd-module-meta">共 {{ bindingRows.length }} 个环境</div>
         </div>
@@ -532,9 +545,10 @@ onUnmounted(() => {
                 <strong>{{ record.env_code }}</strong>
               </div>
               <div class="argocd-binding-control">
-                <span>默认 ArgoCD 实例</span>
+                <span>ArgoCD 实例</span>
                 <a-select
-                  :value="record.binding?.argocd_instance_id || undefined"
+                  mode="multiple"
+                  :value="record.bindings.map((item) => item.argocd_instance_id)"
                   allow-clear
                   placeholder="请选择 ArgoCD 实例"
                   :disabled="!canManageBindings"
@@ -547,7 +561,11 @@ onUnmounted(() => {
               </div>
               <div class="argocd-binding-current">
                 <span>当前绑定</span>
-                <span v-if="record.binding">{{ record.binding.argocd_instance_name || '-' }}<span v-if="record.binding.cluster_name"> / {{ record.binding.cluster_name }}</span></span>
+                <span v-if="record.bindings.length" class="argocd-binding-current-list">
+                  <a-tag v-for="binding in record.bindings" :key="binding.argocd_instance_id" color="blue">
+                    {{ binding.argocd_instance_name || '-' }}<span v-if="binding.cluster_name"> / {{ binding.cluster_name }}</span>
+                  </a-tag>
+                </span>
                 <span v-else>-</span>
               </div>
             </article>
@@ -887,6 +905,12 @@ onUnmounted(() => {
 
 .argocd-binding-control :deep(.ant-select) {
   width: 100%;
+}
+
+.argocd-binding-current-list {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .argocd-empty {

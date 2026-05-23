@@ -10,6 +10,7 @@ import {
   EnvironmentOutlined,
   EyeOutlined,
   FilterOutlined,
+  InfoCircleOutlined,
   PlusOutlined,
   SearchOutlined,
   StopOutlined,
@@ -91,6 +92,8 @@ const scheduleFormViewportInset = ref(0)
 const advancedSearchExpanded = ref(false)
 const statusExpanded = ref(false)
 const envExpanded = ref(false)
+const detailDrawerOpen = ref(false)
+const detailSchedule = ref<ReleaseOrderSchedule | null>(null)
 
 const scheduleModeOptions: Array<{ label: string; value: ReleaseOrderScheduleMode | '' }> = [
   { label: '全部模式', value: '' },
@@ -918,6 +921,11 @@ function goToReleaseOrder(record: ReleaseOrderSchedule) {
   void router.push(`/releases/${record.release_order_id}`)
 }
 
+function openScheduleDetail(record: ReleaseOrderSchedule) {
+  detailSchedule.value = record
+  detailDrawerOpen.value = true
+}
+
 function goToReleaseOrderID(releaseOrderID: string) {
   if (!releaseOrderID) {
     return
@@ -1248,6 +1256,12 @@ onBeforeUnmount(() => {
           </template>
           <template v-else-if="column.key === 'actions'">
             <a-space :size="4" wrap>
+              <a-button type="link" size="small" @click="openScheduleDetail(record)">
+                <template #icon>
+                  <InfoCircleOutlined />
+                </template>
+                详情
+              </a-button>
               <a-button type="link" size="small" @click="goToReleaseOrder(record)">
                 <template #icon>
                   <EyeOutlined />
@@ -1497,6 +1511,115 @@ onBeforeUnmount(() => {
         </div>
       </a-form>
     </a-modal>
+
+    <a-drawer
+      v-model:open="detailDrawerOpen"
+      title="预约详情"
+      placement="right"
+      :width="480"
+      @close="detailSchedule = null"
+    >
+      <template v-if="detailSchedule">
+        <div class="schedule-detail-body">
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">预约单号</span>
+            <span class="schedule-detail-value">{{ detailSchedule.schedule_no || '-' }}</span>
+          </div>
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">发布单号</span>
+            <span class="schedule-detail-value">{{ detailSchedule.release_order_no || '-' }}</span>
+          </div>
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">应用</span>
+            <span class="schedule-detail-value">{{ detailSchedule.application_name || '-' }}</span>
+          </div>
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">环境</span>
+            <span class="schedule-detail-value">{{ detailSchedule.env_code || '-' }}</span>
+          </div>
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">模板</span>
+            <span class="schedule-detail-value">{{ detailSchedule.template_name || '-' }}</span>
+          </div>
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">预约模式</span>
+            <span class="schedule-detail-value"><a-tag color="blue">{{ scheduleModeText(detailSchedule.schedule_mode) }}</a-tag></span>
+          </div>
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">预约状态</span>
+            <span class="schedule-detail-value"><a-tag :color="scheduleStatusColor(detailSchedule.status)">{{ scheduleStatusText(detailSchedule.status) }}</a-tag></span>
+          </div>
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">审批状态</span>
+            <span class="schedule-detail-value"><a-tag :color="approvalStatusColor(detailSchedule)">{{ approvalStatusText(detailSchedule) }}</a-tag></span>
+          </div>
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">审批人</span>
+            <span class="schedule-detail-value">{{ approverText(detailSchedule) }}</span>
+          </div>
+          <div class="schedule-detail-divider" />
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">CI 预约时间</span>
+            <span class="schedule-detail-value">{{ formatTime(detailSchedule.build_scheduled_at) }}</span>
+          </div>
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">CD 预约时间</span>
+            <span class="schedule-detail-value">{{ formatTime(detailSchedule.deploy_scheduled_at) }}</span>
+          </div>
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">全流程预约时间</span>
+            <span class="schedule-detail-value">{{ formatTime(detailSchedule.execute_scheduled_at) }}</span>
+          </div>
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">CD 风险时间</span>
+            <span class="schedule-detail-value">{{ formatTime(detailSchedule.cd_conflict_at) }}</span>
+          </div>
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">CI 实际触发</span>
+            <span class="schedule-detail-value">{{ formatTime(detailSchedule.build_dispatched_at) }}</span>
+          </div>
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">CD 实际触发</span>
+            <span class="schedule-detail-value">{{ formatTime(detailSchedule.deploy_dispatched_at) }}</span>
+          </div>
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">全流程实际触发</span>
+            <span class="schedule-detail-value">{{ formatTime(detailSchedule.execute_dispatched_at) }}</span>
+          </div>
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">时区</span>
+            <span class="schedule-detail-value">{{ detailSchedule.timezone || '-' }}</span>
+          </div>
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">创建人</span>
+            <span class="schedule-detail-value">{{ detailSchedule.creator_name || '-' }}</span>
+          </div>
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">创建时间</span>
+            <span class="schedule-detail-value">{{ formatTime(detailSchedule.created_at) }}</span>
+          </div>
+          <div class="schedule-detail-row">
+            <span class="schedule-detail-label">更新时间</span>
+            <span class="schedule-detail-value">{{ formatTime(detailSchedule.updated_at) }}</span>
+          </div>
+          <div class="schedule-detail-divider" />
+          <div class="schedule-detail-row schedule-detail-row-block">
+            <span class="schedule-detail-label">最近错误</span>
+            <span
+              class="schedule-detail-value"
+              :class="{ 'schedule-detail-error': detailSchedule.last_error }"
+            >{{ detailSchedule.last_error || '无' }}</span>
+          </div>
+          <template v-if="detailSchedule.remark">
+            <div class="schedule-detail-divider" />
+            <div class="schedule-detail-row schedule-detail-row-block">
+              <span class="schedule-detail-label">备注</span>
+              <span class="schedule-detail-value">{{ detailSchedule.remark }}</span>
+            </div>
+          </template>
+        </div>
+      </template>
+    </a-drawer>
   </div>
 </template>
 
@@ -2393,5 +2516,62 @@ onBeforeUnmount(() => {
   .schedule-form-context {
     grid-template-columns: 1fr;
   }
+}
+
+.schedule-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.schedule-detail-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.7);
+}
+
+.schedule-detail-row-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.schedule-detail-row-block .schedule-detail-value {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.schedule-detail-label {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+  flex-shrink: 0;
+}
+
+.schedule-detail-value {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  word-break: break-word;
+  min-width: 0;
+}
+
+.schedule-detail-error {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.06);
+  border-radius: 10px;
+  padding: 10px 14px;
+  border: 1px solid rgba(239, 68, 68, 0.18);
+}
+
+.schedule-detail-divider {
+  height: 1px;
+  background: rgba(226, 232, 240, 0.7);
+  margin: 4px 0;
 }
 </style>

@@ -56,6 +56,7 @@ import type {
   ReleaseOrderDispatchAction,
   ReleaseOrder,
   ReleaseOrderBusinessStatus,
+  ReleaseOrderDeploySnapshot,
   ReleaseOrderExecution,
   ReleaseOrderConcurrentBatchProgress,
   ReleaseOrderConcurrentBatchQueueState,
@@ -108,6 +109,11 @@ type StageDiagnosisChatMessage = {
   error?: boolean;
   related_log_lines?: ReleaseOrderPipelineStageDiagnosisLogLine[];
   suggested_actions?: ReleaseOrderPipelineStageDiagnosisAction[];
+};
+
+type PipelineStageLogSection = {
+  isJenkins: boolean;
+  isArgoCD: boolean;
 };
 
 function createScopeLogState(): ScopeLogState {
@@ -238,12 +244,85 @@ const fastExecuteRequested = computed(() => {
   return value === "1" || value === "true" || value === "yes";
 });
 const fastExecuteTriggered = ref(false);
+type AgentHookRuntimeStatus =
+  | "none"
+  | "pending"
+  | "running"
+  | "success"
+  | "failed";
+
+function isHookStep(item: ReleaseOrderStep) {
+  return String(item.step_code || "")
+    .trim()
+    .toLowerCase()
+    .startsWith("hook:");
+}
+
+function isSkippedHookStep(item: ReleaseOrderStep) {
+  const messageText = String(item.message || "").trim();
+  return (
+    messageText.includes("未命中 Hook 执行环境") ||
+    messageText.includes("已按环境条件跳过")
+  );
+}
+
+function hookStepSearchText(item: ReleaseOrderStep) {
+  return [item.step_code, item.step_name, item.message]
+    .map((value) =>
+      String(value || "")
+        .trim()
+        .toLowerCase(),
+    )
+    .join(" ");
+}
+
+function isAgentHookStep(item: ReleaseOrderStep) {
+  return hookStepSearchText(item).includes("agent");
+}
+
+const agentHookRuntimeStatus = computed<AgentHookRuntimeStatus>(() => {
+  const agentHookSteps = steps.value.filter(
+    (item) =>
+      isHookStep(item) && !isSkippedHookStep(item) && isAgentHookStep(item),
+  );
+  if (agentHookSteps.length === 0) {
+    return "none";
+  }
+  if (agentHookSteps.some((item) => item.status === "failed")) {
+    return "failed";
+  }
+  if (agentHookSteps.some((item) => item.status === "running")) {
+    return "running";
+  }
+  if (agentHookSteps.some((item) => item.status === "pending")) {
+    return "pending";
+  }
+  return "success";
+});
+
+function resolveBusinessStatusWithAgentHook(
+  status: ReleaseOrderBusinessStatus,
+): ReleaseOrderBusinessStatus {
+  if (status !== "deploy_success") {
+    return status;
+  }
+  switch (agentHookRuntimeStatus.value) {
+    case "failed":
+      return "deploy_failed";
+    case "pending":
+    case "running":
+      return "deploying";
+    default:
+      return status;
+  }
+}
+
 const currentBusinessStatus = computed<ReleaseOrderBusinessStatus>(() => {
   if (!order.value) {
     return "pending_execution";
   }
   if (order.value.business_status) {
-    return order.value.business_status;
+    return resolveBusinessStatusWithAgentHook(order.value.business_status);
   }
   switch (order.value.status) {
     case "draft":
@@ -266,7 +345,7 @@ const currentBusinessStatus = computed<ReleaseOrderBusinessStatus>(() => {
       return "deploying";
     case "deploy_success":
     case "success":
-      return "deploy_success";
+      return resolveBusinessStatusWithAgentHook("deploy_success");
     case "deploy_failed":
     case "failed":
       return "deploy_failed";
@@ -454,6 +533,12 @@ const shouldAutoRefresh = computed(() => {
   if (!order.value) {
     return true;
   }
+  if (
+    agentHookRuntimeStatus.value === "running" ||
+    agentHookRuntimeStatus.value === "pending"
+  ) {
+    return true;
+  }
   return [
     "pending_execution",
     "pending_approval",
@@ -508,6 +593,33 @@ const visibleScopes = computed(() => {
   );
 });
 
+const deploySnapshots = computed<ReleaseOrderDeploySnapshot[]>(() =>
+  [...(order.value?.deploy_snapshots || [])].sort((a, b) =>
+    String(a.created_at || "").localeCompare(String(b.created_at || "")),
+  ),
+);
+
+const deploySnapshotSectionTitle = computed(() => {
+  if (order.value?.operation_type === "rollback") {
+    return "回滚目标快照";
+  }
+  if (order.value?.operation_type === "replay") {
+    return "重放目标快照";
+  }
+  return "部署目标快照";
+});
+
+const deploySnapshotSectionSummary = computed(() => {
+  const count = deploySnapshots.value.length;
+  if (count === 0) {
+    return "暂无目标快照";
+  }
+  if (order.value?.operation_type === "rollback") {
+    return `本次回滚覆盖 ${count} 个 ArgoCD target`;
+  }
+  return `本次发布覆盖 ${count} 个 ArgoCD target`;
+});
+
 const detailItems = computed(() => {
   if (!order.value) {
     return [];
@@ -532,6 +644,7 @@ const detailItems = computed(() => {
     { label: "创建者", value: order.value.triggered_by || "-" },
     { label: "Git 版本", value: order.value.git_ref || "-" },
     { label: "镜像版本", value: order.value.image_tag || "-" },
+    { label: "部署目标", value: deploySnapshots.value.length > 0 ? `${deploySnapshots.value.length} 个 target` : "-" },
     { label: "备注", value: order.value.remark || "-" },
     { label: "开始时间", value: formatTime(order.value.started_at) },
     { label: "结束时间", value: formatTime(order.value.finished_at) },
@@ -883,12 +996,7 @@ function hookExecutionLogText(item: ReleaseOrderStep) {
 
 const hookProgressItems = computed(() => {
   const allHookSteps = steps.value
-    .filter((item) =>
-      String(item.step_code || "")
-        .trim()
-        .toLowerCase()
-        .startsWith("hook:"),
-    )
+    .filter((item) => isHookStep(item))
     .sort(sortSteps);
   const businessHookSteps = allHookSteps.filter((item) => {
     const code = String(item.step_code || "")
@@ -898,17 +1006,8 @@ const hookProgressItems = computed(() => {
   });
   const items = businessHookSteps.length > 0 ? businessHookSteps : allHookSteps;
 
-  // 过滤掉因环境不匹配被跳过的 hook
   return items
-    .filter((item) => {
-      const message = String(item.message || "").trim();
-      const status = String(item.status || "").trim();
-      // 如果 message 包含"未命中 Hook 执行环境"或"已按环境条件跳过"，说明是环境跳过
-      if (message.includes("未命中 Hook 执行环境") || message.includes("已按环境条件跳过")) {
-        return false;
-      }
-      return true;
-    })
+    .filter((item) => !isSkippedHookStep(item))
     .map(
       (item, index) => ({
         ...item,
@@ -1203,6 +1302,10 @@ const stageSections = computed(() =>
   }),
 );
 
+function canOpenStageLog(section: PipelineStageLogSection) {
+  return section.isJenkins || section.isArgoCD;
+}
+
 const logSections = computed(() =>
   visibleScopes.value.map((scope) => {
     const execution = executionMapByScope.value[scope];
@@ -1245,6 +1348,60 @@ const { columns: paramColumns } = useResizableColumns(paramInitialColumns, {
   hitArea: 10,
 });
 
+const deploySnapshotInitialColumns: TableColumnsType<ReleaseOrderDeploySnapshot> = [
+  {
+    title: "ArgoCD Target",
+    dataIndex: "argocd_app_name",
+    key: "target",
+    width: 280,
+  },
+  {
+    title: "环境",
+    dataIndex: "env_code",
+    key: "env_code",
+    width: 120,
+  },
+  {
+    title: "镜像版本",
+    dataIndex: "image_version",
+    key: "image_version",
+    width: 180,
+  },
+  {
+    title: "GitOps 分支",
+    dataIndex: "branch",
+    key: "branch",
+    width: 180,
+  },
+  {
+    title: "源路径",
+    dataIndex: "source_path",
+    key: "source_path",
+    width: 260,
+    ellipsis: true,
+  },
+  {
+    title: "规则数",
+    dataIndex: "rules_count",
+    key: "rules_count",
+    width: 100,
+  },
+  {
+    title: "快照时间",
+    dataIndex: "created_at",
+    key: "created_at",
+    width: 190,
+  },
+];
+const { columns: deploySnapshotColumns } = useResizableColumns(
+  deploySnapshotInitialColumns,
+  {
+    minWidth: 90,
+    maxWidth: 620,
+    hitArea: 10,
+  },
+);
+
 function normalizeScope(scope: string): ReleasePipelineScope | null {
   const value = String(scope || "")
     .trim()
@@ -1271,6 +1428,22 @@ function formatTimeCompact(value: string | null) {
     return "";
   }
   return dayjs(value).format("MM-DD HH:mm:ss");
+}
+
+function deploySnapshotTargetTitle(record: ReleaseOrderDeploySnapshot) {
+  const parts = [
+    record.argocd_app_name || "-",
+    record.argocd_instance_id ? `实例 ${record.argocd_instance_id}` : "",
+  ].filter(Boolean);
+  return parts.join(" / ");
+}
+
+function deploySnapshotRepoText(record: ReleaseOrderDeploySnapshot) {
+  const repoURL = String(record.repo_url || "").trim();
+  if (!repoURL) {
+    return "-";
+  }
+  return repoURL.replace(/^https?:\/\//i, "");
 }
 
 function statusText(
@@ -3351,6 +3524,74 @@ onBeforeUnmount(() => {
               </a-descriptions>
             </section>
 
+            <section class="detail-inline-section">
+              <div class="detail-inline-section-header">
+                <div>
+                  <div class="detail-inline-section-title">
+                    {{ deploySnapshotSectionTitle }}
+                  </div>
+                  <div class="detail-inline-section-summary">
+                    {{ deploySnapshotSectionSummary }}
+                  </div>
+                </div>
+              </div>
+              <a-empty
+                v-if="deploySnapshots.length === 0"
+                description="暂无部署目标快照"
+              />
+              <a-table
+                v-else
+                class="detail-data-table detail-snapshot-table"
+                row-key="id"
+                :columns="deploySnapshotColumns"
+                :data-source="deploySnapshots"
+                :pagination="false"
+                :scroll="{ x: 1320 }"
+              >
+                <template #bodyCell="{ column, record }">
+                  <template v-if="column.key === 'target'">
+                    <div
+                      class="deploy-snapshot-target"
+                      :title="deploySnapshotTargetTitle(record)"
+                    >
+                      <strong>{{ record.argocd_app_name || "-" }}</strong>
+                      <span>{{ record.argocd_instance_id || "-" }}</span>
+                    </div>
+                  </template>
+                  <template v-else-if="column.key === 'env_code'">
+                    <a-tag class="status-chip status-chip-section">
+                      {{ record.env_code || "-" }}
+                    </a-tag>
+                  </template>
+                  <template v-else-if="column.key === 'image_version'">
+                    <span class="deploy-snapshot-version">
+                      {{ record.image_version || order?.image_tag || "-" }}
+                    </span>
+                  </template>
+                  <template v-else-if="column.key === 'branch'">
+                    <span class="deploy-snapshot-mono">
+                      {{ record.branch || "-" }}
+                    </span>
+                  </template>
+                  <template v-else-if="column.key === 'source_path'">
+                    <div
+                      class="deploy-snapshot-path"
+                      :title="`${deploySnapshotRepoText(record)} / ${record.source_path || '-'}`"
+                    >
+                      <span>{{ record.source_path || "-" }}</span>
+                      <em>{{ deploySnapshotRepoText(record) }}</em>
+                    </div>
+                  </template>
+                  <template v-else-if="column.key === 'rules_count'">
+                    {{ record.rules_count || 0 }}
+                  </template>
+                  <template v-else-if="column.key === 'created_at'">
+                    {{ formatTime(record.created_at) }}
+                  </template>
+                </template>
+              </a-table>
+            </section>
+
             <template v-if="canViewParamSnapshot">
               <section
                 v-for="group in paramGroups"
@@ -3501,17 +3742,17 @@ onBeforeUnmount(() => {
                       class="pipeline-stage-node"
                       :class="[
                         `pipeline-stage-node-${stage.status}`,
-                        { 'pipeline-stage-node-clickable': section.isJenkins },
+                        { 'pipeline-stage-node-clickable': canOpenStageLog(section) },
                       ]"
-                      :role="section.isJenkins ? 'button' : undefined"
-                      :tabindex="section.isJenkins ? 0 : undefined"
-                      :title="section.isJenkins ? '点击查看阶段日志' : undefined"
-                      @click="section.isJenkins && openStageLogDrawer(stage)"
+                      :role="canOpenStageLog(section) ? 'button' : undefined"
+                      :tabindex="canOpenStageLog(section) ? 0 : undefined"
+                      :title="canOpenStageLog(section) ? '点击查看阶段日志' : undefined"
+                      @click="canOpenStageLog(section) && openStageLogDrawer(stage)"
                       @keydown.enter.prevent="
-                        section.isJenkins && openStageLogDrawer(stage)
+                        canOpenStageLog(section) && openStageLogDrawer(stage)
                       "
                       @keydown.space.prevent="
-                        section.isJenkins && openStageLogDrawer(stage)
+                        canOpenStageLog(section) && openStageLogDrawer(stage)
                       "
                     >
                       <div class="pipeline-stage-order-col">
@@ -4816,6 +5057,42 @@ onBeforeUnmount(() => {
 .detail-snapshot-table :deep(.ant-table-tbody > tr:hover > td.ant-table-cell-fix-left),
 .detail-snapshot-table :deep(.ant-table-tbody > tr:hover > td.ant-table-cell-fix-right) {
   background: rgba(248, 250, 252, 0.86) !important;
+}
+
+.deploy-snapshot-target,
+.deploy-snapshot-path {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.deploy-snapshot-target strong,
+.deploy-snapshot-path span,
+.deploy-snapshot-version,
+.deploy-snapshot-mono {
+  min-width: 0;
+  overflow: hidden;
+  color: #0f172a;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deploy-snapshot-target span,
+.deploy-snapshot-path em {
+  min-width: 0;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 12px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deploy-snapshot-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
 }
 
 .value-progress-collapse-heading {
@@ -6291,6 +6568,13 @@ onBeforeUnmount(() => {
   color: #0f172a;
   font-size: 14px;
   font-weight: 800;
+}
+
+.detail-inline-section-summary {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .detail-inline-section-extra {

@@ -15,7 +15,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getApplicationByID, listApplications } from '../../api/application'
 import { getExecutorParamDefByID, listApplicationExecutorParamDefs } from '../../api/pipeline'
-import { createReleaseOrder, buildReleaseOrder, getReleaseOrderByID, getReleaseTemplateByID, listAllReleaseTemplates, listReleaseOrderParams, updateReleaseOrder } from '../../api/release'
+import { createReleaseOrder, buildReleaseOrder, getReleaseOrderByID, getReleaseTemplateByID, listAllReleaseTemplates, listReleaseOrderParams, updateReleaseOrder, syncTemplateExecutorParamDefs } from '../../api/release'
 import { getReleaseSettings } from '../../api/system'
 import { useAuthStore } from '../../stores/auth'
 import type { Application } from '../../types/application'
@@ -70,6 +70,7 @@ const loadingTemplateDetail = ref(false)
 const loadingEditOrder = ref(false)
 const submitting = ref(false)
 const submittingMode = ref<'standard' | 'fast' | 'build' | ''>('')
+const syncingTemplateParams = ref(false)
 const templateWarning = ref('')
 
 const allApplicationOptions = ref<SelectOption[]>([])
@@ -701,6 +702,23 @@ async function loadSelectedTemplateDetail() {
   } finally {
     loadingTemplateDetail.value = false
   }
+
+  syncingTemplateParams.value = true
+  try {
+    const result = await syncTemplateExecutorParamDefs(templateID)
+    const detail = result.data
+    message.success(
+      `管线参数同步完成：共 ${detail.total} 个参数，新增 ${detail.created} 个，更新 ${detail.updated} 个`,
+    )
+    await Promise.all([
+      loadScopeParamDefs('ci'),
+      loadScopeParamDefs('cd'),
+    ])
+  } catch (error) {
+    console.error('auto sync pipeline params failed:', error)
+  } finally {
+    syncingTemplateParams.value = false
+  }
 }
 
 async function handleApplicationChange(value: string | undefined) {
@@ -983,6 +1001,15 @@ function handleChoiceMultiChange(item: ExecutorParamDef, values: unknown) {
   paramValues[item.id] = list.join(getChoiceMeta(item).delimiter || ',')
 }
 
+function handleChoiceSelectAll(item: ExecutorParamDef) {
+  const all = getParamSelectOptions(item).map((option) => option.value)
+  paramValues[item.id] = all.join(getChoiceMeta(item).delimiter || ',')
+}
+
+function handleChoiceDeselectAll(item: ExecutorParamDef) {
+  paramValues[item.id] = ''
+}
+
 function resolveInvalidChoiceValues(scope: ReleasePipelineScope, item: ExecutorParamDef): string[] {
   if (shouldSkipChoiceValidation(scope, item)) {
     return []
@@ -1179,19 +1206,6 @@ onMounted(async () => {
         </a-button>
         <a-button
           v-if="!isEditMode"
-          class="application-toolbar-action-btn release-fast-toolbar-btn"
-          :class="{ 'release-fast-toolbar-btn-disabled': !canFastSubmitRelease }"
-          :loading="fastSubmitting"
-          :aria-disabled="!canFastSubmitRelease"
-          @click="handleFastSubmit"
-        >
-          <template #icon>
-            <ThunderboltFilled />
-          </template>
-          极速发布
-        </a-button>
-        <a-button
-          v-if="!isEditMode"
           class="application-toolbar-action-btn release-build-toolbar-btn"
           :class="{ 'release-build-toolbar-btn-disabled': !canBuildOnlySubmitRelease }"
           :loading="buildOnlySubmitting"
@@ -1266,6 +1280,14 @@ onMounted(async () => {
             </a-form-item>
           </a-col>
         </a-row>
+
+        <a-alert
+          v-if="syncingTemplateParams"
+          class="template-sync-alert"
+          type="info"
+          show-icon
+          message="正在从 Jenkins 同步当前模板绑定的管线参数…"
+        />
 
         <a-row :gutter="12" class="form-row-compact">
           <a-col :span="24">
@@ -1432,16 +1454,30 @@ onMounted(async () => {
                       </template>
                       <a-select
                         v-if="useChoiceSelect(item.scope, param) && isMultipleChoice(item.scope, param)"
-                        mode="tags"
+                        mode="multiple"
                         class="param-value-control"
                         :value="getChoiceMultiValues(param)"
                         :options="getParamSelectOptions(param)"
                         :show-arrow="true"
                         show-search
-                        placeholder="必填，可手动输入或下拉选择"
+                        option-filter-prop="label"
+                        placeholder="请输入关键词筛选后勾选"
                         allow-clear
+                        :max-tag-count="'responsive'"
+                        :dropdown-style="{ minWidth: '280px' }"
                         @change="handleChoiceMultiChange(param, $event)"
-                      />
+                      >
+                        <template #dropdownRender="{ menuNode: menu }">
+                          <div class="multi-choice-dropdown">
+                            <div class="multi-choice-dropdown-actions">
+                              <a-button size="small" type="link" @click.stop="handleChoiceSelectAll(param)">全选</a-button>
+                              <a-button size="small" type="link" @click.stop="handleChoiceDeselectAll(param)">取消全选</a-button>
+                            </div>
+                            <a-divider style="margin: 4px 0" />
+                            <component :is="menu" />
+                          </div>
+                        </template>
+                      </a-select>
                       <a-select
                         v-else-if="useChoiceSelect(item.scope, param)"
                         mode="combobox"
@@ -1450,7 +1486,8 @@ onMounted(async () => {
                         :options="getParamSelectOptions(param)"
                         :show-arrow="true"
                         show-search
-                        placeholder="必填，可手动输入或下拉选择"
+                        option-filter-prop="label"
+                        placeholder="请输入关键词筛选或手动输入"
                         allow-clear
                         @change="handleChoiceSingleChange(param, $event)"
                       />
@@ -1528,6 +1565,21 @@ onMounted(async () => {
                   <li>只有模板映射到发布基础字段时，才会展示对应填写项</li>
                 </ul>
               </section>
+
+              <a-button
+                v-if="!isEditMode"
+                type="primary"
+                block
+                class="create-side-fast-btn"
+                :loading="fastSubmitting"
+                :disabled="!canFastSubmitRelease"
+                @click="handleFastSubmit"
+              >
+                <template #icon>
+                  <ThunderboltFilled />
+                </template>
+                极速发布
+              </a-button>
         </aside>
       </div>
     </a-form>
@@ -1592,25 +1644,6 @@ onMounted(async () => {
 :deep(.application-toolbar-action-btn.ant-btn.ant-btn-disabled) {
   opacity: 0.58;
   color: rgba(15, 23, 42, 0.62) !important;
-}
-
-:deep(.release-fast-toolbar-btn.ant-btn) {
-  border-color: rgba(251, 191, 36, 0.34) !important;
-  background: rgba(255, 247, 237, 0.62) !important;
-  color: #92400e !important;
-}
-
-:deep(.release-fast-toolbar-btn.ant-btn:hover),
-:deep(.release-fast-toolbar-btn.ant-btn:focus),
-:deep(.release-fast-toolbar-btn.ant-btn:focus-visible) {
-  border-color: rgba(245, 158, 11, 0.42) !important;
-  background: rgba(255, 251, 235, 0.76) !important;
-  color: #78350f !important;
-}
-
-:deep(.release-fast-toolbar-btn-disabled.ant-btn) {
-  opacity: 0.54;
-  cursor: not-allowed;
 }
 
 :deep(.release-build-toolbar-btn.ant-btn) {
@@ -1707,6 +1740,14 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
   min-width: 0;
+}
+
+.template-sync-alert {
+  margin-top: 8px;
+  margin-bottom: 16px;
+  border-radius: 14px;
+  border-color: #93c5fd;
+  background: linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%);
 }
 
 .advanced-param-heading-hint {
@@ -2004,6 +2045,13 @@ onMounted(async () => {
   width: 100%;
 }
 
+.multi-choice-dropdown-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 12px;
+}
+
 .application-form-plain :deep(.ant-empty) {
   padding: 12px 0;
 }
@@ -2144,6 +2192,20 @@ onMounted(async () => {
   color: #16a34a;
   font-size: 12px;
   font-weight: 800;
+}
+
+.create-side-fast-btn {
+  margin-top: 12px;
+  height: 46px;
+  border-radius: 16px;
+  font-weight: 700;
+  font-size: 15px;
+  box-shadow: 0 10px 22px rgba(139, 92, 246, 0.28);
+}
+
+.create-side-fast-btn:hover,
+.create-side-fast-btn:focus {
+  box-shadow: 0 14px 28px rgba(139, 92, 246, 0.38);
 }
 
 @media (max-width: 1200px) {

@@ -74,6 +74,69 @@ func TestReleaseRepositoryInitSchemaCreatesStrategySnapshotColumns(t *testing.T)
 	}
 }
 
+func TestCreateDeploySnapshotAllowsMultipleInstancesForSameOrder(t *testing.T) {
+	t.Parallel()
+
+	repo := newTestReleaseRepository(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	order := newTestReleaseOrder("ro-multi-snapshot", "RO-MULTI-SNAPSHOT", "app-1", "prod", domain.OrderStatusSuccess, now)
+	if err := repo.Create(ctx, order, nil, nil, nil); err != nil {
+		t.Fatalf("Create order failed: %v", err)
+	}
+
+	for _, snapshot := range []domain.DeploySnapshot{
+		{
+			ID:               "snapshot-shanghai",
+			ReleaseOrderID:   order.ID,
+			Provider:         "argocd",
+			GitOpsType:       domain.GitOpsTypeHelm,
+			ArgoCDInstanceID: "argocd-shanghai",
+			ArgoCDAppName:    "demo-prod-shanghai",
+			RepoURL:          "https://example.com/repo.git",
+			Branch:           "demo-prod",
+			SourcePath:       "apps/demo/helm",
+			EnvCode:          "prod",
+			SnapshotPayload:  `{"image_version":"101"}`,
+			CreatedAt:        now,
+		},
+		{
+			ID:               "snapshot-east",
+			ReleaseOrderID:   order.ID,
+			Provider:         "argocd",
+			GitOpsType:       domain.GitOpsTypeHelm,
+			ArgoCDInstanceID: "argocd-east",
+			ArgoCDAppName:    "demo-prod-east",
+			RepoURL:          "https://example.com/repo.git",
+			Branch:           "demo-prod",
+			SourcePath:       "apps/demo/helm",
+			EnvCode:          "prod",
+			SnapshotPayload:  `{"image_version":"101"}`,
+			CreatedAt:        now,
+		},
+	} {
+		if err := repo.CreateDeploySnapshot(ctx, snapshot); err != nil {
+			t.Fatalf("CreateDeploySnapshot(%s) failed: %v", snapshot.ArgoCDInstanceID, err)
+		}
+	}
+
+	var count int
+	if err := repo.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM release_order_deploy_snapshot WHERE release_order_id = ?`, order.ID).Scan(&count); err != nil {
+		t.Fatalf("count snapshots failed: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("snapshot count = %d, want 2", count)
+	}
+
+	snapshots, err := repo.ListDeploySnapshotsByOrderID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("ListDeploySnapshotsByOrderID failed: %v", err)
+	}
+	if len(snapshots) != 2 {
+		t.Fatalf("ListDeploySnapshotsByOrderID returned %d snapshots, want 2", len(snapshots))
+	}
+}
+
 func TestReleaseRepositoryListArtifactMetadataSummariesFiltersByProjectApplicationAndOrder(t *testing.T) {
 	t.Parallel()
 

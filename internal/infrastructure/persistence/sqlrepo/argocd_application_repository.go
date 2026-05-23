@@ -58,7 +58,7 @@ func (r *ArgoCDApplicationRepository) InitSchema(ctx context.Context) error {
 	status VARCHAR(20) NOT NULL DEFAULT 'active',
 	created_at BIGINT NOT NULL,
 	updated_at BIGINT NOT NULL,
-	UNIQUE KEY uk_argocd_env_binding_env (env_code),
+	UNIQUE KEY uk_argocd_env_binding_env_instance (env_code, argocd_instance_id),
 	KEY idx_argocd_env_binding_instance (argocd_instance_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
 			`CREATE TABLE IF NOT EXISTS argocd_application (
@@ -117,12 +117,13 @@ func (r *ArgoCDApplicationRepository) InitSchema(ctx context.Context) error {
 			`CREATE INDEX IF NOT EXISTS idx_argocd_instance_status ON argocd_instance (status);`,
 			`CREATE TABLE IF NOT EXISTS argocd_env_binding (
 	id TEXT PRIMARY KEY,
-	env_code TEXT NOT NULL UNIQUE,
+	env_code TEXT NOT NULL,
 	argocd_instance_id TEXT NOT NULL,
 	priority INTEGER NOT NULL DEFAULT 1,
 	status TEXT NOT NULL DEFAULT 'active',
 	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
+	updated_at INTEGER NOT NULL,
+	UNIQUE(env_code, argocd_instance_id)
 );`,
 			`CREATE INDEX IF NOT EXISTS idx_argocd_env_binding_instance ON argocd_env_binding (argocd_instance_id);`,
 			`CREATE TABLE IF NOT EXISTS argocd_application (
@@ -222,6 +223,24 @@ func (r *ArgoCDApplicationRepository) migrateSchema(ctx context.Context) error {
 				return err
 			}
 		}
+		oldEnvUniqueExists, err := r.mysqlIndexExists(ctx, "argocd_env_binding", "uk_argocd_env_binding_env")
+		if err != nil {
+			return err
+		}
+		if oldEnvUniqueExists {
+			if _, err := r.db.ExecContext(ctx, `ALTER TABLE argocd_env_binding DROP INDEX uk_argocd_env_binding_env;`); err != nil {
+				return err
+			}
+		}
+		newEnvUniqueExists, err := r.mysqlIndexExists(ctx, "argocd_env_binding", "uk_argocd_env_binding_env_instance")
+		if err != nil {
+			return err
+		}
+		if !newEnvUniqueExists {
+			if _, err := r.db.ExecContext(ctx, `ALTER TABLE argocd_env_binding ADD UNIQUE KEY uk_argocd_env_binding_env_instance (env_code, argocd_instance_id);`); err != nil {
+				return err
+			}
+		}
 	case "sqlite":
 		columns, err := r.sqliteTableColumns(ctx, "argocd_instance")
 		if err != nil {
@@ -241,8 +260,97 @@ func (r *ArgoCDApplicationRepository) migrateSchema(ctx context.Context) error {
 				return err
 			}
 		}
+		if err := r.ensureSQLiteEnvBindingMultiInstance(ctx); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unsupported db driver: %s", r.dbDriver)
+	}
+	return nil
+}
+
+// ensureSQLiteEnvBindingMultiInstance upgrades argocd_env_binding from UNIQUE(env_code)
+// to UNIQUE(env_code, argocd_instance_id). SQLite cannot drop inline unique constraints,
+// so the table is rebuilt when the old autoindex is detected.
+func (r *ArgoCDApplicationRepository) ensureSQLiteEnvBindingMultiInstance(ctx context.Context) error {
+	rows, err := r.db.QueryContext(ctx, `PRAGMA index_list('argocd_env_binding');`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	needsRebuild := false
+	for rows.Next() {
+		var (
+			seq     int
+			name    string
+			unique  int
+			origin  string
+			partial int
+		)
+		if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
+			return err
+		}
+		if unique == 0 {
+			continue
+		}
+		infoRows, err := r.db.QueryContext(ctx, fmt.Sprintf("PRAGMA index_info(%q);", name))
+		if err != nil {
+			return err
+		}
+		columns := make([]string, 0, 2)
+		for infoRows.Next() {
+			var (
+				infoSeq int
+				cid     int
+				colName string
+			)
+			if err := infoRows.Scan(&infoSeq, &cid, &colName); err != nil {
+				_ = infoRows.Close()
+				return err
+			}
+			columns = append(columns, colName)
+		}
+		if err := infoRows.Close(); err != nil {
+			return err
+		}
+		if len(columns) == 1 && columns[0] == "env_code" {
+			needsRebuild = true
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if !needsRebuild {
+		return nil
+	}
+	return r.rebuildSQLiteEnvBindingTable(ctx)
+}
+
+func (r *ArgoCDApplicationRepository) rebuildSQLiteEnvBindingTable(ctx context.Context) error {
+	statements := []string{
+		`ALTER TABLE argocd_env_binding RENAME TO argocd_env_binding_legacy;`,
+		`CREATE TABLE argocd_env_binding (
+	id TEXT PRIMARY KEY,
+	env_code TEXT NOT NULL,
+	argocd_instance_id TEXT NOT NULL,
+	priority INTEGER NOT NULL DEFAULT 1,
+	status TEXT NOT NULL DEFAULT 'active',
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL,
+	UNIQUE(env_code, argocd_instance_id)
+);`,
+		`INSERT INTO argocd_env_binding (id, env_code, argocd_instance_id, priority, status, created_at, updated_at)
+SELECT id, env_code, argocd_instance_id, priority, status, created_at, updated_at
+FROM argocd_env_binding_legacy;`,
+		`DROP TABLE argocd_env_binding_legacy;`,
+		`CREATE INDEX IF NOT EXISTS idx_argocd_env_binding_instance ON argocd_env_binding (argocd_instance_id);`,
+	}
+	for _, stmt := range statements {
+		if _, err := r.db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
 	}
 	return nil
 }

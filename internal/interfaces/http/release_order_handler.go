@@ -192,57 +192,75 @@ type BatchDeleteReleaseOrdersRequest struct {
 }
 
 type ReleaseOrderResponse struct {
-	ID                    string     `json:"id"`
-	OrderNo               string     `json:"order_no"`
-	ReleaseName           string     `json:"release_name"`
-	PreviousOrderNo       string     `json:"previous_order_no"`
-	OperationType         string     `json:"operation_type"`
-	SourceOrderID         string     `json:"source_order_id"`
-	SourceOrderNo         string     `json:"source_order_no"`
-	IsConcurrent          bool       `json:"is_concurrent"`
-	ConcurrentBatchNo     string     `json:"concurrent_batch_no"`
-	ConcurrentBatchName   string     `json:"concurrent_batch_name"`
-	ConcurrentBatchSeq    int        `json:"concurrent_batch_seq"`
-	CDProvider            string     `json:"cd_provider"`
-	HasCIExecution        bool       `json:"has_ci_execution"`
-	HasCDExecution        bool       `json:"has_cd_execution"`
-	ApplicationID         string     `json:"application_id"`
-	ApplicationName       string     `json:"application_name"`
-	TemplateID            string     `json:"template_id"`
-	TemplateName          string     `json:"template_name"`
-	BindingID             string     `json:"binding_id"`
-	PipelineID            string     `json:"pipeline_id"`
-	EnvCode               string     `json:"env_code"`
-	ProjectName           string     `json:"project_name"`
-	SonService            string     `json:"son_service"`
-	GitRef                string     `json:"git_ref"`
-	ImageTag              string     `json:"image_tag"`
-	TriggerType           string     `json:"trigger_type"`
-	Status                string     `json:"status"`
-	BusinessStatus        string     `json:"business_status"`
-	ApprovalRequired      bool       `json:"approval_required"`
-	ApprovalMode          string     `json:"approval_mode"`
-	ApprovalApproverIDs   []string   `json:"approval_approver_ids"`
-	ApprovalApproverNames []string   `json:"approval_approver_names"`
-	ApprovedAt            *time.Time `json:"approved_at"`
-	ApprovedBy            string     `json:"approved_by"`
-	RejectedAt            *time.Time `json:"rejected_at"`
-	RejectedBy            string     `json:"rejected_by"`
-	RejectedReason        string     `json:"rejected_reason"`
-	QueuePosition         int        `json:"queue_position"`
-	QueuedReason          string     `json:"queued_reason"`
-	Remark                string     `json:"remark"`
-	CreatorUserID         string     `json:"creator_user_id"`
-	TriggeredBy           string     `json:"triggered_by"`
-	LiveStateStatus       string     `json:"live_state_status"`
-	LiveStateIsCurrent    bool       `json:"live_state_is_current"`
-	LiveStateCanConfirm   bool       `json:"live_state_can_confirm"`
-	LiveStateConfirmedAt  *time.Time `json:"live_state_confirmed_at"`
-	LiveStateConfirmedBy  string     `json:"live_state_confirmed_by"`
-	StartedAt             *time.Time `json:"started_at"`
-	FinishedAt            *time.Time `json:"finished_at"`
-	CreatedAt             time.Time  `json:"created_at"`
-	UpdatedAt             time.Time  `json:"updated_at"`
+	ID                    string                               `json:"id"`
+	OrderNo               string                               `json:"order_no"`
+	ReleaseName           string                               `json:"release_name"`
+	PreviousOrderNo       string                               `json:"previous_order_no"`
+	OperationType         string                               `json:"operation_type"`
+	SourceOrderID         string                               `json:"source_order_id"`
+	SourceOrderNo         string                               `json:"source_order_no"`
+	IsConcurrent          bool                                 `json:"is_concurrent"`
+	ConcurrentBatchNo     string                               `json:"concurrent_batch_no"`
+	ConcurrentBatchName   string                               `json:"concurrent_batch_name"`
+	ConcurrentBatchSeq    int                                  `json:"concurrent_batch_seq"`
+	CDProvider            string                               `json:"cd_provider"`
+	HasCIExecution        bool                                 `json:"has_ci_execution"`
+	HasCDExecution        bool                                 `json:"has_cd_execution"`
+	ApplicationID         string                               `json:"application_id"`
+	ApplicationName       string                               `json:"application_name"`
+	TemplateID            string                               `json:"template_id"`
+	TemplateName          string                               `json:"template_name"`
+	BindingID             string                               `json:"binding_id"`
+	PipelineID            string                               `json:"pipeline_id"`
+	EnvCode               string                               `json:"env_code"`
+	ProjectName           string                               `json:"project_name"`
+	SonService            string                               `json:"son_service"`
+	GitRef                string                               `json:"git_ref"`
+	ImageTag              string                               `json:"image_tag"`
+	TriggerType           string                               `json:"trigger_type"`
+	Status                string                               `json:"status"`
+	BusinessStatus        string                               `json:"business_status"`
+	ApprovalRequired      bool                                 `json:"approval_required"`
+	ApprovalMode          string                               `json:"approval_mode"`
+	ApprovalApproverIDs   []string                             `json:"approval_approver_ids"`
+	ApprovalApproverNames []string                             `json:"approval_approver_names"`
+	ApprovedAt            *time.Time                           `json:"approved_at"`
+	ApprovedBy            string                               `json:"approved_by"`
+	RejectedAt            *time.Time                           `json:"rejected_at"`
+	RejectedBy            string                               `json:"rejected_by"`
+	RejectedReason        string                               `json:"rejected_reason"`
+	QueuePosition         int                                  `json:"queue_position"`
+	QueuedReason          string                               `json:"queued_reason"`
+	Remark                string                               `json:"remark"`
+	CreatorUserID         string                               `json:"creator_user_id"`
+	TriggeredBy           string                               `json:"triggered_by"`
+	LiveStateStatus       string                               `json:"live_state_status"`
+	LiveStateIsCurrent    bool                                 `json:"live_state_is_current"`
+	LiveStateCanConfirm   bool                                 `json:"live_state_can_confirm"`
+	LiveStateConfirmedAt  *time.Time                           `json:"live_state_confirmed_at"`
+	LiveStateConfirmedBy  string                               `json:"live_state_confirmed_by"`
+	DeploySnapshots       []ReleaseOrderDeploySnapshotResponse `json:"deploy_snapshots"`
+	StartedAt             *time.Time                           `json:"started_at"`
+	FinishedAt            *time.Time                           `json:"finished_at"`
+	CreatedAt             time.Time                            `json:"created_at"`
+	UpdatedAt             time.Time                            `json:"updated_at"`
+}
+
+type ReleaseOrderDeploySnapshotResponse struct {
+	ID               string    `json:"id"`
+	ReleaseOrderID   string    `json:"release_order_id"`
+	Provider         string    `json:"provider"`
+	GitOpsType       string    `json:"gitops_type"`
+	ArgoCDInstanceID string    `json:"argocd_instance_id"`
+	GitOpsInstanceID string    `json:"gitops_instance_id"`
+	ArgoCDAppName    string    `json:"argocd_app_name"`
+	RepoURL          string    `json:"repo_url"`
+	Branch           string    `json:"branch"`
+	SourcePath       string    `json:"source_path"`
+	EnvCode          string    `json:"env_code"`
+	ImageVersion     string    `json:"image_version"`
+	RulesCount       int       `json:"rules_count"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 type ReleaseOrderParamResponse struct {
@@ -1734,7 +1752,7 @@ func (h *ReleaseOrderHandler) GetByID(c *gin.Context) {
 		return
 	}
 	item = h.enrichReleaseOrderResponseMeta(c.Request.Context(), item)
-	c.JSON(http.StatusOK, gin.H{"data": h.toReleaseOrderResponse(c.Request.Context(), item)})
+	c.JSON(http.StatusOK, gin.H{"data": h.toReleaseOrderDetailResponse(c.Request.Context(), item)})
 }
 
 // GetPrecheck 获取Precheck详情。
@@ -2943,6 +2961,62 @@ func (h *ReleaseOrderHandler) toReleaseOrderResponse(ctx context.Context, item d
 	resp := toReleaseOrderResponse(item, state)
 	resp.LiveStateCanConfirm = h.canConfirmLiveForOrder(ctx, item.ID, state)
 	return resp
+}
+
+func (h *ReleaseOrderHandler) toReleaseOrderDetailResponse(ctx context.Context, item domain.ReleaseOrder) ReleaseOrderResponse {
+	resp := h.toReleaseOrderResponse(ctx, item)
+	resp.DeploySnapshots = h.listDeploySnapshotResponses(ctx, item.ID)
+	return resp
+}
+
+func (h *ReleaseOrderHandler) listDeploySnapshotResponses(ctx context.Context, releaseOrderID string) []ReleaseOrderDeploySnapshotResponse {
+	if h == nil || h.manager == nil || strings.TrimSpace(releaseOrderID) == "" {
+		return nil
+	}
+	snapshots, err := h.manager.ListDeploySnapshotsByOrderID(ctx, releaseOrderID)
+	if err != nil || len(snapshots) == 0 {
+		return nil
+	}
+	result := make([]ReleaseOrderDeploySnapshotResponse, 0, len(snapshots))
+	for _, item := range snapshots {
+		result = append(result, toReleaseOrderDeploySnapshotResponse(item))
+	}
+	return result
+}
+
+func toReleaseOrderDeploySnapshotResponse(item domain.DeploySnapshot) ReleaseOrderDeploySnapshotResponse {
+	imageVersion, rulesCount := summarizeDeploySnapshotPayload(item.SnapshotPayload)
+	return ReleaseOrderDeploySnapshotResponse{
+		ID:               item.ID,
+		ReleaseOrderID:   item.ReleaseOrderID,
+		Provider:         item.Provider,
+		GitOpsType:       string(item.GitOpsType),
+		ArgoCDInstanceID: item.ArgoCDInstanceID,
+		GitOpsInstanceID: item.GitOpsInstanceID,
+		ArgoCDAppName:    item.ArgoCDAppName,
+		RepoURL:          item.RepoURL,
+		Branch:           item.Branch,
+		SourcePath:       item.SourcePath,
+		EnvCode:          item.EnvCode,
+		ImageVersion:     imageVersion,
+		RulesCount:       rulesCount,
+		CreatedAt:        item.CreatedAt,
+	}
+}
+
+func summarizeDeploySnapshotPayload(payload string) (string, int) {
+	var parsed struct {
+		ImageVersion string `json:"image_version"`
+		Rules        []struct {
+			FilePath   string `json:"file_path"`
+			TargetPath string `json:"target_path"`
+			Value      string `json:"value"`
+		} `json:"rules"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(payload)), &parsed); err != nil {
+		return "", 0
+	}
+	return strings.TrimSpace(parsed.ImageVersion), len(parsed.Rules)
 }
 
 // canConfirmLiveForOrder 封装当前模块的业务处理逻辑。

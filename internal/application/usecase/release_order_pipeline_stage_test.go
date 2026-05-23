@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	pipelinedomain "gos/internal/domain/pipeline"
 	domain "gos/internal/domain/release"
 )
 
@@ -98,6 +99,76 @@ func TestGetPipelineStageLogPassesStageNameToNamedJenkinsExecutor(t *testing.T) 
 	}
 	if stageLog.Content != "scoped stage log" {
 		t.Fatalf("stage log content = %q, want scoped stage log", stageLog.Content)
+	}
+}
+
+func TestGetPipelineStageLogReturnsArgoCDStepLog(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	manager.now = func() time.Time { return now }
+
+	order := testReleaseOrder("ro-argocd-stage-log", "RO-ARGOCD-STAGE-LOG", domain.OrderStatusFailed, now)
+	execution := testReleaseExecution(order.ID, "exec-cd", domain.PipelineScopeCD, domain.ExecutionStatusFailed, now)
+	execution.Provider = string(pipelinedomain.ProviderArgoCD)
+	execution.BindingName = "ArgoCD"
+	execution.PipelineID = ""
+
+	startedAt := now.Add(-time.Minute)
+	finishedAt := now
+	step := testReleaseStep(
+		order.ID,
+		"step-gitops-update",
+		domain.StepScopeCD,
+		scopeStepCode(domain.PipelineScopeCD, "gitops_update"),
+		domain.StepStatusFailed,
+		1,
+		now,
+	)
+	step.ExecutionID = execution.ID
+	step.StepName = "CD 更新 Helm Values"
+	step.Message = "Helm values 写回失败: mkdir /gitops: read-only file system"
+	step.StartedAt = &startedAt
+	step.FinishedAt = &finishedAt
+
+	if err := repo.Create(ctx, order, []domain.ReleaseOrderExecution{execution}, nil, []domain.ReleaseOrderStep{step}); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	stage := domain.ReleaseOrderPipelineStage{
+		ID:             "rps-argocd-gitops-update",
+		ReleaseOrderID: order.ID,
+		ExecutionID:    execution.ID,
+		PipelineScope:  string(domain.PipelineScopeCD),
+		ExecutorType:   string(pipelinedomain.ProviderArgoCD),
+		StageKey:       "gitops_update",
+		StageName:      "CD 更新 Helm Values",
+		Status:         domain.PipelineStageStatusFailed,
+		RawStatus:      step.Message,
+		SortNo:         1,
+		StartedAt:      &startedAt,
+		FinishedAt:     &finishedAt,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	if err := repo.ReplacePipelineStages(ctx, order.ID, []domain.ReleaseOrderPipelineStage{stage}); err != nil {
+		t.Fatalf("ReplacePipelineStages failed: %v", err)
+	}
+
+	_, stageLog, err := manager.GetPipelineStageLog(ctx, order.ID, stage.ID)
+	if err != nil {
+		t.Fatalf("GetPipelineStageLog failed: %v", err)
+	}
+	if !strings.Contains(stageLog.Content, "Helm values 写回失败: mkdir /gitops: read-only file system") {
+		t.Fatalf("stage log content = %q, want ArgoCD step failure message", stageLog.Content)
+	}
+	if stageLog.ExecutorType != string(pipelinedomain.ProviderArgoCD) {
+		t.Fatalf("stage log executor = %q, want argocd", stageLog.ExecutorType)
+	}
+	if stageLog.HasMore {
+		t.Fatalf("stage log HasMore = true, want false for ArgoCD step snapshot log")
 	}
 }
 

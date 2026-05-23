@@ -256,21 +256,24 @@ func (uc *ArgoCDInstanceManager) UpdateEnvBindings(ctx context.Context, items []
 	logx.Info("argocd_instance", "env_bindings_update_start", logx.F("items_count", len(items)))
 	now := uc.now()
 	payload := make([]domain.EnvBinding, 0, len(items))
-	seenEnv := make(map[string]struct{}, len(items))
+	seenBinding := make(map[string]struct{}, len(items))
+	priorityByEnv := make(map[string]int)
 	for _, item := range items {
 		envCode := strings.TrimSpace(item.EnvCode)
 		instanceID := strings.TrimSpace(item.ArgoCDInstanceID)
 		if envCode == "" || instanceID == "" {
 			continue
 		}
-		if _, exists := seenEnv[envCode]; exists {
-			err := fmt.Errorf("%w: 环境绑定存在重复 env_code: %s", ErrInvalidInput, envCode)
+		bindingKey := envCode + "\x00" + instanceID
+		if _, exists := seenBinding[bindingKey]; exists {
+			err := fmt.Errorf("%w: 环境绑定存在重复实例: env_code=%s argocd_instance_id=%s", ErrInvalidInput, envCode, instanceID)
 			logx.Error("argocd_instance", "env_bindings_update_failed", err,
 				logx.F("env_code", envCode),
+				logx.F("argocd_instance_id", instanceID),
 			)
 			return nil, err
 		}
-		seenEnv[envCode] = struct{}{}
+		seenBinding[bindingKey] = struct{}{}
 		if _, err := uc.repo.GetInstanceByID(ctx, instanceID); err != nil {
 			logx.Error("argocd_instance", "env_bindings_update_failed", err,
 				logx.F("env_code", envCode),
@@ -290,11 +293,12 @@ func (uc *ArgoCDInstanceManager) UpdateEnvBindings(ctx context.Context, items []
 			)
 			return nil, ErrInvalidStatus
 		}
+		priorityByEnv[envCode]++
 		payload = append(payload, domain.EnvBinding{
 			ID:               generateID("aeb"),
 			EnvCode:          envCode,
 			ArgoCDInstanceID: instanceID,
-			Priority:         1,
+			Priority:         priorityByEnv[envCode],
 			Status:           status,
 			CreatedAt:        now,
 			UpdatedAt:        now,

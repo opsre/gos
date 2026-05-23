@@ -647,8 +647,8 @@ func (c *Client) getJobParamSet(ctx context.Context, fullName string) (pipelinep
 
 	endpoint := c.baseURL + buildJenkinsJobAPIPath(fullName) +
 		"?tree=name,fullName," +
-		"actions[parameterDefinitions[name,description,_class,choices,value,type,multiSelectDelimiter,defaultValue,defaultParameterValue[value]]]," +
-		"property[parameterDefinitions[name,description,_class,choices,value,type,multiSelectDelimiter,defaultValue,defaultParameterValue[value]]]"
+		"actions[parameterDefinitions[name,description,_class,choices,value,type,multiSelectDelimiter,defaultValue,defaultParameterValue[value],propertyFile,propertyKey,descriptionPropertyFile,descriptionPropertyKey,quoteValue,saveJSONParameterToFile,visibleItemCount]]," +
+		"property[parameterDefinitions[name,description,_class,choices,value,type,multiSelectDelimiter,defaultValue,defaultParameterValue[value],propertyFile,propertyKey,descriptionPropertyFile,descriptionPropertyKey,quoteValue,saveJSONParameterToFile,visibleItemCount]]"
 	body, err := c.get(ctx, endpoint)
 	if err != nil {
 		return pipelineparamdomain.JenkinsJobParamSet{}, err
@@ -693,7 +693,28 @@ func (c *Client) getJobParamSet(ctx context.Context, fullName string) (pipelinep
 	if fallback, err := c.loadExtendedChoiceFallback(ctx, fullName); err == nil {
 		for idx, item := range params {
 			choices, ok := fallback[item.Name]
-			if !ok || len(choices.values) == 0 {
+			if !ok {
+				pf, pk := readRawMetaPropertyFile(item.RawMeta)
+				if pf == "" {
+					continue
+				}
+				resolved, resolveErr := c.loadExtendedChoicePropertyFileValues(ctx, fullName, item.Name, pf, pk)
+				if resolveErr != nil || len(resolved) == 0 {
+					continue
+				}
+				params[idx].RawMeta = mergeChoiceValuesIntoRawMeta(item.RawMeta, extendedChoiceFallback{
+					values: resolved,
+				})
+				params[idx].SingleSelect = inferPipelineSingleSelectFromRawMeta(params[idx].RawMeta, params[idx].SingleSelect)
+				continue
+			}
+			if len(choices.values) == 0 && choices.propertyFile != "" {
+				resolved, resolveErr := c.loadExtendedChoicePropertyFileValues(ctx, fullName, item.Name, choices.propertyFile, choices.propertyKey)
+				if resolveErr == nil && len(resolved) > 0 {
+					choices.values = resolved
+				}
+			}
+			if len(choices.values) == 0 {
 				continue
 			}
 			params[idx].RawMeta = mergeChoiceValuesIntoRawMeta(item.RawMeta, choices)
@@ -945,6 +966,40 @@ func parsePipelineScriptParamCall(name string, args string, sortNo int) (pipelin
 		if defaultValue == "" {
 			defaultValue = strings.TrimSpace(parseGroovyStringLike(argsMap["defaultValue"]))
 		}
+		propertyFile := strings.TrimSpace(parseGroovyStringLike(argsMap["propertyFile"]))
+		propertyKey := strings.TrimSpace(parseGroovyStringLike(argsMap["propertyKey"]))
+		descriptionPropertyFile := strings.TrimSpace(parseGroovyStringLike(argsMap["descriptionPropertyFile"]))
+		descriptionPropertyKey := strings.TrimSpace(parseGroovyStringLike(argsMap["descriptionPropertyKey"]))
+		quoteValue := strings.TrimSpace(parseGroovyStringLike(argsMap["quoteValue"]))
+		saveJSONParameterToFile := strings.TrimSpace(parseGroovyStringLike(argsMap["saveJSONParameterToFile"]))
+		visibleItemCount := strings.TrimSpace(parseGroovyStringLike(argsMap["visibleItemCount"]))
+		meta := map[string]any{
+			"_class":               "com.cwctravel.hudson.plugins.extended_choice_parameter.ExtendedChoiceParameterDefinition",
+			"type":                 defaultGroovyString(typeName, "PT_SINGLE_SELECT"),
+			"choices":              choices,
+			"multiSelectDelimiter": delimiter,
+		}
+		if propertyFile != "" {
+			meta["propertyFile"] = propertyFile
+		}
+		if propertyKey != "" {
+			meta["propertyKey"] = propertyKey
+		}
+		if descriptionPropertyFile != "" {
+			meta["descriptionPropertyFile"] = descriptionPropertyFile
+		}
+		if descriptionPropertyKey != "" {
+			meta["descriptionPropertyKey"] = descriptionPropertyKey
+		}
+		if quoteValue != "" {
+			meta["quoteValue"] = quoteValue
+		}
+		if saveJSONParameterToFile != "" {
+			meta["saveJSONParameterToFile"] = saveJSONParameterToFile
+		}
+		if visibleItemCount != "" {
+			meta["visibleItemCount"] = visibleItemCount
+		}
 		return buildScriptParamSnapshot(
 			paramName,
 			description,
@@ -952,12 +1007,7 @@ func parsePipelineScriptParamCall(name string, args string, sortNo int) (pipelin
 			pipelineparamdomain.ParamTypeChoice,
 			!looksLikeGroovyMultiSelect(typeName),
 			sortNo,
-			map[string]any{
-				"_class":               "com.cwctravel.hudson.plugins.extended_choice_parameter.ExtendedChoiceParameterDefinition",
-				"type":                 defaultGroovyString(typeName, "PT_SINGLE_SELECT"),
-				"choices":              choices,
-				"multiSelectDelimiter": delimiter,
-			},
+			meta,
 		), true
 	case "text":
 		return buildScriptParamSnapshot(
@@ -1626,6 +1676,8 @@ type extendedChoiceFallback struct {
 	delimiter    string
 	typeName     string
 	defaultValue string
+	propertyFile string
+	propertyKey  string
 }
 
 // loadGitParameterChoicesIntoParams 封装当前模块的业务处理逻辑。
@@ -1659,6 +1711,19 @@ func (c *Client) loadGitParameterChoicesIntoParams(
 		params[idx].SingleSelect = true
 	}
 	return nil
+}
+
+func parseExtendedChoiceFillValueItems(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var wrapper struct {
+		Values json.RawMessage `json:"values"`
+	}
+	if err := json.Unmarshal(raw, &wrapper); err == nil && len(wrapper.Values) > 0 {
+		return parseGitParameterChoiceValues(wrapper.Values)
+	}
+	return parseGitParameterChoiceValues(raw)
 }
 
 // isGitParameterRawMeta 封装当前模块的业务处理逻辑。
@@ -1766,6 +1831,8 @@ func (c *Client) loadExtendedChoiceFallback(ctx context.Context, fullName string
 			Value                string `xml:"value"`
 			MultiSelectDelimiter string `xml:"multiSelectDelimiter"`
 			DefaultValue         string `xml:"defaultValue"`
+			PropertyFile         string `xml:"propertyFile"`
+			PropertyKey          string `xml:"propertyKey"`
 		} `xml:"properties>hudson.model.ParametersDefinitionProperty>parameterDefinitions>com.cwctravel.hudson.plugins.extended__choice__parameter.ExtendedChoiceParameterDefinition"`
 	}
 	if err := xml.Unmarshal(body, &config); err != nil {
@@ -1787,9 +1854,56 @@ func (c *Client) loadExtendedChoiceFallback(ctx context.Context, fullName string
 			delimiter:    delimiter,
 			typeName:     strings.TrimSpace(item.Type),
 			defaultValue: strings.TrimSpace(item.DefaultValue),
+			propertyFile: strings.TrimSpace(item.PropertyFile),
+			propertyKey:  strings.TrimSpace(item.PropertyKey),
 		}
 	}
 	return result, nil
+}
+
+func (c *Client) loadExtendedChoicePropertyFileValues(
+	ctx context.Context,
+	fullName string,
+	paramName string,
+	propertyFile string,
+	propertyKey string,
+) ([]string, error) {
+	endpoint := c.baseURL + buildJenkinsJobPath(fullName) +
+		"/descriptorByName/com.cwctravel.hudson.plugins.extended_choice_parameter.ExtendedChoiceParameterDefinition/fillValueItems"
+
+	form := url.Values{}
+	form.Set("param", strings.TrimSpace(paramName))
+	if propertyFile != "" {
+		form.Set("propertyFile", propertyFile)
+	}
+	if propertyKey != "" {
+		form.Set("propertyKey", propertyKey)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	if c.username != "" && c.apiToken != "" {
+		req.SetBasicAuth(c.username, c.apiToken)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, buildJenkinsHTTPError(resp.StatusCode, body)
+	}
+
+	return parseExtendedChoiceFillValueItems(body), nil
 }
 
 // normalizeXMLVersion 标准化输入值，保证后续逻辑使用统一格式。
@@ -1818,6 +1932,18 @@ func splitChoiceValueByDelimiter(value string, delimiter string) []string {
 		return normalizeChoiceValues(strings.Split(text, delimiter))
 	}
 	return normalizeChoiceValues(splitChoiceText(text))
+}
+
+func readRawMetaPropertyFile(rawMeta string) (propertyFile string, propertyKey string) {
+	trimmed := strings.TrimSpace(rawMeta)
+	if trimmed == "" {
+		return "", ""
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(trimmed), &fields); err != nil {
+		return "", ""
+	}
+	return strings.TrimSpace(readJSONString(fields["propertyFile"])), strings.TrimSpace(readJSONString(fields["propertyKey"]))
 }
 
 // mergeChoiceValuesIntoRawMeta 封装当前模块的业务处理逻辑。

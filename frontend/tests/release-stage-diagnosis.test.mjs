@@ -31,6 +31,20 @@ test('Jenkins stage view renders AI diagnosis action and drawer', () => {
   assert.match(viewSource, /建议动作/, 'diagnosis drawer should render suggested actions section')
 })
 
+test('ArgoCD stage nodes can open the stage log drawer', () => {
+  assert.match(viewSource, /function canOpenStageLog/, 'release detail should centralize stage log clickability')
+  assert.match(
+    viewSource,
+    /canOpenStageLog\(section\)[\s\S]*openStageLogDrawer\(stage\)/,
+    'stage nodes should use the shared log clickability guard before opening logs',
+  )
+  assert.match(
+    viewSource,
+    /section\.isJenkins \|\| section\.isArgoCD/,
+    'ArgoCD stages should be treated as log-viewable like Jenkins stages',
+  )
+})
+
 test('stage diagnosis drawer uses an AI assistant conversation layout', () => {
   assert.match(viewSource, /stage-diagnosis-assistant/, 'diagnosis drawer should render an assistant shell')
   assert.match(viewSource, /stage-diagnosis-message--assistant/, 'diagnosis drawer should render assistant message bubbles')

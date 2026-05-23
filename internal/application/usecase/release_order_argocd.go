@@ -143,10 +143,12 @@ func (uc *ReleaseOrderManager) startArgoCDExecution(
 		return err
 	}
 	appKey := ""
+	appArtifactPath := ""
 	if uc.appRepo != nil {
 		appRecord, appErr := uc.appRepo.GetByID(ctx, strings.TrimSpace(order.ApplicationID))
 		if appErr == nil {
 			appKey = strings.TrimSpace(appRecord.Key)
+			appArtifactPath = strings.TrimSpace(appRecord.ArtifactDirectory)
 		}
 	}
 	environment := uc.resolveArgoCDEnvironment(order, orderParams)
@@ -197,7 +199,7 @@ func (uc *ReleaseOrderManager) startArgoCDExecution(
 		)
 		return err
 	}
-	commitFields := buildGitOpsCommitMessageFields(order, orderParams, appKey, environment, imageVersion, sourcePath)
+	commitFields := buildGitOpsCommitMessageFields(order, orderParams, appKey, environment, imageVersion, sourcePath, appArtifactPath)
 	commitMessage := gitopsService.BuildCommitMessage(commitFields)
 	logx.Info("argocd_cd", "resolved_runtime_context",
 		logx.F("order_id", order.ID),
@@ -454,116 +456,159 @@ func (uc *ReleaseOrderManager) startArgoCDRollbackExecution(
 		logx.F("source_order_id", order.SourceOrderID),
 		logx.F("source_order_no", order.SourceOrderNo),
 	)
-	snapshot, err := uc.repo.GetDeploySnapshotByOrderID(ctx, strings.TrimSpace(order.SourceOrderID))
+	snapshots, err := uc.repo.ListDeploySnapshotsByOrderID(ctx, strings.TrimSpace(order.SourceOrderID))
 	if err != nil {
 		_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusFailed, "加载历史部署快照失败: "+err.Error())
 		return err
 	}
-	if normalizeTemplateGitOpsType(snapshot.GitOpsType, true) != domain.GitOpsTypeHelm {
-		err = fmt.Errorf("%w: 当前来源单不支持标准回滚", ErrInvalidInput)
-		_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusFailed, err.Error())
+	if len(snapshots) == 0 {
+		err = domain.ErrDeploySnapshotNotFound
+		_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusFailed, "加载历史部署快照失败: "+err.Error())
 		return err
 	}
-	argocdInstance, err := uc.argocdRepo.GetInstanceByID(ctx, strings.TrimSpace(snapshot.ArgoCDInstanceID))
-	if err != nil {
-		_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusFailed, "加载 ArgoCD 实例失败: "+err.Error())
-		return err
+
+	type rollbackSyncTarget struct {
+		AppName   string
+		Branch    string
+		CommitSHA string
+		Client    ArgoCDApplicationClient
 	}
-	client := uc.argocdFactory.Build(argocdInstance)
-	if client == nil {
-		err = fmt.Errorf("%w: argocd client is not configured", ErrInvalidInput)
-		_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusFailed, err.Error())
-		return err
-	}
-	gitopsService, err := uc.resolveGitOpsService(ctx, argocdInstance)
-	if err != nil {
-		_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusFailed, "解析 GitOps 实例失败: "+err.Error())
-		return err
-	}
-	valuesRules, imageVersion, err := decodeHelmDeploySnapshot(snapshot)
-	if err != nil {
-		_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusFailed, "解析历史部署快照失败: "+err.Error())
-		return err
-	}
+	syncTargets := make([]rollbackSyncTarget, 0, len(snapshots))
+	commitSHAs := make([]string, 0, len(snapshots))
+	appNames := make([]string, 0, len(snapshots))
+	changedFilesCount := 0
+	changedTargetsCount := 0
+
 	appKey := ""
+	appArtifactPath := ""
 	if uc.appRepo != nil {
 		if appRecord, appErr := uc.appRepo.GetByID(ctx, strings.TrimSpace(order.ApplicationID)); appErr == nil {
 			appKey = strings.TrimSpace(appRecord.Key)
+			appArtifactPath = strings.TrimSpace(appRecord.ArtifactDirectory)
 		}
 	}
-	environment := firstNonEmpty(strings.TrimSpace(snapshot.EnvCode), uc.resolveArgoCDEnvironment(order, orderParams), strings.TrimSpace(order.EnvCode))
-	appName := strings.TrimSpace(snapshot.ArgoCDAppName)
-	if appName == "" {
-		err = fmt.Errorf("%w: deploy snapshot argocd app name is empty", ErrInvalidInput)
-		_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusFailed, err.Error())
-		return err
-	}
-	commitFields := buildGitOpsCommitMessageFields(order, orderParams, appKey, environment, firstNonEmpty(imageVersion, strings.TrimSpace(order.ImageTag)), snapshot.SourcePath)
-	commitMessage := gitopsService.BuildCommitMessage(commitFields)
-	gitopsBranch := uc.resolveGitOpsBranchByApplication(ctx, order.ApplicationID, environment, argocdInstance, strings.TrimSpace(snapshot.Branch))
+	for _, snapshot := range snapshots {
+		if normalizeTemplateGitOpsType(snapshot.GitOpsType, true) != domain.GitOpsTypeHelm {
+			err = fmt.Errorf("%w: 当前来源单不支持标准回滚", ErrInvalidInput)
+			_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusFailed, err.Error())
+			return err
+		}
+		argocdInstance, instanceErr := uc.argocdRepo.GetInstanceByID(ctx, strings.TrimSpace(snapshot.ArgoCDInstanceID))
+		if instanceErr != nil {
+			_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusFailed, "加载 ArgoCD 实例失败: "+instanceErr.Error())
+			return instanceErr
+		}
+		client := uc.argocdFactory.Build(argocdInstance)
+		if client == nil {
+			err = fmt.Errorf("%w: argocd client is not configured", ErrInvalidInput)
+			_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusFailed, err.Error())
+			return err
+		}
+		gitopsService, gitopsErr := uc.resolveGitOpsService(ctx, argocdInstance)
+		if gitopsErr != nil {
+			_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusFailed, "解析 GitOps 实例失败: "+gitopsErr.Error())
+			return gitopsErr
+		}
+		valuesRules, imageVersion, decodeErr := decodeHelmDeploySnapshot(snapshot)
+		if decodeErr != nil {
+			_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusFailed, "解析历史部署快照失败: "+decodeErr.Error())
+			return decodeErr
+		}
+		environment := firstNonEmpty(strings.TrimSpace(snapshot.EnvCode), uc.resolveArgoCDEnvironment(order, orderParams), strings.TrimSpace(order.EnvCode))
+		appName := strings.TrimSpace(snapshot.ArgoCDAppName)
+		if appName == "" {
+			err = fmt.Errorf("%w: deploy snapshot argocd app name is empty", ErrInvalidInput)
+			_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusFailed, err.Error())
+			return err
+		}
+		commitFields := buildGitOpsCommitMessageFields(order, orderParams, appKey, environment, firstNonEmpty(imageVersion, strings.TrimSpace(order.ImageTag)), snapshot.SourcePath, appArtifactPath)
+		commitMessage := gitopsService.BuildCommitMessage(commitFields)
+		gitopsBranch := uc.resolveGitOpsBranchByApplication(ctx, order.ApplicationID, environment, argocdInstance, strings.TrimSpace(snapshot.Branch))
 
-	_, changedFiles, commitSHA, changed, applyErr := gitopsService.ApplyValuesRules(
-		ctx,
-		strings.TrimSpace(snapshot.RepoURL),
-		gitopsBranch,
-		valuesRules,
-		commitMessage,
-	)
-	if applyErr != nil {
-		_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusFailed, "历史 Helm values 写回失败: "+applyErr.Error())
-		return fmt.Errorf("%w: apply rollback values rules failed: %v", ErrInvalidInput, applyErr)
+		_, changedFiles, commitSHA, changed, applyErr := gitopsService.ApplyValuesRules(
+			ctx,
+			strings.TrimSpace(snapshot.RepoURL),
+			gitopsBranch,
+			valuesRules,
+			commitMessage,
+		)
+		if applyErr != nil {
+			_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusFailed, fmt.Sprintf("历史 Helm values 写回失败: app %s: %v", appName, applyErr))
+			return fmt.Errorf("%w: apply rollback values rules failed: %v", ErrInvalidInput, applyErr)
+		}
+		changedFilesCount += len(changedFiles)
+		if changed {
+			changedTargetsCount++
+		}
+		if strings.TrimSpace(commitSHA) != "" {
+			commitSHAs = append(commitSHAs, strings.TrimSpace(commitSHA))
+		}
+		appNames = append(appNames, appName)
+		if snapshotErr := uc.saveHelmDeploySnapshot(
+			ctx,
+			order,
+			argocdInstance,
+			appName,
+			strings.TrimSpace(snapshot.RepoURL),
+			gitopsBranch,
+			strings.TrimSpace(snapshot.SourcePath),
+			environment,
+			firstNonEmpty(imageVersion, strings.TrimSpace(order.ImageTag)),
+			valuesRules,
+		); snapshotErr != nil {
+			_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusFailed, "保存回滚部署快照失败: "+snapshotErr.Error())
+			return fmt.Errorf("%w: save rollback deploy snapshot failed: %v", ErrInvalidInput, snapshotErr)
+		}
+		syncTargets = append(syncTargets, rollbackSyncTarget{
+			AppName:   appName,
+			Branch:    gitopsBranch,
+			CommitSHA: strings.TrimSpace(commitSHA),
+			Client:    client,
+		})
 	}
-	updateMessage := "历史 Helm values 已恢复"
-	if !changed {
-		updateMessage = "历史 Helm values 无变化"
+
+	updateMessage := fmt.Sprintf("历史 Helm values 已恢复，target %d 个", len(syncTargets))
+	if changedTargetsCount == 0 {
+		updateMessage = fmt.Sprintf("历史 Helm values 无变化，target %d 个", len(syncTargets))
 	}
-	if len(changedFiles) > 0 {
-		updateMessage += fmt.Sprintf("，变更文件 %d 个", len(changedFiles))
+	if changedFilesCount > 0 {
+		updateMessage += fmt.Sprintf("，变更文件 %d 个", changedFilesCount)
 	}
 	_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusSuccess, updateMessage)
-	if snapshotErr := uc.saveHelmDeploySnapshot(
-		ctx,
-		order,
-		argocdInstance,
-		appName,
-		strings.TrimSpace(snapshot.RepoURL),
-		gitopsBranch,
-		strings.TrimSpace(snapshot.SourcePath),
-		environment,
-		firstNonEmpty(imageVersion, strings.TrimSpace(order.ImageTag)),
-		valuesRules,
-	); snapshotErr != nil {
-		_ = uc.markStepFinished(ctx, order.ID, updateCode, domain.StepStatusFailed, "保存回滚部署快照失败: "+snapshotErr.Error())
-		return fmt.Errorf("%w: save rollback deploy snapshot failed: %v", ErrInvalidInput, snapshotErr)
-	}
 
+	externalRunID := strings.Join(uniqueNonEmptyStrings(commitSHAs), ",")
 	_ = uc.markStepRunning(ctx, order.ID, commitCode, "开始提交 Git 变更")
-	if strings.TrimSpace(commitSHA) != "" && changed {
-		_ = uc.markStepFinished(ctx, order.ID, commitCode, domain.StepStatusSuccess, "Git commit 成功，commit: "+strings.TrimSpace(commitSHA))
+	if externalRunID != "" && changedTargetsCount > 0 {
+		_ = uc.markStepFinished(ctx, order.ID, commitCode, domain.StepStatusSuccess, "Git commit 成功，commit: "+externalRunID)
 		_ = uc.markStepRunning(ctx, order.ID, pushCode, "开始推送 Git 变更")
-		_ = uc.markStepFinished(ctx, order.ID, pushCode, domain.StepStatusSuccess, "Git push 成功，commit: "+strings.TrimSpace(commitSHA))
+		_ = uc.markStepFinished(ctx, order.ID, pushCode, domain.StepStatusSuccess, "Git push 成功，commit: "+externalRunID)
 	} else {
 		_ = uc.markStepFinished(ctx, order.ID, commitCode, domain.StepStatusSuccess, "历史 Helm values 无变化，无需生成新的 commit")
 		_ = uc.markStepFinished(ctx, order.ID, pushCode, domain.StepStatusSuccess, "历史 Helm values 无变化，无需推送到远端仓库")
 	}
 
 	_ = uc.markStepRunning(ctx, order.ID, syncCode, "开始触发 ArgoCD Sync")
-	if err := client.SyncApplicationWithRevision(ctx, appName, gitopsBranch); err != nil {
-		_ = uc.markStepFinished(ctx, order.ID, syncCode, domain.StepStatusFailed, "触发 ArgoCD Sync 失败: "+err.Error())
-		return fmt.Errorf("%w: trigger argocd sync failed: %v", ErrInvalidInput, err)
+	for _, target := range syncTargets {
+		if err := target.Client.SyncApplicationWithRevision(ctx, target.AppName, target.Branch); err != nil {
+			_ = uc.markStepFinished(ctx, order.ID, syncCode, domain.StepStatusFailed, fmt.Sprintf("触发 ArgoCD Sync 失败: app %s: %v", target.AppName, err))
+			return fmt.Errorf("%w: trigger argocd sync failed: %v", ErrInvalidInput, err)
+		}
 	}
 	now := uc.now()
 	if _, err := uc.repo.UpdateExecutionByScope(ctx, order.ID, execution.PipelineScope, domain.ExecutionUpdateInput{
 		Status:        domain.ExecutionStatusRunning,
-		ExternalRunID: commitSHA,
+		ExternalRunID: externalRunID,
 		StartedAt:     startedAt,
 		UpdatedAt:     now,
 	}); err != nil {
 		return err
 	}
-	syncMessage := fmt.Sprintf("ArgoCD Sync 已触发，app: %s", appName)
-	if strings.TrimSpace(commitSHA) != "" {
-		syncMessage += "，commit: " + strings.TrimSpace(commitSHA)
+	syncMessage := fmt.Sprintf("ArgoCD Sync 已触发，target %d 个", len(syncTargets))
+	if appSummary := summarizeNames(appNames, 3); appSummary != "" {
+		syncMessage += "，app: " + appSummary
+	}
+	if externalRunID != "" {
+		syncMessage += "，commit: " + externalRunID
 	}
 	_ = uc.markStepFinished(ctx, order.ID, syncCode, domain.StepStatusSuccess, syncMessage)
 	_ = uc.markStepRunning(ctx, order.ID, healthCode, "ArgoCD Sync 已触发，等待健康检查回传")
@@ -572,7 +617,7 @@ func (uc *ReleaseOrderManager) startArgoCDRollbackExecution(
 		ID:          execution.BindingID,
 		Name:        firstNonEmpty(strings.TrimSpace(execution.BindingName), "ArgoCD"),
 		Provider:    pipelinedomain.ProviderArgoCD,
-		ExternalRef: appName,
+		ExternalRef: firstNonEmpty(appNames...),
 	}
 	if _, refreshErr := uc.refreshPipelineStages(ctx, order, execution, virtualBinding); refreshErr != nil {
 	}
@@ -745,6 +790,7 @@ func buildGitOpsCommitMessageFields(
 	environment string,
 	imageVersion string,
 	sourcePath string,
+	appArtifactPath string,
 ) map[string]string {
 	branch := firstNonEmpty(
 		findReleaseParamValue(params, domain.PipelineScopeCD, "branch", "git_ref"),
@@ -769,6 +815,9 @@ func buildGitOpsCommitMessageFields(
 		"git_ref":       branch,
 		"image_version": strings.TrimSpace(imageVersion),
 		"source_path":   strings.TrimSpace(sourcePath),
+	}
+	if value := strings.TrimSpace(appArtifactPath); value != "" {
+		fields[standardParamGOSArtifactPath] = value
 	}
 	if value := findReleaseParamValue(params, domain.PipelineScopeCI, standardParamGOSArtifactURL); value != "" {
 		fields[standardParamGOSArtifactURL] = value
@@ -1030,6 +1079,9 @@ func (uc *ReleaseOrderManager) resolveGitOpsService(
 			logx.F("gitops_instance_code", item.InstanceCode),
 		)
 		return service, nil
+	}
+	if uc.gitops != nil {
+		return uc.gitops, nil
 	}
 	return nil, fmt.Errorf("%w: argocd instance %s is missing a bound gitops instance", ErrInvalidInput, strings.TrimSpace(argocdInstance.InstanceCode))
 }

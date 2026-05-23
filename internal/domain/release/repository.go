@@ -22,6 +22,7 @@ type Repository interface {
 		steps []ReleaseOrderStep,
 	) error
 	CreateDeploySnapshot(ctx context.Context, snapshot DeploySnapshot) error
+	ListDeploySnapshotsByOrderID(ctx context.Context, releaseOrderID string) ([]DeploySnapshot, error)
 	GetDeploySnapshotByOrderID(ctx context.Context, releaseOrderID string) (DeploySnapshot, error)
 	UpsertAppReleaseState(ctx context.Context, state AppReleaseState) error
 	GetAppReleaseStateByOrderID(ctx context.Context, releaseOrderID string) (AppReleaseState, error)

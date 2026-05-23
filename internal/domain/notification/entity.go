@@ -52,6 +52,7 @@ type Source struct {
 	SourceType        SourceType
 	WebhookURL        string
 	VerificationParam string
+	Keywords          string
 	Enabled           bool
 	Remark            string
 	CreatedBy         string

@@ -2,6 +2,8 @@
 data/*.db
 tmp/
 docss/*
+/logs/
+/runtime/
 
 # Build artifacts
 /server

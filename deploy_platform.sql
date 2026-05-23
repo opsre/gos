@@ -172,6 +172,34 @@ CREATE TABLE IF NOT EXISTS `platform_param_dict` (
     KEY `idx_platform_param_status_updated_at` (`status`, `updated_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='平台参数字典表';
 
+SET @gos_platform_param_now_ns = CAST(UNIX_TIMESTAMP(CURRENT_TIMESTAMP(6)) * 1000000000 AS SIGNED);
+
+INSERT INTO `platform_param_dict` (
+    `id`, `param_key`, `name`, `description`, `param_type`, `required`, `gitops_locator`, `cd_self_fill`, `builtin`, `status`, `created_at`, `updated_at`
+) VALUES (
+    'ppd-gos-artifact-path',
+    'gos_artifact_path',
+    'GOS_ARTIFACT_PATH',
+    '应用基础信息中的制品路径；发布模板、GitOps 替换规则和 Hook 变量可直接引用，不从发布执行日志或 CI/CD 输出取值。',
+    'string',
+    0,
+    0,
+    0,
+    1,
+    1,
+    @gos_platform_param_now_ns,
+    @gos_platform_param_now_ns
+) ON DUPLICATE KEY UPDATE
+    `name` = VALUES(`name`),
+    `description` = VALUES(`description`),
+    `param_type` = VALUES(`param_type`),
+    `required` = VALUES(`required`),
+    `gitops_locator` = VALUES(`gitops_locator`),
+    `cd_self_fill` = VALUES(`cd_self_fill`),
+    `builtin` = VALUES(`builtin`),
+    `status` = VALUES(`status`),
+    `updated_at` = VALUES(`updated_at`);
+
 -- --------------------------------------------------------
 -- 9.1 制品中心 - artifact_repository_config (制品库配置表)
 -- --------------------------------------------------------
@@ -339,7 +367,7 @@ CREATE TABLE IF NOT EXISTS `release_order_deploy_snapshot` (
     `snapshot_payload_json` LONGTEXT NOT NULL COMMENT '部署快照JSON，包含完整Helm values',
     `created_at` BIGINT NOT NULL COMMENT '创建时间，Unix纳秒时间戳',
     PRIMARY KEY (`id`),
-    UNIQUE KEY `uk_release_order_snapshot_order` (`release_order_id`)
+    UNIQUE KEY `uk_release_order_snapshot_target` (`release_order_id`, `argocd_instance_id`, `argocd_app_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='发布单部署快照表(用于回滚)';
 
 -- --------------------------------------------------------
@@ -877,7 +905,7 @@ CREATE TABLE IF NOT EXISTS `argocd_env_binding` (
   `created_at` bigint NOT NULL,
   `updated_at` bigint NOT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_argocd_env_binding_env` (`env_code`),
+  UNIQUE KEY `uk_argocd_env_binding_env_instance` (`env_code`,`argocd_instance_id`),
   KEY `idx_argocd_env_binding_instance` (`argocd_instance_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

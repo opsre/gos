@@ -90,6 +90,7 @@ type upsertNotificationSourceRequest struct {
 	SourceType        string `json:"source_type"`
 	WebhookURL        string `json:"webhook_url"`
 	VerificationParam string `json:"verification_param"`
+	Keywords          string `json:"keywords"`
 	Enabled           bool   `json:"enabled"`
 	Remark            string `json:"remark"`
 }
@@ -235,6 +236,7 @@ func (h *NotificationHandler) CreateSource(c *gin.Context) {
 		SourceType:        req.SourceType,
 		WebhookURL:        req.WebhookURL,
 		VerificationParam: req.VerificationParam,
+		Keywords:          req.Keywords,
 		Enabled:           req.Enabled,
 		Remark:            req.Remark,
 		CreatedBy:         currentUserDisplay(c),
@@ -322,6 +324,7 @@ func (h *NotificationHandler) UpdateSource(c *gin.Context) {
 		SourceType:        req.SourceType,
 		WebhookURL:        req.WebhookURL,
 		VerificationParam: req.VerificationParam,
+		Keywords:          req.Keywords,
 		Enabled:           req.Enabled,
 		Remark:            req.Remark,
 		UpdatedBy:         currentUserDisplay(c),

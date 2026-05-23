@@ -127,10 +127,28 @@ export interface ReleaseOrder {
   live_state_can_confirm?: boolean;
   live_state_confirmed_at?: string | null;
   live_state_confirmed_by?: string;
+  deploy_snapshots?: ReleaseOrderDeploySnapshot[];
   started_at: string | null;
   finished_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ReleaseOrderDeploySnapshot {
+  id: string;
+  release_order_id: string;
+  provider: string;
+  gitops_type: string;
+  argocd_instance_id: string;
+  gitops_instance_id: string;
+  argocd_app_name: string;
+  repo_url: string;
+  branch: string;
+  source_path: string;
+  env_code: string;
+  image_version: string;
+  rules_count: number;
+  created_at: string;
 }
 
 export interface AppReleaseStateSummary {

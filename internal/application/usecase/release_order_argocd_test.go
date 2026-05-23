@@ -70,9 +70,34 @@ func TestBuildGitOpsCommitMessageFieldsUsesCIOnlyForGOSArtifactURL(t *testing.T)
 		"dev",
 		"1042",
 		"apps/demo",
+		"",
 	)
 	if got := fields["gos_artifact_url"]; got != "https://ci.example.com/app.jar" {
 		t.Fatalf("gos_artifact_url = %q, want CI value", got)
+	}
+}
+
+// TestBuildGitOpsCommitMessageFieldsUsesApplicationForGOSArtifactPath GitOps 变量中的制品路径来自 App 基础信息。
+func TestBuildGitOpsCommitMessageFieldsUsesApplicationForGOSArtifactPath(t *testing.T) {
+	t.Parallel()
+
+	fields := buildGitOpsCommitMessageFields(
+		releasedomain.ReleaseOrder{OrderNo: "RO-1"},
+		[]releasedomain.ReleaseOrderParam{
+			{
+				PipelineScope: releasedomain.PipelineScopeCD,
+				ParamKey:      "gos_artifact_path",
+				ParamValue:    "release/from-cd-param",
+			},
+		},
+		"app-key",
+		"dev",
+		"1042",
+		"apps/demo",
+		"release/pay-center",
+	)
+	if got := fields["gos_artifact_path"]; got != "release/pay-center" {
+		t.Fatalf("gos_artifact_path = %q, want app artifact directory", got)
 	}
 }
 

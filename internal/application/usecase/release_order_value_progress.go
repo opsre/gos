@@ -115,6 +115,7 @@ func (uc *ReleaseOrderManager) ListValueProgress(
 		order,
 		templateBindings,
 		items,
+		artifactValues,
 		paramsByScopeKey,
 		executionByScope,
 	)
@@ -271,6 +272,7 @@ func (uc *ReleaseOrderManager) buildBuiltinValueProgress(
 	order domain.ReleaseOrder,
 	bindings []domain.ReleaseTemplateBinding,
 	baseItems []ReleaseOrderValueProgressItem,
+	artifactValues map[string]string,
 	paramsByScopeKey map[string]indexedReleaseParam,
 	executionByScope map[domain.PipelineScope]domain.ReleaseOrderExecution,
 ) ([]ReleaseOrderValueProgressItem, error) {
@@ -315,6 +317,7 @@ func (uc *ReleaseOrderManager) buildBuiltinValueProgress(
 				appKey,
 				binding.PipelineScope,
 				dict,
+				artifactValues,
 				baseByScopeKey,
 				paramsByScopeKey,
 				executionByScope,
@@ -391,6 +394,7 @@ func buildBuiltinProgressItem(
 	appKey string,
 	scope domain.PipelineScope,
 	dict platformparamdomain.PlatformParamDict,
+	artifactValues map[string]string,
 	baseByScopeKey map[string]ReleaseOrderValueProgressItem,
 	paramsByScopeKey map[string]indexedReleaseParam,
 	executionByScope map[domain.PipelineScope]domain.ReleaseOrderExecution,
@@ -411,6 +415,27 @@ func buildBuiltinProgressItem(
 			Value:             strings.TrimSpace(appKey),
 			ValueSource:       "application_key",
 			Message:           "已从应用标识取值",
+			UpdatedAt:         timePointer(order.UpdatedAt),
+			SortNo:            normalizeBuiltinProgressSortNo(dict.ParamKey),
+		}
+		return progress, true
+	}
+	if strings.EqualFold(paramKey, standardParamGOSArtifactPath) {
+		value := strings.TrimSpace(artifactValues[standardParamGOSArtifactPath])
+		if value == "" {
+			return ReleaseOrderValueProgressItem{}, false
+		}
+		progress := ReleaseOrderValueProgressItem{
+			PipelineScope:     scope,
+			ParamKey:          paramKey,
+			ParamName:         firstNonEmpty(strings.TrimSpace(dict.Name), paramKey),
+			ExecutorParamName: "系统内置",
+			Required:          dict.Required,
+			ValueKind:         ReleaseOrderValueKindBuiltinField,
+			Status:            ReleaseOrderValueProgressResolved,
+			Value:             value,
+			ValueSource:       "application_artifact_directory",
+			Message:           "已从应用基础信息的制品路径取值",
 			UpdatedAt:         timePointer(order.UpdatedAt),
 			SortNo:            normalizeBuiltinProgressSortNo(dict.ParamKey),
 		}

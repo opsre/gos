@@ -26,7 +26,7 @@ func (t JenkinsSyncTask) Stop() {
 // StartJenkinsAutoSyncTask 同步外部或内部状态数据。
 func StartJenkinsAutoSyncTask(cfg JenkinsConfig, run func(context.Context) error) JenkinsSyncTask {
 	return startJenkinsTask(
-		cfg.Enabled && cfg.AutoSyncEnabled,
+		cfg.Enabled && cfg.AutoSyncEnabled && cfg.AutoSyncIntervalSec > 0,
 		time.Duration(cfg.AutoSyncIntervalSec)*time.Second,
 		300*time.Second,
 		"jenkins auto sync",

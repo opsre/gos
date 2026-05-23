@@ -167,3 +167,103 @@ func TestPlatformParamRepositoryInitSchemaSeedsBuiltinGOSArtifactURL(t *testing.
 		}
 	}
 }
+
+// TestPlatformParamRepositoryInitSchemaSeedsBuiltinGOSArtifactPath 同步 GOS 制品路径内置字段。
+func TestPlatformParamRepositoryInitSchemaSeedsBuiltinGOSArtifactPath(t *testing.T) {
+	t.Parallel()
+
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite failed: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
+
+	repo := NewPlatformParamRepository(db, "sqlite")
+	if err := repo.InitSchema(context.Background()); err != nil {
+		t.Fatalf("InitSchema failed: %v", err)
+	}
+
+	item, err := repo.GetByParamKey(context.Background(), "gos_artifact_path")
+	if err != nil {
+		t.Fatalf("GetByParamKey gos_artifact_path failed: %v", err)
+	}
+	if !item.Builtin {
+		t.Fatal("gos_artifact_path builtin = false, want true")
+	}
+	if item.Name != "GOS_ARTIFACT_PATH" {
+		t.Fatalf("gos_artifact_path name = %q, want GOS_ARTIFACT_PATH", item.Name)
+	}
+	if !strings.Contains(item.Description, "应用基础信息") {
+		t.Fatalf("gos_artifact_path description = %q, want application metadata source", item.Description)
+	}
+}
+
+// TestPlatformParamRepositoryProtectsBuiltinGOSArtifactPathFlag 防止历史自定义行把 GOS 制品路径显示成自定义字段。
+func TestPlatformParamRepositoryProtectsBuiltinGOSArtifactPathFlag(t *testing.T) {
+	t.Parallel()
+
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite failed: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
+
+	repo := NewPlatformParamRepository(db, "sqlite")
+	if err := repo.InitSchema(context.Background()); err != nil {
+		t.Fatalf("InitSchema failed: %v", err)
+	}
+	if _, err := db.ExecContext(context.Background(), `UPDATE platform_param_dict SET builtin = 0 WHERE param_key = 'gos_artifact_path';`); err != nil {
+		t.Fatalf("force custom gos_artifact_path failed: %v", err)
+	}
+
+	item, err := repo.GetByParamKey(context.Background(), "gos_artifact_path")
+	if err != nil {
+		t.Fatalf("GetByParamKey gos_artifact_path failed: %v", err)
+	}
+	if !item.Builtin {
+		t.Fatal("gos_artifact_path builtin = false after read, want protected builtin")
+	}
+
+	builtin := true
+	items, _, err := repo.List(context.Background(), domain.ListFilter{
+		Builtin:  &builtin,
+		Page:     1,
+		PageSize: 100,
+	})
+	if err != nil {
+		t.Fatalf("List builtin params failed: %v", err)
+	}
+	if !platformParamListContainsKey(items, "gos_artifact_path") {
+		t.Fatalf("builtin list missing gos_artifact_path: %#v", items)
+	}
+
+	custom := false
+	customItems, _, err := repo.List(context.Background(), domain.ListFilter{
+		Builtin:  &custom,
+		Page:     1,
+		PageSize: 100,
+	})
+	if err != nil {
+		t.Fatalf("List custom params failed: %v", err)
+	}
+	if platformParamListContainsKey(customItems, "gos_artifact_path") {
+		t.Fatalf("custom list contains protected gos_artifact_path: %#v", customItems)
+	}
+}
+
+func platformParamListContainsKey(items []domain.PlatformParamDict, key string) bool {
+	for _, item := range items {
+		if strings.EqualFold(strings.TrimSpace(item.ParamKey), key) {
+			return true
+		}
+	}
+	return false
+}

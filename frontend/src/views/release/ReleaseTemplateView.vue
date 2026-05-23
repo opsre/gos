@@ -149,6 +149,7 @@ const builtinTemplateSourceKeys = new Set([
   'git_ref',
   'image_version',
   'image_tag',
+  'gos_artifact_path',
 ])
 
 const loading = ref(false)

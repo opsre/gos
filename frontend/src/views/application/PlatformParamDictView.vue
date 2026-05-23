@@ -93,6 +93,7 @@ const statusFilterOptions = [
   { label: '全部状态', value: '' as const },
   ...statusOptions,
 ]
+const protectedBuiltinParamKeys = new Set(['gos_artifact_path'])
 
 const modalTitle = computed(() => (modalMode.value === 'create' ? '新增标准字段' : '编辑标准字段'))
 const platformParamFormMaskStyle = computed(() => ({
@@ -185,9 +186,16 @@ function boolText(value: boolean) {
   return value ? '是' : '否'
 }
 
-function abilityTags(item: Pick<PlatformParamDict, 'builtin' | 'required' | 'gitops_locator' | 'cd_self_fill'>): AbilityTag[] {
+function isBuiltinParam(item: Pick<PlatformParamDict, 'param_key' | 'builtin'> | null | undefined) {
+  if (!item) {
+    return false
+  }
+  return item.builtin || protectedBuiltinParamKeys.has(normalizeParamKey(item.param_key || ''))
+}
+
+function abilityTags(item: Pick<PlatformParamDict, 'param_key' | 'builtin' | 'required' | 'gitops_locator' | 'cd_self_fill'>): AbilityTag[] {
   const tags: AbilityTag[] = []
-  tags.push(item.builtin ? { key: 'builtin', label: '内置', kind: 'builtin' } : { key: 'custom', label: '自定义', kind: 'custom' })
+  tags.push(isBuiltinParam(item) ? { key: 'builtin', label: '内置', kind: 'builtin' } : { key: 'custom', label: '自定义', kind: 'custom' })
   if (item.required) {
     tags.push({ key: 'required', label: '必填', kind: 'required' })
   }
@@ -424,7 +432,7 @@ onBeforeUnmount(() => {
           <template v-if="column.key === 'param_key'">
             <span class="param-key-cell">
               <span>{{ record.param_key }}</span>
-              <a-tooltip v-if="record.builtin" title="系统内置字段">
+              <a-tooltip v-if="isBuiltinParam(record)" title="系统内置字段">
                 <SafetyCertificateOutlined class="builtin-icon" />
               </a-tooltip>
             </span>
@@ -456,7 +464,7 @@ onBeforeUnmount(() => {
           <template v-else-if="column.key === 'actions'">
             <a-space size="small">
               <a-button type="link" size="small" class="table-action-button" @click="openDetailDrawer(record)">查看</a-button>
-              <template v-if="!record.builtin">
+              <template v-if="!isBuiltinParam(record)">
                 <a-button type="link" size="small" class="table-action-button" @click="openEditModal(record)">编辑</a-button>
                 <a-popconfirm
                   title="确认删除当前标准字段吗？"
@@ -622,7 +630,7 @@ onBeforeUnmount(() => {
             <div class="detail-hero-fact detail-hero-fact--key">
               <div class="detail-hero-fact-label">
                 标准 Key
-                <a-tooltip v-if="detailData.builtin" title="系统内置字段">
+                <a-tooltip v-if="isBuiltinParam(detailData)" title="系统内置字段">
                   <SafetyCertificateOutlined class="builtin-icon" />
                 </a-tooltip>
               </div>

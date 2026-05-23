@@ -1010,7 +1010,10 @@ func executorParamNameOrKey(executorParamName string, paramKey string) string {
 	return strings.TrimSpace(paramKey)
 }
 
-const standardParamGOSArtifactURL = "gos_artifact_url"
+const (
+	standardParamGOSArtifactURL  = "gos_artifact_url"
+	standardParamGOSArtifactPath = "gos_artifact_path"
+)
 
 // isCIOnlyStandardParamKey 判断标准字段是否只能从 CI 执行单元取值。
 func isCIOnlyStandardParamKey(key string) bool {
@@ -1148,6 +1151,14 @@ func (uc *ReleaseOrderManager) resolveApplicationArtifactParamValues(
 	app appdomain.Application,
 ) (map[string]string, error) {
 	result := make(map[string]string)
+	put := func(key string, value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		result[key] = value
+	}
+	put(standardParamGOSArtifactPath, app.ArtifactDirectory)
 	if uc == nil || uc.artifactRepo == nil {
 		return result, nil
 	}
@@ -1161,13 +1172,6 @@ func (uc *ReleaseOrderManager) resolveApplicationArtifactParamValues(
 	}
 	if repo.Status != "" && repo.Status != artifactrepodomain.StatusEnabled {
 		return nil, fmt.Errorf("%w: artifact repository is disabled", ErrInvalidInput)
-	}
-	put := func(key string, value string) {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			return
-		}
-		result[key] = value
 	}
 	put("oss_endpoint", repo.Endpoint)
 	put("oss_bucket", repo.Bucket)
@@ -1268,6 +1272,8 @@ func resolveCreateStandardFieldValue(
 		return firstNonEmpty(pickResolved("app_key"), appKey)
 	case standardParamGOSArtifactURL:
 		return strings.TrimSpace(resolved[domain.PipelineScopeCI][standardParamGOSArtifactURL])
+	case standardParamGOSArtifactPath:
+		return strings.TrimSpace(artifactValues[standardParamGOSArtifactPath])
 	case "oss_endpoint", "oss_bucket", "oss_dir", "oss_acl", "oss_access_key_id", "oss_access_key_secret":
 		return firstNonEmpty(pickResolved(normalizedKey), strings.TrimSpace(artifactValues[normalizedKey]))
 	default:
@@ -1356,6 +1362,34 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func uniqueNonEmptyStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, item := range values {
+		value := strings.TrimSpace(item)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
+func summarizeNames(values []string, limit int) string {
+	items := uniqueNonEmptyStrings(values)
+	if len(items) == 0 {
+		return ""
+	}
+	if limit <= 0 || len(items) <= limit {
+		return strings.Join(items, ",")
+	}
+	return fmt.Sprintf("%s 等 %d 个", strings.Join(items[:limit], ","), len(items))
 }
 
 // buildRollbackRemark 组装业务执行所需的输入数据。
@@ -1479,9 +1513,11 @@ func (uc *ReleaseOrderManager) ensureRollbackDeploySnapshot(
 	}
 
 	appKey := ""
+	appArtifactPath := ""
 	if uc.appRepo != nil {
 		if appRecord, appErr := uc.appRepo.GetByID(ctx, strings.TrimSpace(sourceOrder.ApplicationID)); appErr == nil {
 			appKey = strings.TrimSpace(appRecord.Key)
+			appArtifactPath = strings.TrimSpace(appRecord.ArtifactDirectory)
 		}
 	}
 	environment := uc.resolveArgoCDEnvironment(sourceOrder, sourceParams)
@@ -1498,7 +1534,7 @@ func (uc *ReleaseOrderManager) ensureRollbackDeploySnapshot(
 	if imageVersion == "" {
 		return domain.DeploySnapshot{}, fmt.Errorf("%w: image_version is required when rebuilding deploy snapshot", ErrInvalidInput)
 	}
-	commitFields := buildGitOpsCommitMessageFields(sourceOrder, sourceParams, appKey, environment, imageVersion, sourcePath)
+	commitFields := buildGitOpsCommitMessageFields(sourceOrder, sourceParams, appKey, environment, imageVersion, sourcePath, appArtifactPath)
 	valuesRules, rulesErr := uc.buildArgoCDValuesRules(gitopsService, templateGitOpsRules, commitFields)
 	if rulesErr != nil {
 		return domain.DeploySnapshot{}, rulesErr
@@ -1981,6 +2017,18 @@ func (uc *ReleaseOrderManager) GetByID(ctx context.Context, id string) (domain.R
 		return domain.ReleaseOrder{}, err
 	}
 	return uc.reconcileOrderSnapshot(ctx, order)
+}
+
+// ListDeploySnapshotsByOrderID 查询并返回指定资源数据。
+func (uc *ReleaseOrderManager) ListDeploySnapshotsByOrderID(ctx context.Context, releaseOrderID string) ([]domain.DeploySnapshot, error) {
+	if uc == nil || uc.repo == nil {
+		return nil, fmt.Errorf("%w: release order manager is not configured", ErrInvalidInput)
+	}
+	releaseOrderID = strings.TrimSpace(releaseOrderID)
+	if releaseOrderID == "" {
+		return nil, ErrInvalidID
+	}
+	return uc.repo.ListDeploySnapshotsByOrderID(ctx, releaseOrderID)
 }
 
 // reconcileOrderSnapshots 封装当前模块的业务处理逻辑。
@@ -3153,6 +3201,9 @@ func (uc *ReleaseOrderManager) resolveTemplateExecutionParamValue(
 	if isCIOnlyStandardParamKey(paramKey) || isCIOnlyStandardParamKey(item.SourceParamKey) {
 		return findReleaseParamValue(orderParams, domain.PipelineScopeCI, firstNonEmpty(strings.TrimSpace(item.SourceParamKey), paramKey))
 	}
+	if strings.EqualFold(paramKey, standardParamGOSArtifactPath) || strings.EqualFold(item.SourceParamKey, standardParamGOSArtifactPath) {
+		return strings.TrimSpace(artifactValues[standardParamGOSArtifactPath])
+	}
 	if value := findReleaseParamValue(orderParams, scope, paramKey); value != "" {
 		return value
 	}
@@ -3220,6 +3271,8 @@ func (uc *ReleaseOrderManager) resolveStandardFieldValue(
 		return strings.TrimSpace(order.ApplicationName)
 	case standardParamGOSArtifactURL:
 		return findReleaseParamValue(orderParams, domain.PipelineScopeCI, standardParamGOSArtifactURL)
+	case standardParamGOSArtifactPath:
+		return strings.TrimSpace(artifactValues[standardParamGOSArtifactPath])
 	case "oss_endpoint", "oss_bucket", "oss_dir", "oss_acl", "oss_access_key_id", "oss_access_key_secret":
 		return firstNonEmpty(
 			findReleaseParamValue(orderParams, domain.PipelineScopeCD, normalizedKey),

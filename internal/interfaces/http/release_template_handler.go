@@ -17,6 +17,7 @@ import (
 type ReleaseTemplateHandler struct {
 	manager *usecase.ReleaseTemplateManager
 	authz   RequestAuthorizer
+	syncer  *usecase.SyncTemplatePipelineParams
 }
 
 // NewReleaseTemplateHandler 创建并返回对应组件实例。
@@ -30,6 +31,11 @@ func NewReleaseTemplateHandler(
 	}
 }
 
+// SetSyncer 设置模板管线参数同步器。
+func (h *ReleaseTemplateHandler) SetSyncer(syncer *usecase.SyncTemplatePipelineParams) {
+	h.syncer = syncer
+}
+
 // RegisterRoutes 封装当前模块的业务处理逻辑。
 func (h *ReleaseTemplateHandler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/release-templates", h.List)
@@ -37,6 +43,7 @@ func (h *ReleaseTemplateHandler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/release-templates/:id", h.GetByID)
 	router.PUT("/release-templates/:id", h.Update)
 	router.DELETE("/release-templates/:id", h.Delete)
+	router.POST("/release-templates/:id/sync-executor-param-defs", h.SyncExecutorParamDefs)
 }
 
 type CreateReleaseTemplateRequest struct {
@@ -442,6 +449,22 @@ func (h *ReleaseTemplateHandler) Delete(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func (h *ReleaseTemplateHandler) SyncExecutorParamDefs(c *gin.Context) {
+	if !ensurePermission(c, h.authz, "release.template.manage", "", "") {
+		return
+	}
+	if h.syncer == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "syncer is not configured"})
+		return
+	}
+	result, err := h.syncer.Execute(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
 // resolveListApplications 解析上下文数据，得到后续流程需要的结果。

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -45,6 +46,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("load config: %v", err)
 	}
+
+	listener, err := net.Listen("tcp", cfg.Server.Addr)
+	if err != nil {
+		log.Fatalf("listen on %s: %v", cfg.Server.Addr, err)
+	}
+
 	secure.SetSecretKey(cfg.Security.EncryptionKey)
 	if err := bootstrap.CheckJenkinsConnection(cfg); err != nil {
 		log.Fatalf("check jenkins: %v", err)
@@ -279,6 +286,8 @@ func main() {
 		releaseTemplateManager,
 		authSessionManager,
 	)
+	releaseTemplateHandler.SetSyncer(usecase.NewSyncTemplatePipelineParams(releaseRepo, pipelineRepo, executorParamRepo, jenkinsClient))
+
 	releaseTracker := usecase.NewTrackReleaseExecution(
 		releaseOrderManager,
 		jenkinsClient,
@@ -416,7 +425,7 @@ func main() {
 
 	serverErr := make(chan error, 1)
 	go func() {
-		serverErr <- server.ListenAndServe()
+		serverErr <- server.Serve(listener)
 	}()
 	log.Printf(
 		"server listening on %s (env=%s db=%s jenkins_enabled=%t)",

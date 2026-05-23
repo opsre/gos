@@ -629,6 +629,19 @@ export async function deleteReleaseTemplate(id: string): Promise<void> {
   await http.delete(`/release-templates/${id}`);
 }
 
+export async function syncTemplateExecutorParamDefs(
+  templateID: string,
+): Promise<{ data: { total: number; created: number; updated: number; inactivated: number; skipped: number } }> {
+  const response = await http.post<{ data: { total: number; created: number; updated: number; inactivated: number; skipped: number } }>(
+    `/release-templates/${encodeURIComponent(String(templateID || "").trim())}/sync-executor-param-defs`,
+    undefined,
+    {
+      timeout: 120_000,
+    },
+  );
+  return response.data;
+}
+
 export function buildReleaseOrderLogStreamURL(
   id: string,
   start = 0,

@@ -159,7 +159,7 @@ func releaseSchemaStatements(dbDriver string) ([]string, error) {
 	env_code VARCHAR(64) NOT NULL DEFAULT '',
 	snapshot_payload_json LONGTEXT NOT NULL,
 	created_at BIGINT NOT NULL,
-	UNIQUE KEY uk_release_order_snapshot_order (release_order_id)
+	UNIQUE KEY uk_release_order_snapshot_target (release_order_id, argocd_instance_id, argocd_app_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
 			`CREATE TABLE IF NOT EXISTS release_execution_lock (
 	id VARCHAR(64) PRIMARY KEY,
@@ -432,7 +432,7 @@ func releaseSchemaStatements(dbDriver string) ([]string, error) {
 			`CREATE INDEX IF NOT EXISTS idx_release_order_artifact_url ON release_order_artifact_metadata (release_order_id, artifact_url);`,
 			`CREATE TABLE IF NOT EXISTS release_order_deploy_snapshot (
 	id TEXT PRIMARY KEY,
-	release_order_id TEXT NOT NULL UNIQUE,
+	release_order_id TEXT NOT NULL,
 	provider TEXT NOT NULL DEFAULT '',
 	gitops_type TEXT NOT NULL DEFAULT '',
 	argocd_instance_id TEXT NOT NULL DEFAULT '',
@@ -443,7 +443,8 @@ func releaseSchemaStatements(dbDriver string) ([]string, error) {
 	source_path TEXT NOT NULL DEFAULT '',
 	env_code TEXT NOT NULL DEFAULT '',
 	snapshot_payload_json TEXT NOT NULL,
-	created_at INTEGER NOT NULL
+	created_at INTEGER NOT NULL,
+	UNIQUE(release_order_id, argocd_instance_id, argocd_app_name)
 );`,
 			`CREATE TABLE IF NOT EXISTS release_execution_lock (
 	id TEXT PRIMARY KEY,
@@ -863,10 +864,13 @@ WHERE (ro.creator_user_id IS NULL OR TRIM(ro.creator_user_id) = '')
 	env_code VARCHAR(64) NOT NULL DEFAULT '',
 	snapshot_payload_json LONGTEXT NOT NULL,
 	created_at BIGINT NOT NULL,
-	UNIQUE KEY uk_release_order_snapshot_order (release_order_id)
+	UNIQUE KEY uk_release_order_snapshot_target (release_order_id, argocd_instance_id, argocd_app_name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
 		)
 		if err != nil {
+			return err
+		}
+		if err := r.ensureMySQLDeploySnapshotTargetUnique(ctx); err != nil {
 			return err
 		}
 		_, err = r.db.ExecContext(
@@ -1168,7 +1172,7 @@ WHERE (creator_user_id IS NULL OR TRIM(creator_user_id) = '')
 			ctx,
 			`CREATE TABLE IF NOT EXISTS release_order_deploy_snapshot (
 	id TEXT PRIMARY KEY,
-	release_order_id TEXT NOT NULL UNIQUE,
+	release_order_id TEXT NOT NULL,
 	provider TEXT NOT NULL DEFAULT '',
 	gitops_type TEXT NOT NULL DEFAULT '',
 	argocd_instance_id TEXT NOT NULL DEFAULT '',
@@ -1179,10 +1183,14 @@ WHERE (creator_user_id IS NULL OR TRIM(creator_user_id) = '')
 	source_path TEXT NOT NULL DEFAULT '',
 	env_code TEXT NOT NULL DEFAULT '',
 	snapshot_payload_json TEXT NOT NULL,
-	created_at INTEGER NOT NULL
+	created_at INTEGER NOT NULL,
+	UNIQUE(release_order_id, argocd_instance_id, argocd_app_name)
 );`,
 		)
 		if err != nil {
+			return err
+		}
+		if err := r.ensureSQLiteDeploySnapshotTargetUnique(ctx); err != nil {
 			return err
 		}
 		_, err = r.db.ExecContext(
@@ -1307,6 +1315,127 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?;`
 		return false, err
 	}
 	return count > 0, nil
+}
+
+func (r *ReleaseRepository) mysqlIndexExists(ctx context.Context, table, index string) (bool, error) {
+	const q = `SELECT COUNT(1) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?;`
+	var count int
+	if err := r.db.QueryRowContext(ctx, q, table, index).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func (r *ReleaseRepository) ensureMySQLDeploySnapshotTargetUnique(ctx context.Context) error {
+	oldUniqueExists, err := r.mysqlIndexExists(ctx, "release_order_deploy_snapshot", "uk_release_order_snapshot_order")
+	if err != nil {
+		return err
+	}
+	if oldUniqueExists {
+		if _, err := r.db.ExecContext(ctx, `ALTER TABLE release_order_deploy_snapshot DROP INDEX uk_release_order_snapshot_order;`); err != nil {
+			return err
+		}
+	}
+	newUniqueExists, err := r.mysqlIndexExists(ctx, "release_order_deploy_snapshot", "uk_release_order_snapshot_target")
+	if err != nil {
+		return err
+	}
+	if !newUniqueExists {
+		_, err = r.db.ExecContext(ctx, `ALTER TABLE release_order_deploy_snapshot ADD UNIQUE KEY uk_release_order_snapshot_target (release_order_id, argocd_instance_id, argocd_app_name);`)
+	}
+	return err
+}
+
+func (r *ReleaseRepository) ensureSQLiteDeploySnapshotTargetUnique(ctx context.Context) error {
+	rows, err := r.db.QueryContext(ctx, `PRAGMA index_list('release_order_deploy_snapshot');`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	needsRebuild := false
+	for rows.Next() {
+		var (
+			seq     int
+			name    string
+			unique  int
+			origin  string
+			partial int
+		)
+		if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
+			return err
+		}
+		if unique == 0 {
+			continue
+		}
+		infoRows, err := r.db.QueryContext(ctx, fmt.Sprintf("PRAGMA index_info(%q);", name))
+		if err != nil {
+			return err
+		}
+		columns := make([]string, 0, 3)
+		for infoRows.Next() {
+			var (
+				infoSeq int
+				cid     int
+				colName string
+			)
+			if err := infoRows.Scan(&infoSeq, &cid, &colName); err != nil {
+				_ = infoRows.Close()
+				return err
+			}
+			columns = append(columns, colName)
+		}
+		if err := infoRows.Close(); err != nil {
+			return err
+		}
+		if len(columns) == 1 && columns[0] == "release_order_id" {
+			needsRebuild = true
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if !needsRebuild {
+		return nil
+	}
+	return r.rebuildSQLiteDeploySnapshotTable(ctx)
+}
+
+func (r *ReleaseRepository) rebuildSQLiteDeploySnapshotTable(ctx context.Context) error {
+	statements := []string{
+		`ALTER TABLE release_order_deploy_snapshot RENAME TO release_order_deploy_snapshot_legacy;`,
+		`CREATE TABLE release_order_deploy_snapshot (
+	id TEXT PRIMARY KEY,
+	release_order_id TEXT NOT NULL,
+	provider TEXT NOT NULL DEFAULT '',
+	gitops_type TEXT NOT NULL DEFAULT '',
+	argocd_instance_id TEXT NOT NULL DEFAULT '',
+	gitops_instance_id TEXT NOT NULL DEFAULT '',
+	argocd_app_name TEXT NOT NULL DEFAULT '',
+	repo_url TEXT NOT NULL DEFAULT '',
+	branch TEXT NOT NULL DEFAULT '',
+	source_path TEXT NOT NULL DEFAULT '',
+	env_code TEXT NOT NULL DEFAULT '',
+	snapshot_payload_json TEXT NOT NULL,
+	created_at INTEGER NOT NULL,
+	UNIQUE(release_order_id, argocd_instance_id, argocd_app_name)
+);`,
+		`INSERT INTO release_order_deploy_snapshot (
+	id, release_order_id, provider, gitops_type, argocd_instance_id, gitops_instance_id, argocd_app_name,
+	repo_url, branch, source_path, env_code, snapshot_payload_json, created_at
+)
+SELECT id, release_order_id, provider, gitops_type, argocd_instance_id, gitops_instance_id, argocd_app_name,
+	repo_url, branch, source_path, env_code, snapshot_payload_json, created_at
+FROM release_order_deploy_snapshot_legacy;`,
+		`DROP TABLE release_order_deploy_snapshot_legacy;`,
+	}
+	for _, stmt := range statements {
+		if _, err := r.db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // sqliteTableColumns 封装当前模块的业务处理逻辑。
@@ -2195,7 +2324,7 @@ INSERT INTO release_order_deploy_snapshot (
 	const updateQ = `
 UPDATE release_order_deploy_snapshot
 SET provider = ?, gitops_type = ?, argocd_instance_id = ?, gitops_instance_id = ?, argocd_app_name = ?, repo_url = ?, branch = ?, source_path = ?, env_code = ?, snapshot_payload_json = ?, created_at = ?
-WHERE release_order_id = ?;`
+WHERE release_order_id = ? AND argocd_instance_id = ? AND argocd_app_name = ?;`
 	_, err = r.db.ExecContext(
 		ctx,
 		updateQ,
@@ -2211,8 +2340,38 @@ WHERE release_order_id = ?;`
 		snapshot.SnapshotPayload,
 		snapshot.CreatedAt.UTC().UnixNano(),
 		snapshot.ReleaseOrderID,
+		snapshot.ArgoCDInstanceID,
+		snapshot.ArgoCDAppName,
 	)
 	return err
+}
+
+// ListDeploySnapshotsByOrderID 查询并返回指定资源数据。
+func (r *ReleaseRepository) ListDeploySnapshotsByOrderID(ctx context.Context, releaseOrderID string) ([]domain.DeploySnapshot, error) {
+	const q = `
+SELECT id, release_order_id, provider, gitops_type, argocd_instance_id, gitops_instance_id, argocd_app_name, repo_url, branch, source_path, env_code, snapshot_payload_json, created_at
+FROM release_order_deploy_snapshot
+WHERE release_order_id = ?
+ORDER BY created_at ASC, argocd_instance_id ASC, argocd_app_name ASC;`
+
+	rows, err := r.db.QueryContext(ctx, q, strings.TrimSpace(releaseOrderID))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]domain.DeploySnapshot, 0)
+	for rows.Next() {
+		item, scanErr := scanDeploySnapshot(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 // GetDeploySnapshotByOrderID 查询并返回指定资源数据。
@@ -2220,9 +2379,26 @@ func (r *ReleaseRepository) GetDeploySnapshotByOrderID(ctx context.Context, rele
 	const q = `
 SELECT id, release_order_id, provider, gitops_type, argocd_instance_id, gitops_instance_id, argocd_app_name, repo_url, branch, source_path, env_code, snapshot_payload_json, created_at
 FROM release_order_deploy_snapshot
-WHERE release_order_id = ?;`
+WHERE release_order_id = ?
+ORDER BY created_at DESC
+LIMIT 1;`
 
 	row := r.db.QueryRowContext(ctx, q, strings.TrimSpace(releaseOrderID))
+	item, err := scanDeploySnapshot(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.DeploySnapshot{}, domain.ErrDeploySnapshotNotFound
+		}
+		return domain.DeploySnapshot{}, err
+	}
+	return item, nil
+}
+
+type deploySnapshotScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanDeploySnapshot(row deploySnapshotScanner) (domain.DeploySnapshot, error) {
 	var (
 		item        domain.DeploySnapshot
 		gitOpsType  string
@@ -2243,9 +2419,6 @@ WHERE release_order_id = ?;`
 		&item.SnapshotPayload,
 		&createdAtNs,
 	); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return domain.DeploySnapshot{}, domain.ErrDeploySnapshotNotFound
-		}
 		return domain.DeploySnapshot{}, err
 	}
 	item.GitOpsType = domain.GitOpsType(gitOpsType)

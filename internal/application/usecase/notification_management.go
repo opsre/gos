@@ -50,6 +50,7 @@ type NotificationSourceOutput struct {
 	SourceType           string    `json:"source_type"`
 	WebhookURL           string    `json:"webhook_url"`
 	HasVerificationParam bool      `json:"has_verification_param"`
+	Keywords             string    `json:"keywords"`
 	Enabled              bool      `json:"enabled"`
 	Remark               string    `json:"remark"`
 	CreatedBy            string    `json:"created_by"`
@@ -123,6 +124,7 @@ type CreateNotificationSourceInput struct {
 	SourceType        string `json:"source_type"`
 	WebhookURL        string `json:"webhook_url"`
 	VerificationParam string `json:"verification_param"`
+	Keywords          string `json:"keywords"`
 	Enabled           bool   `json:"enabled"`
 	Remark            string `json:"remark"`
 	CreatedBy         string `json:"created_by"`
@@ -133,6 +135,7 @@ type UpdateNotificationSourceInput struct {
 	SourceType        string `json:"source_type"`
 	WebhookURL        string `json:"webhook_url"`
 	VerificationParam string `json:"verification_param"`
+	Keywords          string `json:"keywords"`
 	Enabled           bool   `json:"enabled"`
 	Remark            string `json:"remark"`
 	UpdatedBy         string `json:"updated_by"`
@@ -237,7 +240,7 @@ func (uc *NotificationManager) CreateSource(ctx context.Context, input CreateNot
 	if uc == nil || uc.repo == nil {
 		return NotificationSourceOutput{}, fmt.Errorf("%w: notification manager is not configured", ErrInvalidInput)
 	}
-	item, err := uc.normalizeSourceInput(input.Name, input.SourceType, input.WebhookURL, input.VerificationParam, input.Enabled, input.Remark)
+	item, err := uc.normalizeSourceInput(input.Name, input.SourceType, input.WebhookURL, input.VerificationParam, input.Keywords, input.Enabled, input.Remark)
 	if err != nil {
 		return NotificationSourceOutput{}, err
 	}
@@ -272,7 +275,11 @@ func (uc *NotificationManager) UpdateSource(ctx context.Context, id string, inpu
 	if (requestedType == notificationdomain.SourceTypeDingTalk || requestedType == notificationdomain.SourceTypeFeishu) && strings.TrimSpace(verificationParam) == "" {
 		verificationParam = current.VerificationParam
 	}
-	item, err := uc.normalizeSourceInput(input.Name, input.SourceType, input.WebhookURL, verificationParam, input.Enabled, input.Remark)
+	keywords := input.Keywords
+	if requestedType == notificationdomain.SourceTypeDingTalk && strings.TrimSpace(keywords) == "" {
+		keywords = current.Keywords
+	}
+	item, err := uc.normalizeSourceInput(input.Name, input.SourceType, input.WebhookURL, verificationParam, keywords, input.Enabled, input.Remark)
 	if err != nil {
 		return NotificationSourceOutput{}, err
 	}
@@ -281,6 +288,9 @@ func (uc *NotificationManager) UpdateSource(ctx context.Context, id string, inpu
 	item.CreatedAt = current.CreatedAt
 	if item.SourceType != notificationdomain.SourceTypeDingTalk && item.SourceType != notificationdomain.SourceTypeFeishu {
 		item.VerificationParam = ""
+	}
+	if item.SourceType != notificationdomain.SourceTypeDingTalk {
+		item.Keywords = ""
 	}
 	item.UpdatedBy = strings.TrimSpace(input.UpdatedBy)
 	item.UpdatedAt = uc.now()
@@ -520,7 +530,7 @@ func (uc *NotificationManager) DeleteHook(ctx context.Context, id string) error 
 }
 
 // normalizeSourceInput 标准化输入值，保证后续逻辑使用统一格式。
-func (uc *NotificationManager) normalizeSourceInput(name, sourceType, webhookURL, verificationParam string, enabled bool, remark string) (notificationdomain.Source, error) {
+func (uc *NotificationManager) normalizeSourceInput(name, sourceType, webhookURL, verificationParam, keywords string, enabled bool, remark string) (notificationdomain.Source, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return notificationdomain.Source{}, fmt.Errorf("%w: source name is required", ErrInvalidInput)
@@ -534,20 +544,27 @@ func (uc *NotificationManager) normalizeSourceInput(name, sourceType, webhookURL
 		return notificationdomain.Source{}, fmt.Errorf("%w: webhook_url is required", ErrInvalidInput)
 	}
 	verificationParam = strings.TrimSpace(verificationParam)
+	keywords = strings.TrimSpace(keywords)
 	switch typeValue {
 	case notificationdomain.SourceTypeDingTalk:
+		if keywords == "" {
+			keywords = strings.TrimSpace(keywords)
+		}
 	case notificationdomain.SourceTypeFeishu:
 		if verificationParam == "" {
 			return notificationdomain.Source{}, fmt.Errorf("%w: 飞书放行关键字不能为空", ErrInvalidInput)
 		}
+		keywords = ""
 	default:
 		verificationParam = ""
+		keywords = ""
 	}
 	return notificationdomain.Source{
 		Name:              name,
 		SourceType:        typeValue,
 		WebhookURL:        webhookURL,
 		VerificationParam: verificationParam,
+		Keywords:          keywords,
 		Enabled:           enabled,
 		Remark:            strings.TrimSpace(remark),
 	}, nil
@@ -560,6 +577,7 @@ func (uc *NotificationManager) normalizeSourceWebhookTestInput(ctx context.Conte
 	sourceType := input.SourceType
 	webhookURL := input.WebhookURL
 	verificationParam := input.VerificationParam
+	keywords := ""
 	if sourceID != "" {
 		if uc.repo == nil {
 			return notificationdomain.Source{}, fmt.Errorf("%w: notification repository is not configured", ErrInvalidInput)
@@ -581,8 +599,9 @@ func (uc *NotificationManager) normalizeSourceWebhookTestInput(ctx context.Conte
 		if (requestedType == notificationdomain.SourceTypeDingTalk || requestedType == notificationdomain.SourceTypeFeishu) && strings.TrimSpace(verificationParam) == "" {
 			verificationParam = current.VerificationParam
 		}
+		keywords = current.Keywords
 	}
-	return uc.normalizeSourceInput(name, sourceType, webhookURL, verificationParam, true, "")
+	return uc.normalizeSourceInput(name, sourceType, webhookURL, verificationParam, keywords, true, "")
 }
 
 // buildSourceWebhookTestContent 组装通知源测试消息内容。
@@ -830,6 +849,7 @@ func toNotificationSourceOutput(item notificationdomain.Source) NotificationSour
 		SourceType:           string(item.SourceType),
 		WebhookURL:           item.WebhookURL,
 		HasVerificationParam: strings.TrimSpace(item.VerificationParam) != "",
+		Keywords:             item.Keywords,
 		Enabled:              item.Enabled,
 		Remark:               item.Remark,
 		CreatedBy:            item.CreatedBy,

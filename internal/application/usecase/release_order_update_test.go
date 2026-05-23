@@ -489,6 +489,48 @@ func TestMaterializeCreateTemplateParamsReadsOSSSecretsFromApplicationArtifactRe
 	}
 }
 
+// TestMaterializeCreateTemplateParamsResolvesGOSArtifactPathFromApplication 应用制品路径内置字段应从 App 基础信息取值。
+func TestMaterializeCreateTemplateParamsResolvesGOSArtifactPathFromApplication(t *testing.T) {
+	t.Parallel()
+
+	manager := &ReleaseOrderManager{}
+	resolved, err := manager.materializeCreateTemplateParams(
+		context.Background(),
+		appdomain.Application{
+			Key:               "app-1",
+			ArtifactDirectory: "release/pay-center",
+		},
+		[]domain.ReleaseTemplateParam{
+			{
+				PipelineScope:     domain.PipelineScopeCI,
+				ParamKey:          "gos_artifact_path",
+				ParamName:         "GOS_ARTIFACT_PATH",
+				ExecutorParamName: "GOS_ARTIFACT_PATH",
+				ValueSource:       domain.TemplateParamValueSourceBuiltin,
+				SourceParamKey:    "gos_artifact_path",
+			},
+		},
+		nil,
+		"prod",
+		"release/v1",
+		"project-from-release",
+		"20260523.1",
+		"发布单名称",
+	)
+	if err != nil {
+		t.Fatalf("materializeCreateTemplateParams failed: %v", err)
+	}
+	if len(resolved) != 1 {
+		t.Fatalf("resolved params length = %d, want 1", len(resolved))
+	}
+	if got := resolved[0].ParamValue; got != "release/pay-center" {
+		t.Fatalf("gos_artifact_path = %q, want app artifact directory", got)
+	}
+	if got := resolved[0].ValueSource; got != domain.ValueSourceBuiltin {
+		t.Fatalf("gos_artifact_path value source = %q, want %q", got, domain.ValueSourceBuiltin)
+	}
+}
+
 // TestResolveStandardFieldValueUsesCIOnlyForGOSArtifactURL GOS 制品地址只能从 CI 单元取值。
 func TestResolveStandardFieldValueUsesCIOnlyForGOSArtifactURL(t *testing.T) {
 	t.Parallel()
@@ -508,6 +550,28 @@ func TestResolveStandardFieldValueUsesCIOnlyForGOSArtifactURL(t *testing.T) {
 	}, nil, "", nil, "gos_artifact_url")
 	if got != "https://ci.example.com/app.jar" {
 		t.Fatalf("gos_artifact_url = %q, want CI value", got)
+	}
+}
+
+// TestResolveStandardFieldValueUsesApplicationForGOSArtifactPath GOS 制品路径取 App 基础信息，不取发布参数。
+func TestResolveStandardFieldValueUsesApplicationForGOSArtifactPath(t *testing.T) {
+	t.Parallel()
+
+	manager := &ReleaseOrderManager{}
+	got := manager.resolveStandardFieldValue(domain.ReleaseOrder{}, []domain.ReleaseOrderParam{
+		{
+			PipelineScope: domain.PipelineScopeCD,
+			ParamKey:      "gos_artifact_path",
+			ParamValue:    "release/from-cd-param",
+		},
+		{
+			PipelineScope: domain.PipelineScopeCI,
+			ParamKey:      "gos_artifact_path",
+			ParamValue:    "release/from-ci-param",
+		},
+	}, nil, "", map[string]string{"gos_artifact_path": "release/pay-center"}, "gos_artifact_path")
+	if got != "release/pay-center" {
+		t.Fatalf("gos_artifact_path = %q, want app artifact directory", got)
 	}
 }
 
@@ -544,6 +608,37 @@ func TestResolveTemplateExecutionParamValueUsesCIOnlyForGOSArtifactURL(t *testin
 	)
 	if got != "https://ci.example.com/app.jar" {
 		t.Fatalf("CD gos_artifact_url = %q, want CI value", got)
+	}
+}
+
+// TestResolveTemplateExecutionParamValueUsesApplicationForGOSArtifactPath 执行参数引用制品路径时应从 App 基础信息取值。
+func TestResolveTemplateExecutionParamValueUsesApplicationForGOSArtifactPath(t *testing.T) {
+	t.Parallel()
+
+	manager := &ReleaseOrderManager{}
+	got := manager.resolveTemplateExecutionParamValue(
+		domain.ReleaseOrder{},
+		domain.PipelineScopeCD,
+		domain.ReleaseTemplateParam{
+			PipelineScope:     domain.PipelineScopeCD,
+			ParamKey:          "gos_artifact_path",
+			ExecutorParamName: "GOS_ARTIFACT_PATH",
+			ValueSource:       domain.TemplateParamValueSourceBuiltin,
+			SourceParamKey:    "gos_artifact_path",
+		},
+		[]domain.ReleaseOrderParam{
+			{
+				PipelineScope: domain.PipelineScopeCD,
+				ParamKey:      "gos_artifact_path",
+				ParamValue:    "release/from-cd-param",
+			},
+		},
+		nil,
+		"",
+		map[string]string{"gos_artifact_path": "release/pay-center"},
+	)
+	if got != "release/pay-center" {
+		t.Fatalf("CD gos_artifact_path = %q, want app artifact directory", got)
 	}
 }
 

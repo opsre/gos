@@ -93,9 +93,6 @@ func (uc *ReleaseOrderManager) GetPipelineStageLog(
 	if orderID == "" || stageID == "" {
 		return domain.ReleaseOrderPipelineStage{}, domain.ReleaseOrderPipelineStageLog{}, ErrInvalidID
 	}
-	if uc.jenkins == nil {
-		return domain.ReleaseOrderPipelineStage{}, domain.ReleaseOrderPipelineStageLog{}, fmt.Errorf("%w: jenkins executor is not configured", ErrInvalidInput)
-	}
 
 	stage, err := uc.repo.GetPipelineStageByID(ctx, orderID, stageID)
 	if err != nil {
@@ -109,8 +106,16 @@ func (uc *ReleaseOrderManager) GetPipelineStageLog(
 	if err != nil {
 		return domain.ReleaseOrderPipelineStage{}, domain.ReleaseOrderPipelineStageLog{}, err
 	}
-	if strings.ToLower(strings.TrimSpace(execution.Provider)) != string(pipelinedomain.ProviderJenkins) {
-		return domain.ReleaseOrderPipelineStage{}, domain.ReleaseOrderPipelineStageLog{}, fmt.Errorf("%w: only jenkins binding supports pipeline stages", ErrInvalidInput)
+	provider := strings.ToLower(strings.TrimSpace(execution.Provider))
+	if provider == string(pipelinedomain.ProviderArgoCD) {
+		stageLog, stageErr := uc.buildArgoCDPipelineStageLog(ctx, execution, stage)
+		return stage, stageLog, stageErr
+	}
+	if provider != string(pipelinedomain.ProviderJenkins) {
+		return domain.ReleaseOrderPipelineStage{}, domain.ReleaseOrderPipelineStageLog{}, fmt.Errorf("%w: only jenkins or argocd binding supports pipeline stage logs", ErrInvalidInput)
+	}
+	if uc.jenkins == nil {
+		return domain.ReleaseOrderPipelineStage{}, domain.ReleaseOrderPipelineStageLog{}, fmt.Errorf("%w: jenkins executor is not configured", ErrInvalidInput)
 	}
 	buildURL, message, err := uc.resolveBuildURLForPipelineStages(ctx, order, execution)
 	if err != nil {
@@ -147,6 +152,64 @@ func (uc *ReleaseOrderManager) GetPipelineStageLog(
 	}
 
 	return stage, logResult, nil
+}
+
+func (uc *ReleaseOrderManager) buildArgoCDPipelineStageLog(
+	ctx context.Context,
+	execution domain.ReleaseOrderExecution,
+	stage domain.ReleaseOrderPipelineStage,
+) (domain.ReleaseOrderPipelineStageLog, error) {
+	steps, err := uc.repo.ListSteps(ctx, stage.ReleaseOrderID)
+	if err != nil {
+		return domain.ReleaseOrderPipelineStageLog{}, err
+	}
+
+	var step *domain.ReleaseOrderStep
+	if strings.TrimSpace(stage.StageKey) != "" {
+		step = findStepByCode(steps, scopeStepCode(execution.PipelineScope, stage.StageKey))
+	}
+	rawStatus := strings.TrimSpace(stage.RawStatus)
+	if step != nil && rawStatus == "" {
+		rawStatus = strings.TrimSpace(step.Message)
+	}
+	return domain.ReleaseOrderPipelineStageLog{
+		ReleaseOrderID: stage.ReleaseOrderID,
+		StageID:        stage.ID,
+		PipelineScope:  stage.PipelineScope,
+		ExecutorType:   stage.ExecutorType,
+		StageName:      stage.StageName,
+		RawStatus:      rawStatus,
+		Content:        buildArgoCDPipelineStageLogContent(stage, step),
+		HasMore:        false,
+		FetchedAt:      uc.now(),
+	}, nil
+}
+
+func buildArgoCDPipelineStageLogContent(stage domain.ReleaseOrderPipelineStage, step *domain.ReleaseOrderStep) string {
+	lines := []string{
+		"阶段: " + firstNonEmpty(strings.TrimSpace(stage.StageName), strings.TrimSpace(stage.StageKey), "-"),
+		"执行器: ArgoCD",
+		"状态: " + firstNonEmpty(strings.TrimSpace(string(stage.Status)), "-"),
+	}
+	if strings.TrimSpace(stage.RawStatus) != "" {
+		lines = append(lines, "原始状态: "+strings.TrimSpace(stage.RawStatus))
+	}
+	if step == nil {
+		return strings.Join(lines, "\n")
+	}
+	if step.StartedAt != nil {
+		lines = append(lines, "开始时间: "+step.StartedAt.UTC().Format(time.RFC3339))
+	}
+	if step.FinishedAt != nil {
+		lines = append(lines, "结束时间: "+step.FinishedAt.UTC().Format(time.RFC3339))
+	}
+	if strings.TrimSpace(step.Message) != "" {
+		lines = append(lines, "", "消息:", strings.TrimSpace(step.Message))
+	}
+	if strings.TrimSpace(step.DetailLog) != "" {
+		lines = append(lines, "", "详细日志:", strings.TrimSpace(step.DetailLog))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // refreshPipelineStages 封装当前模块的业务处理逻辑。

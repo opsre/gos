@@ -16,6 +16,10 @@ type PlatformParamRepository struct {
 	dbDriver string
 }
 
+var protectedBuiltinPlatformParamKeys = []string{
+	"gos_artifact_path",
+}
+
 // NewPlatformParamRepository 创建并返回对应组件实例。
 func NewPlatformParamRepository(db *sql.DB, dbDriver string) *PlatformParamRepository {
 	return &PlatformParamRepository{
@@ -280,6 +284,20 @@ func (r *PlatformParamRepository) ensureBuiltinParams(ctx context.Context) error
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		},
+		{
+			ID:            "ppd-gos-artifact-path",
+			ParamKey:      "gos_artifact_path",
+			Name:          "GOS_ARTIFACT_PATH",
+			Description:   "应用基础信息中的制品路径；发布模板、GitOps 替换规则和 Hook 变量可直接引用，不从发布执行日志或 CI/CD 输出取值。",
+			ParamType:     domain.ParamTypeString,
+			Required:      false,
+			GitOpsLocator: false,
+			CDSelfFill:    false,
+			Builtin:       true,
+			Status:        domain.StatusEnabled,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		},
 	}
 
 	// Builtin keys are platform-owned metadata. We keep them in sync on startup so the
@@ -443,7 +461,7 @@ WHERE id = ?;`
 		}
 		return domain.PlatformParamDict{}, err
 	}
-	return item, nil
+	return protectBuiltinPlatformParam(item), nil
 }
 
 // GetByParamKey 查询并返回指定资源数据。
@@ -461,7 +479,7 @@ WHERE param_key = ?;`
 		}
 		return domain.PlatformParamDict{}, err
 	}
-	return item, nil
+	return protectBuiltinPlatformParam(item), nil
 }
 
 // List 查询并返回列表数据。
@@ -482,8 +500,17 @@ func (r *PlatformParamRepository) List(ctx context.Context, filter domain.ListFi
 		args = append(args, int(*filter.Status))
 	}
 	if filter.Builtin != nil {
-		where = append(where, "builtin = ?")
-		args = append(args, boolToInt(*filter.Builtin))
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(protectedBuiltinPlatformParamKeys)), ",")
+		if *filter.Builtin {
+			where = append(where, fmt.Sprintf("(builtin = ? OR param_key IN (%s))", placeholders))
+			args = append(args, boolToInt(true))
+		} else {
+			where = append(where, fmt.Sprintf("(builtin = ? AND param_key NOT IN (%s))", placeholders))
+			args = append(args, boolToInt(false))
+		}
+		for _, key := range protectedBuiltinPlatformParamKeys {
+			args = append(args, key)
+		}
 	}
 	if filter.GitOpsLocator != nil {
 		where = append(where, "gitops_locator = ?")
@@ -524,7 +551,7 @@ FROM platform_param_dict`
 		if scanErr != nil {
 			return nil, 0, scanErr
 		}
-		items = append(items, item)
+		items = append(items, protectBuiltinPlatformParam(item))
 	}
 	if err := rows.Err(); err != nil {
 		return nil, 0, err
@@ -627,6 +654,23 @@ func scanPlatformParam(s scanner) (domain.PlatformParamDict, error) {
 	item.CreatedAt = time.Unix(0, createdAt).UTC()
 	item.UpdatedAt = time.Unix(0, updatedAt).UTC()
 	return item, nil
+}
+
+func protectBuiltinPlatformParam(item domain.PlatformParamDict) domain.PlatformParamDict {
+	if isProtectedBuiltinPlatformParamKey(item.ParamKey) {
+		item.Builtin = true
+	}
+	return item
+}
+
+func isProtectedBuiltinPlatformParamKey(paramKey string) bool {
+	key := strings.ToLower(strings.TrimSpace(paramKey))
+	for _, protectedKey := range protectedBuiltinPlatformParamKeys {
+		if key == protectedKey {
+			return true
+		}
+	}
+	return false
 }
 
 // mysqlColumnExists 封装当前模块的业务处理逻辑。
