@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -698,31 +699,28 @@ func (c *Client) getJobParamSet(ctx context.Context, fullName string) (pipelinep
 				if pf == "" {
 					continue
 				}
-				resolved, resolveErr := c.loadExtendedChoicePropertyFileValues(ctx, fullName, item.Name, pf, pk)
-				if resolveErr != nil || len(resolved) == 0 {
-					continue
-				}
+				resolved := c.resolveExtendedChoiceValues(ctx, fullName, item.Name, extendedChoiceFallback{
+					values:       nil,
+					propertyFile: pf,
+					propertyKey:  pk,
+				})
 				params[idx].RawMeta = mergeChoiceValuesIntoRawMeta(item.RawMeta, extendedChoiceFallback{
-					values: resolved,
+					values:       resolved.values,
+					options:      resolved.options,
+					propertyFile: pf,
+					propertyKey:  pk,
 				})
 				params[idx].SingleSelect = inferPipelineSingleSelectFromRawMeta(params[idx].RawMeta, params[idx].SingleSelect)
 				continue
 			}
-			if len(choices.values) == 0 && choices.propertyFile != "" {
-				resolved, resolveErr := c.loadExtendedChoicePropertyFileValues(ctx, fullName, item.Name, choices.propertyFile, choices.propertyKey)
-				if resolveErr == nil && len(resolved) > 0 {
-					choices.values = resolved
-				}
-			}
-			if len(choices.values) == 0 {
-				continue
-			}
+			choices = c.resolveExtendedChoiceValues(ctx, fullName, item.Name, choices)
 			params[idx].RawMeta = mergeChoiceValuesIntoRawMeta(item.RawMeta, choices)
 			if strings.TrimSpace(params[idx].DefaultValue) == "" && strings.TrimSpace(choices.defaultValue) != "" {
 				params[idx].DefaultValue = strings.TrimSpace(choices.defaultValue)
 			}
 			params[idx].SingleSelect = inferPipelineSingleSelectFromRawMeta(params[idx].RawMeta, params[idx].SingleSelect)
 		}
+		c.appendMissingExtendedChoiceFallbackParams(ctx, fullName, fallback, &params, seen)
 	}
 	if err := c.loadGitParameterChoicesIntoParams(ctx, fullName, params); err == nil {
 		// no-op: params are updated in place
@@ -1672,12 +1670,20 @@ func normalizeChoiceValues(values []string) []string {
 }
 
 type extendedChoiceFallback struct {
+	className    string
+	description  string
 	values       []string
+	options      []choiceOptionFallback
 	delimiter    string
 	typeName     string
 	defaultValue string
 	propertyFile string
 	propertyKey  string
+}
+
+type choiceOptionFallback struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
 }
 
 // loadGitParameterChoicesIntoParams 封装当前模块的业务处理逻辑。
@@ -1739,6 +1745,70 @@ func isGitParameterRawMeta(rawMeta string) bool {
 	className := strings.ToLower(strings.TrimSpace(readJSONString(fields["_class"])))
 	typeName := strings.ToLower(strings.TrimSpace(readJSONString(fields["type"])))
 	return strings.Contains(className, "gitparameterdefinition") || strings.Contains(typeName, "gitparameterdefinition")
+}
+
+func (c *Client) appendMissingExtendedChoiceFallbackParams(
+	ctx context.Context,
+	fullName string,
+	fallback map[string]extendedChoiceFallback,
+	params *[]pipelineparamdomain.JenkinsParamSnapshot,
+	seen map[string]struct{},
+) {
+	names := make([]string, 0, len(fallback))
+	for name := range fallback {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		item := fallback[name]
+		paramName := strings.TrimSpace(name)
+		if paramName == "" {
+			continue
+		}
+		if _, exists := seen[paramName]; exists {
+			continue
+		}
+		item = c.resolveExtendedChoiceValues(ctx, fullName, paramName, item)
+		rawMeta := mergeChoiceValuesIntoRawMeta("{}", item)
+		*params = append(*params, pipelineparamdomain.JenkinsParamSnapshot{
+			Name:         paramName,
+			ParamType:    pipelineparamdomain.ParamTypeChoice,
+			SingleSelect: inferPipelineSingleSelectFromRawMeta(rawMeta, !looksLikeGroovyMultiSelect(item.typeName)),
+			Required:     false,
+			DefaultValue: strings.TrimSpace(item.defaultValue),
+			Description:  strings.TrimSpace(item.description),
+			RawMeta:      rawMeta,
+			SortNo:       len(*params) + 1,
+		})
+		seen[paramName] = struct{}{}
+	}
+}
+
+func (c *Client) resolveExtendedChoiceValues(
+	ctx context.Context,
+	fullName string,
+	paramName string,
+	item extendedChoiceFallback,
+) extendedChoiceFallback {
+	if len(item.options) > 0 {
+		item.options = normalizeChoiceOptions(item.options)
+		if len(item.values) == 0 {
+			item.values = choiceValuesFromOptions(item.options)
+		}
+		return item
+	}
+	if item.propertyFile != "" && len(item.values) == 0 {
+		resolved, err := c.loadExtendedChoicePropertyFileValues(ctx, fullName, paramName, item.propertyFile, item.propertyKey)
+		if err == nil && len(resolved) > 0 {
+			item.values = resolved
+		}
+	}
+	options, err := c.loadExtendedChoiceBuildFormChoiceOptions(ctx, fullName, paramName)
+	if err == nil && len(options) > 0 {
+		item.options = options
+		item.values = choiceValuesFromOptions(options)
+	}
+	return item
 }
 
 // loadGitParameterChoices 封装当前模块的业务处理逻辑。
@@ -1815,6 +1885,165 @@ func parseGitParameterChoiceValues(raw json.RawMessage) []string {
 	return nil
 }
 
+func parseJenkinsBuildFormChoiceValues(raw string, paramName string) []string {
+	return choiceValuesFromOptions(parseJenkinsBuildFormChoiceOptions(raw, paramName))
+}
+
+func parseJenkinsBuildFormChoiceOptions(raw string, paramName string) []choiceOptionFallback {
+	paramName = strings.TrimSpace(paramName)
+	if strings.TrimSpace(raw) == "" || paramName == "" {
+		return nil
+	}
+
+	inputName := paramName + ".value"
+	block := extractJenkinsBuildFormParameterBlock(raw, paramName)
+	searchText := block
+	if searchText == "" {
+		searchText = raw
+	}
+
+	options := make([]choiceOptionFallback, 0)
+	inputIndexes := htmlInputTagPattern.FindAllStringIndex(searchText, -1)
+	for idx, index := range inputIndexes {
+		tag := searchText[index[0]:index[1]]
+		if readHTMLAttribute(tag, "name") != inputName {
+			continue
+		}
+		value := strings.TrimSpace(readHTMLAttribute(tag, "value"))
+		if value == "" {
+			value = strings.TrimSpace(readHTMLAttribute(tag, "json"))
+		}
+		if value != "" && value != "<DEFAULT>" {
+			options = append(options, choiceOptionFallback{
+				Label: extractJenkinsInputChoiceLabel(searchText, index[1], inputIndexes, idx),
+				Value: value,
+			})
+		}
+	}
+	if len(options) > 0 {
+		return normalizeChoiceOptions(options)
+	}
+
+	if block == "" {
+		return nil
+	}
+	for _, match := range htmlOptionPattern.FindAllStringSubmatch(block, -1) {
+		if len(match) < 2 {
+			continue
+		}
+		value := strings.TrimSpace(readHTMLAttribute(match[0], "value"))
+		label := normalizeHTMLText(match[1])
+		if value == "" {
+			value = label
+		}
+		if value != "" && value != "<DEFAULT>" {
+			options = append(options, choiceOptionFallback{
+				Label: label,
+				Value: value,
+			})
+		}
+	}
+	return normalizeChoiceOptions(options)
+}
+
+func extractJenkinsInputChoiceLabel(block string, inputEnd int, inputIndexes [][]int, currentIndex int) string {
+	if inputEnd < 0 || inputEnd > len(block) {
+		return ""
+	}
+	end := len(block)
+	if currentIndex+1 < len(inputIndexes) && inputIndexes[currentIndex+1][0] > inputEnd {
+		end = inputIndexes[currentIndex+1][0]
+	}
+	lowerTail := strings.ToLower(block[inputEnd:end])
+	for _, marker := range []string{"</label>", "</td>", "</tr>", "<br", "</div>"} {
+		if markerIndex := strings.Index(lowerTail, marker); markerIndex >= 0 && inputEnd+markerIndex < end {
+			end = inputEnd + markerIndex
+		}
+	}
+	return normalizeHTMLText(block[inputEnd:end])
+}
+
+func normalizeChoiceOptions(options []choiceOptionFallback) []choiceOptionFallback {
+	result := make([]choiceOptionFallback, 0, len(options))
+	seen := make(map[string]struct{}, len(options))
+	for _, item := range options {
+		value := strings.TrimSpace(item.Value)
+		label := strings.TrimSpace(item.Label)
+		if value == "" {
+			value = label
+		}
+		if value == "" || value == "<DEFAULT>" {
+			continue
+		}
+		if label == "" {
+			label = value
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, choiceOptionFallback{
+			Label: label,
+			Value: value,
+		})
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func choiceValuesFromOptions(options []choiceOptionFallback) []string {
+	values := make([]string, 0, len(options))
+	for _, item := range normalizeChoiceOptions(options) {
+		values = append(values, item.Value)
+	}
+	return normalizeChoiceValues(values)
+}
+
+func extractJenkinsBuildFormParameterBlock(raw string, paramName string) string {
+	paramName = strings.TrimSpace(paramName)
+	if paramName == "" {
+		return ""
+	}
+	indexes := htmlInputTagPattern.FindAllStringIndex(raw, -1)
+	for _, index := range indexes {
+		tag := raw[index[0]:index[1]]
+		if readHTMLAttribute(tag, "name") != "name" || readHTMLAttribute(tag, "value") != paramName {
+			continue
+		}
+		start := index[0]
+		end := len(raw)
+		lowerRemainder := strings.ToLower(raw[start:])
+		for _, marker := range []string{"</tbody>", "<div class=\"jenkins-form-item", "<div class='jenkins-form-item"} {
+			markerIndex := strings.Index(lowerRemainder[1:], marker)
+			if markerIndex >= 0 && start+1+markerIndex < end {
+				end = start + 1 + markerIndex
+			}
+		}
+		return raw[start:end]
+	}
+	return ""
+}
+
+func readHTMLAttribute(tag string, name string) string {
+	name = strings.TrimSpace(name)
+	if tag == "" || name == "" {
+		return ""
+	}
+	pattern := regexp.MustCompile(`(?is)(?:^|\s)` + regexp.QuoteMeta(name) + `\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))`)
+	match := pattern.FindStringSubmatch(tag)
+	if len(match) == 0 {
+		return ""
+	}
+	for _, value := range match[1:] {
+		if value != "" {
+			return html.UnescapeString(strings.TrimSpace(value))
+		}
+	}
+	return ""
+}
+
 // loadExtendedChoiceFallback 封装当前模块的业务处理逻辑。
 func (c *Client) loadExtendedChoiceFallback(ctx context.Context, fullName string) (map[string]extendedChoiceFallback, error) {
 	endpoint := c.baseURL + buildJenkinsJobConfigPath(fullName)
@@ -1824,32 +2053,37 @@ func (c *Client) loadExtendedChoiceFallback(ctx context.Context, fullName string
 	}
 	body = normalizeXMLVersion(body)
 
+	type extendedChoiceXMLItem struct {
+		Name                 string `xml:"name"`
+		Description          string `xml:"description"`
+		Type                 string `xml:"type"`
+		Value                string `xml:"value"`
+		MultiSelectDelimiter string `xml:"multiSelectDelimiter"`
+		DefaultValue         string `xml:"defaultValue"`
+		PropertyFile         string `xml:"propertyFile"`
+		PropertyKey          string `xml:"propertyKey"`
+	}
 	var config struct {
-		Items []struct {
-			Name                 string `xml:"name"`
-			Type                 string `xml:"type"`
-			Value                string `xml:"value"`
-			MultiSelectDelimiter string `xml:"multiSelectDelimiter"`
-			DefaultValue         string `xml:"defaultValue"`
-			PropertyFile         string `xml:"propertyFile"`
-			PropertyKey          string `xml:"propertyKey"`
-		} `xml:"properties>hudson.model.ParametersDefinitionProperty>parameterDefinitions>com.cwctravel.hudson.plugins.extended__choice__parameter.ExtendedChoiceParameterDefinition"`
+		ClassicItems []extendedChoiceXMLItem `xml:"properties>hudson.model.ParametersDefinitionProperty>parameterDefinitions>com.cwctravel.hudson.plugins.extended__choice__parameter.ExtendedChoiceParameterDefinition"`
+		DynamicItems []extendedChoiceXMLItem `xml:"properties>hudson.model.ParametersDefinitionProperty>parameterDefinitions>com.moded.extendedchoiceparameter.ExtendedChoiceParameterDefinition"`
 	}
 	if err := xml.Unmarshal(body, &config); err != nil {
 		return nil, err
 	}
 
 	result := make(map[string]extendedChoiceFallback)
-	for _, item := range config.Items {
+	appendItem := func(item extendedChoiceXMLItem, className string) {
 		name := strings.TrimSpace(item.Name)
 		if name == "" {
-			continue
+			return
 		}
 		delimiter := strings.TrimSpace(item.MultiSelectDelimiter)
 		if delimiter == "" {
 			delimiter = ","
 		}
 		result[name] = extendedChoiceFallback{
+			className:    className,
+			description:  strings.TrimSpace(item.Description),
 			values:       splitChoiceValueByDelimiter(item.Value, delimiter),
 			delimiter:    delimiter,
 			typeName:     strings.TrimSpace(item.Type),
@@ -1857,6 +2091,12 @@ func (c *Client) loadExtendedChoiceFallback(ctx context.Context, fullName string
 			propertyFile: strings.TrimSpace(item.PropertyFile),
 			propertyKey:  strings.TrimSpace(item.PropertyKey),
 		}
+	}
+	for _, item := range config.ClassicItems {
+		appendItem(item, "com.cwctravel.hudson.plugins.extended_choice_parameter.ExtendedChoiceParameterDefinition")
+	}
+	for _, item := range config.DynamicItems {
+		appendItem(item, "com.moded.extendedchoiceparameter.ExtendedChoiceParameterDefinition")
 	}
 	return result, nil
 }
@@ -1904,6 +2144,52 @@ func (c *Client) loadExtendedChoicePropertyFileValues(
 	}
 
 	return parseExtendedChoiceFillValueItems(body), nil
+}
+
+func (c *Client) loadExtendedChoiceBuildFormValues(
+	ctx context.Context,
+	fullName string,
+	paramName string,
+) ([]string, error) {
+	options, err := c.loadExtendedChoiceBuildFormChoiceOptions(ctx, fullName, paramName)
+	if err != nil {
+		return nil, err
+	}
+	return choiceValuesFromOptions(options), nil
+}
+
+func (c *Client) loadExtendedChoiceBuildFormChoiceOptions(
+	ctx context.Context,
+	fullName string,
+	paramName string,
+) ([]choiceOptionFallback, error) {
+	endpoint := c.baseURL + buildJenkinsJobPath(fullName) + "/build?delay=0sec"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	if c.username != "" && c.apiToken != "" {
+		req.SetBasicAuth(c.username, c.apiToken)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return nil, err
+	}
+	options := parseJenkinsBuildFormChoiceOptions(string(body), paramName)
+	if len(options) > 0 {
+		return options, nil
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, buildJenkinsHTTPError(resp.StatusCode, body)
+	}
+	return nil, fmt.Errorf("jenkins build form has no choices for parameter %q", strings.TrimSpace(paramName))
 }
 
 // normalizeXMLVersion 标准化输入值，保证后续逻辑使用统一格式。
@@ -1956,7 +2242,23 @@ func mergeChoiceValuesIntoRawMeta(rawMeta string, fallback extendedChoiceFallbac
 		}
 	}
 
-	meta["choices"] = fallback.values
+	values := fallback.values
+	if len(values) == 0 && len(fallback.options) > 0 {
+		values = choiceValuesFromOptions(fallback.options)
+	}
+	meta["choices"] = values
+	if len(fallback.options) > 0 {
+		meta["choiceOptions"] = normalizeChoiceOptions(fallback.options)
+	}
+	if fallback.className != "" {
+		meta["_class"] = fallback.className
+	}
+	if fallback.propertyFile != "" {
+		meta["propertyFile"] = fallback.propertyFile
+	}
+	if fallback.propertyKey != "" {
+		meta["propertyKey"] = fallback.propertyKey
+	}
 	if fallback.delimiter != "" {
 		meta["multiSelectDelimiter"] = fallback.delimiter
 	}
@@ -2774,6 +3076,8 @@ func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
 var (
 	htmlParagraphPattern = regexp.MustCompile(`(?is)<p[^>]*>(.*?)</p>`)
 	htmlH2Pattern        = regexp.MustCompile(`(?is)<h2[^>]*>(.*?)</h2>`)
+	htmlInputTagPattern  = regexp.MustCompile(`(?is)<input\b[^>]*>`)
+	htmlOptionPattern    = regexp.MustCompile(`(?is)<option\b[^>]*>(.*?)</option>`)
 	htmlBreakPattern     = regexp.MustCompile(`(?is)<br\\s*/?>`)
 	htmlStylePattern     = regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`)
 	htmlScriptPattern    = regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`)

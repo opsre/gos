@@ -315,7 +315,7 @@ docker run -d \
   -e GOS_AUTH_ADMIN_USERNAME='admin' \
   -e GOS_AUTH_ADMIN_PASSWORD='your-admin-password' \
   -e GOS_SECURITY_ENCRYPTION_KEY='replace-with-a-strong-key' \
-  yl10115658529/gos-release:v1.2
+  yl10115658529/gos-release:v1.2.2
 ```
 
 > **说明**：GOS_SECURITY_ENCRYPTION_KEY 用于加密数据，请自定义 。

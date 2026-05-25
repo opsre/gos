@@ -1905,7 +1905,7 @@ async function handleApplicationChange(value: string | undefined) {
   gitOpsType.value = 'kustomize'
   const tasks: Array<Promise<unknown>> = [loadBindings(formState.application_id)]
   if (isCDUsingArgoCD()) {
-    tasks.push(loadGitOpsFieldCandidates(formState.application_id, true))
+    tasks.push(isHelmGitOps() ? loadGitOpsValuesCandidates(formState.application_id, true) : loadGitOpsFieldCandidates(formState.application_id, true))
   }
   await Promise.all(tasks)
 }
@@ -2688,7 +2688,7 @@ onBeforeUnmount(() => {
               <a-form-item label="应用" name="application_id" :rules="[{ required: true, message: '请选择应用' }]">
                 <a-select
                   v-model:value="formState.application_id"
-                  :disabled="modalMode !== 'create'"
+                  :disabled="modalMode === 'edit'"
                   show-search
                   option-filter-prop="label"
                   placeholder="请选择应用"

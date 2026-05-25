@@ -77,6 +77,167 @@ pipeline {
 	}
 }
 
+func TestGetJobParamSetRecognizesDynamicExtendedChoiceFallback(t *testing.T) {
+	t.Parallel()
+
+	var apiHit bool
+	var configHit bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/job/demo/api/json":
+			apiHit = true
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"name":"demo","fullName":"demo","actions":[],"property":[]}`))
+		case "/job/demo/config.xml":
+			configHit = true
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = w.Write([]byte(`
+<project>
+  <properties>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <com.moded.extendedchoiceparameter.ExtendedChoiceParameterDefinition>
+          <name>server</name>
+          <description>选择目标服务器</description>
+          <type>PT_SINGLE_SELECT</type>
+          <value>test-server-1,test-server-2</value>
+          <multiSelectDelimiter>,</multiSelectDelimiter>
+          <defaultValue>test-server-1</defaultValue>
+        </com.moded.extendedchoiceparameter.ExtendedChoiceParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+  </properties>
+</project>`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{BaseURL: server.URL, TimeoutSec: 2})
+	set, err := client.GetJobParamSet(context.Background(), "demo")
+	if err != nil {
+		t.Fatalf("GetJobParamSet failed: %v", err)
+	}
+	if !apiHit || !configHit {
+		t.Fatalf("expected api and config endpoints to be called, api=%v config=%v", apiHit, configHit)
+	}
+	if len(set.Params) != 1 {
+		t.Fatalf("expected 1 param, got %d: %+v", len(set.Params), set.Params)
+	}
+	param := set.Params[0]
+	if param.Name != "server" {
+		t.Fatalf("param name = %q, want server", param.Name)
+	}
+	if param.ParamType != "choice" {
+		t.Fatalf("param type = %q, want choice", param.ParamType)
+	}
+	if !param.SingleSelect {
+		t.Fatalf("server should be single-select: %+v", param)
+	}
+	if param.DefaultValue != "test-server-1" {
+		t.Fatalf("default value = %q, want test-server-1", param.DefaultValue)
+	}
+	if !strings.Contains(param.RawMeta, "test-server-2") {
+		t.Fatalf("raw meta missing dynamic choices: %s", param.RawMeta)
+	}
+}
+
+func TestGetJobParamSetLoadsClassicExtendedChoiceValuesFromBuildFormFallback(t *testing.T) {
+	t.Parallel()
+
+	var buildFormHit bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/job/demo/api/json":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"name":"demo",
+				"fullName":"demo",
+				"actions":[{
+					"parameterDefinitions":[{
+						"_class":"com.cwctravel.hudson.plugins.extended_choice_parameter.ExtendedChoiceParameterDefinition",
+						"name":"server",
+						"description":"请选择你要部署的服务器",
+						"type":"PT_CHECKBOX"
+					}]
+				}],
+				"property":[]
+			}`))
+		case "/job/demo/config.xml":
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = w.Write([]byte(`
+<project>
+  <properties>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <com.cwctravel.hudson.plugins.extended__choice__parameter.ExtendedChoiceParameterDefinition>
+          <name>server</name>
+          <description>请选择你要部署的服务器</description>
+          <type>PT_CHECKBOX</type>
+          <propertyFile>/home/dm-server.list</propertyFile>
+          <propertyKey>server</propertyKey>
+          <multiSelectDelimiter>,</multiSelectDelimiter>
+        </com.cwctravel.hudson.plugins.extended__choice__parameter.ExtendedChoiceParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+  </properties>
+</project>`))
+		case "/job/demo/descriptorByName/com.cwctravel.hudson.plugins.extended_choice_parameter.ExtendedChoiceParameterDefinition/fillValueItems":
+			http.NotFound(w, r)
+		case "/job/demo/build":
+			buildFormHit = true
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			_, _ = w.Write([]byte(`
+<html><body>
+  <form method="post" name="parameters" action="build?delay=0sec">
+    <div name="parameter" description="请选择你要部署的服务器">
+      <input name="name" type="hidden" value="server">
+      <div id="ecp_server">
+        <table id="tbl_ecp_server">
+          <tr><td><input name="server.value" json="web-server-01" type="checkbox" value="web-server-01"><label>test1</label></td></tr>
+          <tr><td><input value="web-server-02" type="checkbox" name="server.value"><label>test02</label></td></tr>
+        </table>
+      </div>
+    </div>
+  </form>
+</body></html>`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{BaseURL: server.URL, TimeoutSec: 2})
+	set, err := client.GetJobParamSet(context.Background(), "demo")
+	if err != nil {
+		t.Fatalf("GetJobParamSet failed: %v", err)
+	}
+	if !buildFormHit {
+		t.Fatalf("expected build form fallback to be called")
+	}
+	if len(set.Params) != 1 {
+		t.Fatalf("expected 1 param, got %d: %+v", len(set.Params), set.Params)
+	}
+	param := set.Params[0]
+	if param.Name != "server" {
+		t.Fatalf("param name = %q, want server", param.Name)
+	}
+	if param.SingleSelect {
+		t.Fatalf("server checkbox should be multi-select: %+v", param)
+	}
+	if !strings.Contains(param.RawMeta, "web-server-01") || !strings.Contains(param.RawMeta, "web-server-02") {
+		t.Fatalf("raw meta missing build form choices: %s", param.RawMeta)
+	}
+	if !strings.Contains(param.RawMeta, `"label":"test1"`) || !strings.Contains(param.RawMeta, `"label":"test02"`) {
+		t.Fatalf("raw meta missing build form choice labels: %s", param.RawMeta)
+	}
+	if !strings.Contains(param.RawMeta, "/home/dm-server.list") || !strings.Contains(param.RawMeta, `"propertyKey":"server"`) {
+		t.Fatalf("raw meta should preserve property-file metadata: %s", param.RawMeta)
+	}
+}
+
 func TestGetBuildStageLogWithNameFallsBackToConsoleTextWhenStageDescribeReturnsHTML(t *testing.T) {
 	t.Parallel()
 

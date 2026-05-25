@@ -4,6 +4,7 @@ import {
   BranchesOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
+  FullscreenOutlined,
   ProfileOutlined,
   RocketOutlined,
   ThunderboltFilled,
@@ -85,6 +86,12 @@ const editingOrder = ref<ReleaseOrder | null>(null)
 const editingParamSnapshot = ref<ReleaseOrderParam[]>([])
 const pendingEditSnapshotRestore = ref(false)
 const paramValues = reactive<Record<string, string>>({})
+const expandedChoiceState = reactive({
+  open: false,
+  scope: 'ci' as ReleasePipelineScope,
+  paramID: '',
+  keyword: '',
+})
 
 const scopeStates = reactive<Record<ReleasePipelineScope, ScopeRuntimeState>>({
   ci: {
@@ -842,23 +849,65 @@ function dedupe(values: string[]) {
   return result
 }
 
-function normalizeChoiceValues(raw: unknown): string[] {
+function dedupeChoiceOptions(options: SelectOption[]) {
+  const result: SelectOption[] = []
+  const seen = new Set<string>()
+  options.forEach((item) => {
+    const value = String(item.value ?? '').trim()
+    const label = String(item.label ?? '').trim() || value
+    if (!value || seen.has(value)) {
+      return
+    }
+    seen.add(value)
+    result.push({ label, value })
+  })
+  return result
+}
+
+function readChoiceOptionText(raw: unknown) {
+  return String(raw ?? '').trim()
+}
+
+function normalizeChoiceOptions(raw: unknown): SelectOption[] {
   if (Array.isArray(raw)) {
-    return dedupe(raw.map((item) => String(item || '').trim()).filter(Boolean))
+    const options: SelectOption[] = []
+    raw.forEach((item) => {
+      if (item && typeof item === 'object') {
+        const objectRaw = item as Record<string, unknown>
+        const value = readChoiceOptionText(
+          objectRaw.value ?? objectRaw.id ?? objectRaw.key ?? objectRaw.name ?? objectRaw.label,
+        )
+        const label = readChoiceOptionText(
+          objectRaw.label ?? objectRaw.name ?? objectRaw.text ?? objectRaw.description ?? value,
+        )
+        if (value) {
+          options.push({ label: label || value, value })
+        }
+        return
+      }
+      splitChoiceText(readChoiceOptionText(item)).forEach((value) => {
+        options.push({ label: value, value })
+      })
+    })
+    return dedupeChoiceOptions(options)
   }
   if (typeof raw === 'string') {
-    return dedupe(splitChoiceText(raw))
+    return dedupeChoiceOptions(splitChoiceText(raw).map((value) => ({ label: value, value })))
   }
   if (raw && typeof raw === 'object') {
     const objectRaw = raw as Record<string, unknown>
-    for (const key of ['values', 'choices', 'items', 'list', 'value']) {
-      const values = normalizeChoiceValues(objectRaw[key])
-      if (values.length > 0) {
-        return values
+    for (const key of ['choiceOptions', 'options', 'choices', 'choiceList', 'values', 'items', 'list', 'value']) {
+      const options = normalizeChoiceOptions(objectRaw[key])
+      if (options.length > 0) {
+        return options
       }
     }
   }
   return []
+}
+
+function normalizeChoiceValues(raw: unknown): string[] {
+  return dedupe(normalizeChoiceOptions(raw).map((item) => item.value))
 }
 
 function resolveChoiceMeta(item: ExecutorParamDef): ChoiceMeta {
@@ -871,9 +920,9 @@ function resolveChoiceMeta(item: ExecutorParamDef): ChoiceMeta {
   }
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>
-    const options = normalizeChoiceValues(
-      parsed.choices ?? parsed.choiceList ?? parsed.values ?? parsed.value ?? parsed.items ?? null,
-    ).map((value) => ({ label: value, value }))
+    const options = normalizeChoiceOptions(
+      parsed.choiceOptions ?? parsed.options ?? parsed.choices ?? parsed.choiceList ?? parsed.values ?? parsed.value ?? parsed.items ?? null,
+    )
 
     const className = String(parsed._class || '').toLowerCase()
     const typeName = String(parsed.type || parsed.choiceType || parsed.ptype || '').toLowerCase()
@@ -917,6 +966,45 @@ function getChoiceMeta(item: ExecutorParamDef) {
 function getParamSelectOptions(item: ExecutorParamDef) {
   return getChoiceMeta(item).options
 }
+
+const expandedChoiceParam = computed(() => {
+  const paramID = expandedChoiceState.paramID.trim()
+  if (!paramID) {
+    return null
+  }
+  return scopeStates[expandedChoiceState.scope].param_defs.find((item) => item.id === paramID) || null
+})
+
+const expandedChoiceOptions = computed<SelectOption[]>(() => (
+  expandedChoiceParam.value ? getParamSelectOptions(expandedChoiceParam.value) : []
+))
+
+const filteredExpandedChoiceOptions = computed<SelectOption[]>(() => {
+  const keyword = expandedChoiceState.keyword.trim().toLowerCase()
+  if (!keyword) {
+    return expandedChoiceOptions.value
+  }
+  return expandedChoiceOptions.value.filter((option) => {
+    const label = String(option.label || '').toLowerCase()
+    const value = String(option.value || '').toLowerCase()
+    return label.includes(keyword) || value.includes(keyword)
+  })
+})
+
+const expandedChoiceSelectedValues = computed(() => (
+  expandedChoiceParam.value ? getChoiceMultiValues(expandedChoiceParam.value) : []
+))
+
+const expandedChoiceSelectedValueSet = computed(() => new Set(expandedChoiceSelectedValues.value))
+const expandedChoiceSelectedCount = computed(() => expandedChoiceSelectedValues.value.length)
+const expandedChoiceTotalCount = computed(() => expandedChoiceOptions.value.length)
+const expandedChoiceTitle = computed(() => {
+  const param = expandedChoiceParam.value
+  if (!param) {
+    return '选择参数'
+  }
+  return param.param_key || param.executor_param_name || '选择参数'
+})
 
 function hasChoiceOptionConstraint(item: ExecutorParamDef) {
   return getParamSelectOptions(item).length > 0
@@ -998,16 +1086,96 @@ function handleChoiceMultiChange(item: ExecutorParamDef, values: unknown) {
         .map((value) => String(value || '').trim())
         .filter(Boolean)
     : []
-  paramValues[item.id] = list.join(getChoiceMeta(item).delimiter || ',')
+  writeChoiceMultiValues(item, list)
 }
 
 function handleChoiceSelectAll(item: ExecutorParamDef) {
   const all = getParamSelectOptions(item).map((option) => option.value)
-  paramValues[item.id] = all.join(getChoiceMeta(item).delimiter || ',')
+  writeChoiceMultiValues(item, all)
 }
 
 function handleChoiceDeselectAll(item: ExecutorParamDef) {
   paramValues[item.id] = ''
+}
+
+function writeChoiceMultiValues(item: ExecutorParamDef, values: string[]) {
+  const list = dedupe(values.map((value) => String(value || '').trim()).filter(Boolean))
+  paramValues[item.id] = list.join(getChoiceMeta(item).delimiter || ',')
+}
+
+function openExpandedChoiceModal(scope: ReleasePipelineScope, item: ExecutorParamDef) {
+  expandedChoiceState.scope = scope
+  expandedChoiceState.paramID = item.id
+  expandedChoiceState.keyword = ''
+  expandedChoiceState.open = true
+}
+
+function closeExpandedChoiceModal() {
+  expandedChoiceState.open = false
+  expandedChoiceState.keyword = ''
+}
+
+function isExpandedChoiceChecked(value: string) {
+  return expandedChoiceSelectedValueSet.value.has(value)
+}
+
+function readCheckboxChecked(event: unknown) {
+  const target = (event as { target?: { checked?: boolean } })?.target
+  return Boolean(target?.checked)
+}
+
+function handleExpandedChoiceToggle(value: string, event: unknown) {
+  const param = expandedChoiceParam.value
+  if (!param) {
+    return
+  }
+  const checked = readCheckboxChecked(event)
+  const current = new Set(expandedChoiceSelectedValues.value)
+  if (checked) {
+    current.add(value)
+  } else {
+    current.delete(value)
+  }
+  writeChoiceMultiValues(param, Array.from(current))
+}
+
+function handleExpandedChoiceSelectFiltered() {
+  const param = expandedChoiceParam.value
+  if (!param) {
+    return
+  }
+  writeChoiceMultiValues(param, [
+    ...expandedChoiceSelectedValues.value,
+    ...filteredExpandedChoiceOptions.value.map((option) => option.value),
+  ])
+}
+
+function handleExpandedChoiceDeselectFiltered() {
+  const param = expandedChoiceParam.value
+  if (!param) {
+    return
+  }
+  const removeSet = new Set(filteredExpandedChoiceOptions.value.map((option) => option.value))
+  writeChoiceMultiValues(
+    param,
+    expandedChoiceSelectedValues.value.filter((value) => !removeSet.has(value)),
+  )
+}
+
+function handleExpandedChoiceSelectAll() {
+  const param = expandedChoiceParam.value
+  if (!param) {
+    return
+  }
+  writeChoiceMultiValues(param, expandedChoiceOptions.value.map((option) => option.value))
+}
+
+function handleExpandedChoiceDeselectAll() {
+  const param = expandedChoiceParam.value
+  if (!param) {
+    return
+  }
+  handleChoiceDeselectAll(param)
 }
 
 function resolveInvalidChoiceValues(scope: ReleasePipelineScope, item: ExecutorParamDef): string[] {
@@ -1472,6 +1640,17 @@ onMounted(async () => {
                             <div class="multi-choice-dropdown-actions">
                               <a-button size="small" type="link" @click.stop="handleChoiceSelectAll(param)">全选</a-button>
                               <a-button size="small" type="link" @click.stop="handleChoiceDeselectAll(param)">取消全选</a-button>
+                              <a-button
+                                size="small"
+                                type="link"
+                                class="multi-choice-expand-btn"
+                                @click.stop="openExpandedChoiceModal(item.scope, param)"
+                              >
+                                <template #icon>
+                                  <FullscreenOutlined />
+                                </template>
+                                展开
+                              </a-button>
                             </div>
                             <a-divider style="margin: 4px 0" />
                             <component :is="menu" />
@@ -1583,6 +1762,69 @@ onMounted(async () => {
         </aside>
       </div>
     </a-form>
+
+    <a-modal
+      v-model:open="expandedChoiceState.open"
+      class="expanded-choice-modal"
+      :width="880"
+      :footer="null"
+      :destroy-on-close="true"
+      @cancel="closeExpandedChoiceModal"
+    >
+      <template #title>
+        <div class="expanded-choice-titlebar">
+          <div>
+            <div class="expanded-choice-title">选择 {{ expandedChoiceTitle }}</div>
+            <div class="expanded-choice-subtitle">
+              已选 {{ expandedChoiceSelectedCount }} / {{ expandedChoiceTotalCount }}
+            </div>
+          </div>
+          <a-button size="small" @click="closeExpandedChoiceModal">关闭</a-button>
+        </div>
+      </template>
+
+      <div class="expanded-choice-panel">
+        <div class="expanded-choice-toolbar">
+          <a-input
+            v-model:value="expandedChoiceState.keyword"
+            class="expanded-choice-search"
+            placeholder="搜索选项"
+            allow-clear
+          />
+          <div class="expanded-choice-count">
+            当前显示 {{ filteredExpandedChoiceOptions.length }} 项
+          </div>
+        </div>
+        <div class="expanded-choice-actions">
+          <a-button size="small" @click="handleExpandedChoiceSelectFiltered">选中当前结果</a-button>
+          <a-button size="small" @click="handleExpandedChoiceDeselectFiltered">清除当前结果</a-button>
+          <a-button size="small" @click="handleExpandedChoiceSelectAll">全选</a-button>
+          <a-button size="small" danger @click="handleExpandedChoiceDeselectAll">取消全选</a-button>
+        </div>
+        <div class="expanded-choice-list">
+          <a-empty v-if="filteredExpandedChoiceOptions.length === 0" description="没有匹配的选项" />
+          <template v-else>
+            <label
+              v-for="option in filteredExpandedChoiceOptions"
+              :key="option.value"
+              class="expanded-choice-option"
+            >
+              <a-checkbox
+                :checked="isExpandedChoiceChecked(option.value)"
+                @change="handleExpandedChoiceToggle(option.value, $event)"
+              />
+              <span class="expanded-choice-option-main">{{ option.label }}</span>
+              <span
+                v-if="option.value !== option.label"
+                class="expanded-choice-option-value"
+              >
+                {{ option.value }}
+              </span>
+            </label>
+          </template>
+        </div>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -2048,8 +2290,117 @@ onMounted(async () => {
 .multi-choice-dropdown-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 4px 12px;
+}
+
+.multi-choice-expand-btn {
+  margin-left: auto;
+}
+
+.expanded-choice-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-right: 28px;
+}
+
+.expanded-choice-title {
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.expanded-choice-subtitle {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.expanded-choice-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.expanded-choice-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.expanded-choice-search {
+  min-width: 0;
+}
+
+.expanded-choice-count {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.expanded-choice-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.expanded-choice-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+  max-height: min(56vh, 520px);
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.expanded-choice-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 8px;
+  row-gap: 2px;
+  align-items: start;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(203, 213, 225, 0.84);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+}
+
+.expanded-choice-option:hover {
+  border-color: rgba(96, 165, 250, 0.48);
+  background: #fff;
+}
+
+.expanded-choice-option-main,
+.expanded-choice-option-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.expanded-choice-option-main {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.expanded-choice-option-value {
+  grid-column: 2;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .application-form-plain :deep(.ant-empty) {
@@ -2227,6 +2578,10 @@ onMounted(async () => {
   .release-param-heading {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .expanded-choice-toolbar {
+    grid-template-columns: 1fr;
   }
 }
 </style>

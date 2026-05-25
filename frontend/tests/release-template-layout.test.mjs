@@ -103,6 +103,17 @@ test('release template editor hides required stars while keeping required valida
   assert.match(source, /label="应用" name="application_id" :rules="\[\{ required: true, message: '请选择应用' \}\]"/, 'application should stay required')
 })
 
+test('release template clone mode keeps the application selector editable and reuses create-style payload editing', () => {
+  assert.match(source, /openCloneModal\(record: ReleaseTemplate\)[\s\S]*openEditModal\(record, 'clone'\)/, 'clone action should still open the editor in clone mode')
+  assert.match(source, /formState\.id = mode === 'clone' \? '' : template\.id/, 'clone mode should clear the source template id before submit')
+  assert.match(source, /formState\.name = mode === 'clone' \? buildCloneName\(template\.name\) : template\.name/, 'clone mode should prefill a cloned template name')
+  assert.match(source, /formState\.application_id = template\.application_id/, 'clone mode should prefill the source application before the user changes it')
+  assert.match(source, /v-model:value="formState\.application_id"[\s\S]*:disabled="modalMode === 'edit'"/, 'application selector should stay editable in clone mode and only lock during true edit mode')
+  assert.doesNotMatch(source, /v-model:value="formState\.application_id"[\s\S]*:disabled="modalMode !== 'create'"/, 'clone mode should not inherit the old create-only application lock')
+  assert.match(source, /\.\.\.\(modalMode\.value !== 'edit' \? \{ application_id: formState\.application_id\.trim\(\) \} : \{\}\)/, 'clone submit payload should still send the edited application id like create mode')
+  assert.match(source, /async function handleApplicationChange\(value: string \| undefined\)[\s\S]*loadBindings\(formState\.application_id\)[\s\S]*isHelmGitOps\(\) \? loadGitOpsValuesCandidates\(formState\.application_id,\s*true\) : loadGitOpsFieldCandidates\(formState\.application_id,\s*true\)/, 'changing the application in clone mode should reload the matching gitops candidate source so all cloned sections remain editable')
+})
+
 test('release template editor moves modal actions into a glass title bar and blurs the mask', () => {
   assert.match(source, /const templateEditorViewportInset = ref\(0\)/, 'template editor should track the sidebar width for content-area overlays')
   assert.match(source, /const templateEditorMaskStyle = computed\(\(\) => \(\{[\s\S]*background: 'rgba\(15,\s*23,\s*42,\s*0\.08\)'[\s\S]*backdropFilter: 'blur\(10px\)'/, 'template editor should use the same light blurred mask as pipeline binding')
