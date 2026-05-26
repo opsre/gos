@@ -62,6 +62,16 @@ func TestDatabaseReleaseStoreFallbackAndPersistence(t *testing.T) {
 	if len(reloadedOptions) != 2 || reloadedOptions[0] != "dev" || reloadedOptions[1] != "prod" {
 		t.Fatalf("persisted env options = %#v, want [dev prod]", reloadedOptions)
 	}
+	if err := store.SaveEnvOptions(ctx, nil); err != nil {
+		t.Fatalf("SaveEnvOptions empty failed: %v", err)
+	}
+	emptyOptions, err := store.LoadEnvOptions(ctx)
+	if err != nil {
+		t.Fatalf("LoadEnvOptions empty failed: %v", err)
+	}
+	if len(emptyOptions) != 0 {
+		t.Fatalf("empty env options = %#v, want empty", emptyOptions)
+	}
 
 	reloadedConcurrency, err := store.LoadConcurrencySettings(ctx)
 	if err != nil {

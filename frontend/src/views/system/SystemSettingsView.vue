@@ -87,7 +87,7 @@ async function loadSettings() {
 
 async function saveSettings() {
   const normalized = normalizeEnvOptions(envOptions.value)
-  if (normalized.length === 0) {
+  if (false && normalized.length === 0) {
     message.warning('请至少保留一个发布环境选项')
     return
   }

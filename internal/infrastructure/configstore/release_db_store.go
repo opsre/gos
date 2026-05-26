@@ -79,8 +79,8 @@ func (s *DatabaseReleaseStore) LoadEnvOptions(ctx context.Context) ([]string, er
 // SaveEnvOptions 封装当前模块的业务处理逻辑。
 func (s *DatabaseReleaseStore) SaveEnvOptions(ctx context.Context, values []string) error {
 	values = normalizeStringList(values)
-	if len(values) == 0 {
-		return fmt.Errorf("release env options are required")
+	if values == nil {
+		values = []string{}
 	}
 	if err := s.saveJSONSetting(ctx, releaseSettingsKeyEnvOptions, values); err != nil {
 		return err

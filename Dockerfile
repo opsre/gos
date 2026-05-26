@@ -10,6 +10,7 @@ RUN npm run build
 
 FROM m.daocloud.io/docker.io/library/golang:1.25 AS backend-builder
 WORKDIR /app
+RUN go env -w GOPROXY=https://goproxy.cn,direct
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .

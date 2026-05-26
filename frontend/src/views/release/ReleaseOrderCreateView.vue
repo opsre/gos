@@ -160,6 +160,19 @@ const authorizedEnvOptions = computed<SelectOption[]>(() => {
   return envOptions.value.filter((item) => allowedEnvCodes.has(item.value))
 })
 
+const releaseEnvNotice = computed(() => {
+  if (loadingEnvOptions.value) {
+    return ''
+  }
+  if (envOptions.value.length === 0) {
+    return '??????????????????? - ??????????'
+  }
+  if (showEnvironmentField.value && authorizedEnvOptions.value.length === 0) {
+    return '???????????????????????'
+  }
+  return ''
+})
+
 const currentUserDisplayName = computed(() => {
   const profile = authStore.profile
   if (!profile) {
@@ -474,9 +487,6 @@ function syncSelectedEnvCode() {
   const availableEnvCodes = authorizedEnvOptions.value.map((item) => item.value)
   if (formState.env_code && !availableEnvCodes.includes(formState.env_code)) {
     formState.env_code = ''
-  }
-  if (!formState.env_code && availableEnvCodes.length === 1) {
-    formState.env_code = availableEnvCodes[0] || ''
   }
 }
 
@@ -1538,6 +1548,14 @@ onMounted(async () => {
           type="warning"
           show-icon
           :message="templateWarning"
+        />
+
+        <a-alert
+          v-if="releaseEnvNotice"
+          class="template-alert template-alert-warning"
+          type="warning"
+          show-icon
+          :message="releaseEnvNotice"
         />
           </section>
 

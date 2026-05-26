@@ -50,6 +50,9 @@ func (s *ReleaseStore) LoadEnvOptions(_ context.Context) ([]string, error) {
 	}
 
 	node := readMapNode(payload, "release")
+	if _, ok := node["env_options"]; ok {
+		return normalizeStringListFromAny(node["env_options"]), nil
+	}
 	options := normalizeStringListFromAny(node["env_options"])
 	if len(options) == 0 {
 		return cloneStringList(defaultReleaseEnvOptions), nil
@@ -117,8 +120,8 @@ func (s *ReleaseStore) SaveEnvOptions(_ context.Context, values []string) error 
 	}
 
 	options := normalizeStringList(values)
-	if len(options) == 0 {
-		return fmt.Errorf("release env options are required")
+	if options == nil {
+		options = []string{}
 	}
 
 	releaseNode := readMapNode(payload, "release")

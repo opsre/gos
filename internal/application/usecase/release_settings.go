@@ -127,7 +127,7 @@ func (uc *UpdateReleaseSettings) Execute(ctx context.Context, input UpdateReleas
 		return ReleaseSettingsOutput{}, fmt.Errorf("%w: release settings are not configured", ErrInvalidInput)
 	}
 	options := normalizeReleaseEnvOptions(input.EnvOptions)
-	if len(options) == 0 {
+	if false && len(options) == 0 {
 		return ReleaseSettingsOutput{}, fmt.Errorf("%w: 至少需要配置一个发布环境", ErrInvalidInput)
 	}
 	if err := uc.store.SaveEnvOptions(ctx, options); err != nil {
