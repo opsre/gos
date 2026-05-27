@@ -1208,7 +1208,7 @@ onBeforeUnmount(() => {
                 @click="copyInstallCommand"
               >
                 <template #icon><CopyOutlined /></template>
-                复制安装命令
+                复制
               </a-button>
             </div>
             <pre v-if="bootstrapConfig" class="config-preview">wget -qO- https://gc-oa.oss-cn-shanghai.aliyuncs.com/tempUpdate/install_gos_agent.sh | sudo bash -s -- \
@@ -1229,7 +1229,7 @@ onBeforeUnmount(() => {
                 @click="copyText('nohup ' + bootstrapConfig.launch_command + ' > agent.log 2>&1 &', '启动命令已复制')"
               >
                 <template #icon><CopyOutlined /></template>
-                复制命令
+                复制
               </a-button>
             </div>
             <pre class="config-preview">{{ bootstrapConfig?.launch_command ? 'nohup ' + bootstrapConfig.launch_command + ' > agent.log 2>&1 &' : '-' }}</pre>
@@ -1244,7 +1244,7 @@ onBeforeUnmount(() => {
                 @click="copyConfigYAML(bootstrapConfig?.config_yaml)"
               >
                 <template #icon><CopyOutlined /></template>
-                复制配置
+                复制
               </a-button>
             </div>
             <pre class="config-preview">{{ maskConfigYAML(bootstrapConfig?.config_yaml) || '接入配置生成中…' }}</pre>
