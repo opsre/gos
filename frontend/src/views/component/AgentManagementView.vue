@@ -1190,14 +1190,6 @@ onBeforeUnmount(() => {
           <div class="task-panel-title">快速配置</div>
         </div>
         <a-space>
-          <a-button v-if="bootstrapConfig" class="agent-toolbar-action-btn" @click="copyInstallCommand">
-            <template #icon><CopyOutlined /></template>
-            复制安装命令
-          </a-button>
-          <a-button class="agent-toolbar-action-btn" @click="copyConfigYAML(bootstrapConfig?.config_yaml)">
-            <template #icon><CopyOutlined /></template>
-            复制配置
-          </a-button>
           <a-button class="agent-toolbar-action-btn" :loading="resettingBootstrapToken" @click="handleResetBootstrapToken">
             <template #icon><KeyOutlined /></template>
             重置接入 Token
@@ -1207,7 +1199,18 @@ onBeforeUnmount(() => {
       <a-spin :spinning="bootstrapConfigLoading">
         <div class="config-meta">
           <div class="config-col">
-            <div class="config-label">一键安装</div>
+            <div class="config-block-head">
+              <div class="config-label">一键安装</div>
+              <a-button
+                v-if="bootstrapConfig"
+                size="small"
+                class="config-inline-copy-btn"
+                @click="copyInstallCommand"
+              >
+                <template #icon><CopyOutlined /></template>
+                复制安装命令
+              </a-button>
+            </div>
             <pre v-if="bootstrapConfig" class="config-preview">wget -qO- https://gc-oa.oss-cn-shanghai.aliyuncs.com/tempUpdate/install_gos_agent.sh | sudo bash -s -- \
   --server-url {{ bootstrapConfig.resolved_server_url }} \
   --token [已隐藏，点击上方复制按钮获取完整命令] \
@@ -1217,11 +1220,33 @@ onBeforeUnmount(() => {
             <pre v-else class="config-preview">接入配置生成中…</pre>
           </div>
           <div class="config-col">
-            <div class="config-label">启动命令</div>
+            <div class="config-block-head">
+              <div class="config-label">启动命令</div>
+              <a-button
+                v-if="bootstrapConfig?.launch_command"
+                size="small"
+                class="config-inline-copy-btn"
+                @click="copyText('nohup ' + bootstrapConfig.launch_command + ' > agent.log 2>&1 &', '启动命令已复制')"
+              >
+                <template #icon><CopyOutlined /></template>
+                复制命令
+              </a-button>
+            </div>
             <pre class="config-preview">{{ bootstrapConfig?.launch_command ? 'nohup ' + bootstrapConfig.launch_command + ' > agent.log 2>&1 &' : '-' }}</pre>
           </div>
           <div class="config-col config-col--yaml">
-            <div class="config-label">配置文件</div>
+            <div class="config-block-head">
+              <div class="config-label">配置文件</div>
+              <a-button
+                v-if="bootstrapConfig?.config_yaml"
+                size="small"
+                class="config-inline-copy-btn"
+                @click="copyConfigYAML(bootstrapConfig?.config_yaml)"
+              >
+                <template #icon><CopyOutlined /></template>
+                复制配置
+              </a-button>
+            </div>
             <pre class="config-preview">{{ maskConfigYAML(bootstrapConfig?.config_yaml) || '接入配置生成中…' }}</pre>
           </div>
         </div>
@@ -2221,6 +2246,14 @@ onBeforeUnmount(() => {
 .config-label {
   color: var(--color-text-secondary);
   font-size: 12px;
+  margin-bottom: 0;
+}
+
+.config-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 6px;
 }
 
@@ -2249,6 +2282,12 @@ onBeforeUnmount(() => {
   margin-top: 10px;
   border-radius: 10px !important;
   font-weight: 600;
+}
+
+.config-inline-copy-btn {
+  border-radius: 10px !important;
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
 .config-actions {
