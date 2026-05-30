@@ -781,15 +781,38 @@ onUnmounted(() => {
 }
 
 .sider-menu :deep(.ant-menu-sub.ant-menu-inline) {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
   margin-top: 4px;
-  padding: 2px 0 8px !important;
+  padding: 4px 0 10px !important;
   background: transparent !important;
+}
+
+.sider-menu :deep(.ant-menu-sub.ant-menu-inline::before) {
+  content: '';
+  position: absolute;
+  top: 8px;
+  bottom: 14px;
+  left: 12px;
+  width: 1px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.18), rgba(56, 189, 248, 0.04));
+  pointer-events: none;
+}
+
+.sider-menu :deep(.ant-menu-sub.ant-menu-inline > .ant-menu-item),
+.sider-menu :deep(.ant-menu-sub.ant-menu-inline > .ant-menu-submenu) {
+  width: calc(100% - 24px);
+  margin-inline-start: auto;
 }
 
 .sider-menu :deep(.ant-menu-sub.ant-menu-inline .ant-menu-submenu-title),
 .sider-menu :deep(.ant-menu-sub.ant-menu-inline .ant-menu-item) {
   margin-inline: 0;
-  padding-inline-start: 16px !important;
+  padding-inline-start: 20px !important;
   color: rgba(203, 213, 225, 0.84) !important;
   border-radius: 12px;
   background: rgba(2, 6, 23, 0.16) !important;

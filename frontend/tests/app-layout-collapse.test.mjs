@@ -55,3 +55,26 @@ test('layout background stays clean instead of gray haze', () => {
     'decorative blue glow should stay very subtle',
   )
 })
+
+test('expanded submenu children are visually nested to the right', () => {
+  assert.match(
+    source,
+    /\.sider-menu\s+:deep\(\.ant-menu-sub\.ant-menu-inline\)\s*\{[\s\S]*align-items:\s*flex-end;/,
+    'inline submenu container should align children toward the right edge',
+  )
+  assert.match(
+    source,
+    /\.sider-menu\s+:deep\(\.ant-menu-sub\.ant-menu-inline::before\)\s*\{[\s\S]*left:\s*12px;[\s\S]*width:\s*1px;/,
+    'inline submenu container should render a subtle nesting guide line',
+  )
+  assert.match(
+    source,
+    /\.sider-menu\s+:deep\(\.ant-menu-sub\.ant-menu-inline > \.ant-menu-item\),[\s\S]*width:\s*calc\(100% - 24px\);[\s\S]*margin-inline-start:\s*auto;/,
+    'submenu entries should shrink and shift right to create a nested column effect',
+  )
+  assert.match(
+    source,
+    /\.sider-menu\s+:deep\(\.ant-menu-sub\.ant-menu-inline \.ant-menu-submenu-title\),[\s\S]*padding-inline-start:\s*20px\s*!important;/,
+    'submenu entry content should keep a deeper left inset inside the shifted column',
+  )
+})
