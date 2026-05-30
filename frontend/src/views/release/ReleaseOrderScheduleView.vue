@@ -52,6 +52,8 @@ interface SelectOption {
 }
 
 interface ReleaseOrderOption extends SelectOption {
+  title: string
+  summary: string
   record: ReleaseOrder
 }
 
@@ -431,6 +433,20 @@ function releaseOrderOptionLabel(item: ReleaseOrder) {
   return `${item.order_no} · ${name} · ${item.env_code || '-'}`
 }
 
+function releaseOrderOptionTitle(item: ReleaseOrder) {
+  const orderNo = String(item.order_no || '').trim() || '-'
+  const releaseName = String(item.release_name || '').trim() || String(item.application_name || '').trim() || '-'
+  return `${orderNo} · ${releaseName}`
+}
+
+function releaseOrderOptionSummary(item: ReleaseOrder) {
+  return [
+    String(item.application_name || '').trim() || '未知应用',
+    String(item.env_code || '').trim() || '未知环境',
+    formatTime(item.created_at),
+  ].join(' / ')
+}
+
 function formatTime(value: string | null) {
   if (!value) {
     return '-'
@@ -615,6 +631,8 @@ async function loadReleaseOrderOptions(keyword = releaseOrderSearchKeyword.value
     })
     const nextOptions = response.data.map((item) => ({
       label: releaseOrderOptionLabel(item),
+      title: releaseOrderOptionTitle(item),
+      summary: releaseOrderOptionSummary(item),
       value: item.id,
       record: item,
     }))
@@ -640,6 +658,8 @@ async function ensureReleaseOrderOption(releaseOrderID: string) {
     releaseOrderOptions.value = [
       {
         label: releaseOrderOptionLabel(response.data),
+        title: releaseOrderOptionTitle(response.data),
+        summary: releaseOrderOptionSummary(response.data),
         value: response.data.id,
         record: response.data,
       },
@@ -1408,13 +1428,27 @@ onBeforeUnmount(() => {
               allow-clear
               :filter-option="false"
               :loading="loadingReleaseOrders"
-              :options="releaseOrderOptions"
               not-found-content="暂无可预约发布单"
-              placeholder="下拉选择符合条件的发布单"
+              placeholder="可按发布单号、发布名称、应用名搜索"
               @change="handleReleaseOrderChange"
               @focus="loadReleaseOrderOptions()"
               @search="loadReleaseOrderOptions"
-            />
+            >
+              <a-select-option
+                v-for="item in releaseOrderOptions"
+                :key="item.value"
+                :value="item.value"
+                :label="item.label"
+              >
+                <div class="schedule-release-option">
+                  <div class="schedule-release-option-title">{{ item.title }}</div>
+                  <div class="schedule-release-option-summary">{{ item.summary }}</div>
+                </div>
+              </a-select-option>
+            </a-select>
+            <div class="schedule-form-field-hint">
+              选项展示发布单号、发布名称、应用、环境和创建时间，发布单较多时可直接输入关键字筛选。
+            </div>
           </a-form-item>
 
           <a-form-item name="schedule_mode" :rules="[{ required: true, message: '请选择预约模式' }]">
@@ -2415,6 +2449,33 @@ onBeforeUnmount(() => {
   color: #2563eb;
   font-size: 11px;
   line-height: 18px;
+}
+
+.schedule-form-field-hint {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.schedule-release-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+}
+
+.schedule-release-option-title {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.schedule-release-option-summary {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .schedule-form-date-picker {
