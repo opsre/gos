@@ -164,13 +164,10 @@ const releaseEnvNotice = computed(() => {
   if (loadingEnvOptions.value) {
     return ''
   }
-  if (!showEnvironmentField.value) {
-    return ''
-  }
   if (envOptions.value.length === 0) {
     return '当前系统尚未配置可用环境，请联系管理员检查发布设置'
   }
-  if (showEnvironmentField.value && authorizedEnvOptions.value.length === 0) {
+  if (formState.application_id.trim() && authorizedEnvOptions.value.length === 0) {
     return '当前账号对所选应用没有可用的环境发布权限'
   }
   return ''
@@ -278,6 +275,33 @@ const scopeCardList = computed(() =>
 const hasScopeErrors = computed(() => visibleScopes.value.some((scope) => Boolean(scopeStates[scope].error)))
 const isParamLoading = computed(() => loadingTemplateDetail.value || visibleScopes.value.some((scope) => scopeStates[scope].loading))
 const canSubmitRelease = computed(() => Boolean(formState.application_id && formState.template_id && formState.release_name.trim() && selectedTemplate.value && effectiveEnvCode.value) && !hasScopeErrors.value && !isParamLoading.value && !loadingEditOrder.value)
+const submitDisabledReason = computed(() => {
+  if (!formState.application_id.trim()) {
+    return '请先选择应用'
+  }
+  if (!formState.template_id.trim()) {
+    return '请先选择发布模板'
+  }
+  if (!formState.release_name.trim()) {
+    return '请先填写发布名称'
+  }
+  if (loadingTemplateDetail.value || loadingEditOrder.value) {
+    return '当前页面数据仍在加载，请稍后再试'
+  }
+  if (!selectedTemplate.value) {
+    return '当前发布模板详情尚未加载完成'
+  }
+  if (!effectiveEnvCode.value) {
+    return '当前账号对所选应用没有可用的环境发布权限'
+  }
+  if (hasScopeErrors.value) {
+    return '当前模板参数加载失败，请检查模板配置'
+  }
+  if (isParamLoading.value) {
+    return '执行参数仍在加载，请稍后再试'
+  }
+  return ''
+})
 const fastReleaseDisabledReason = computed(() => {
   if (isEditMode.value) {
     return '编辑模式下不支持极速发布'
@@ -1329,6 +1353,12 @@ async function submitRelease(options?: { fast?: boolean; buildOnly?: boolean }) 
 }
 
 async function handleSubmit() {
+  if (!canSubmitRelease.value) {
+    if (submitDisabledReason.value) {
+      message.warning(submitDisabledReason.value)
+    }
+    return
+  }
   await submitRelease()
 }
 
@@ -1344,8 +1374,9 @@ async function handleFastSubmit() {
 
 async function handleBuildOnlySubmit() {
   if (!canBuildOnlySubmitRelease.value) {
-    if (buildOnlyDisabledReason.value) {
-      message.warning(buildOnlyDisabledReason.value)
+    const blockedReason = buildOnlyDisabledReason.value || submitDisabledReason.value
+    if (blockedReason) {
+      message.warning(blockedReason)
     }
     return
   }
@@ -1376,8 +1407,9 @@ onMounted(async () => {
       <div class="page-header-actions">
         <a-button
           class="application-toolbar-action-btn"
+          :class="{ 'application-toolbar-action-btn-disabled': !canSubmitRelease }"
           :loading="standardSubmitting"
-          :disabled="!canSubmitRelease"
+          :aria-disabled="!canSubmitRelease"
           @click="handleSubmit"
         >
           <template #icon>
@@ -1907,6 +1939,11 @@ onMounted(async () => {
 :deep(.application-toolbar-action-btn.ant-btn.ant-btn-disabled) {
   opacity: 0.58;
   color: rgba(15, 23, 42, 0.62) !important;
+}
+
+:deep(.application-toolbar-action-btn-disabled.ant-btn) {
+  opacity: 0.58;
+  cursor: not-allowed;
 }
 
 :deep(.release-build-toolbar-btn.ant-btn) {
