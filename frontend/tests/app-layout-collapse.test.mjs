@@ -38,6 +38,14 @@ test('collapsed sider hides menu internals and prevents pointer events', () => {
   assert.match(source, /visibility:\s*hidden;/, 'collapsed sider internals should not leave visible submenu content')
 })
 
+test('sider toggle controls stay visually prominent', () => {
+  assert.match(source, /\.sider-footer-toggle,\s*\.layout-sider-restore\s*\{[\s\S]*border:\s*1px solid rgba\(96,\s*165,\s*250,\s*0\.34\);/, 'toggle controls should use a visible border')
+  assert.match(source, /\.sider-footer-toggle\s*\{[\s\S]*width:\s*26px;[\s\S]*height:\s*26px;/, 'footer collapse control should be large enough to notice')
+  assert.match(source, /\.layout-sider-restore\s*\{[\s\S]*width:\s*30px;[\s\S]*height:\s*64px;/, 'restore control should use a tall visible hit target')
+  assert.match(source, /\.sider-footer-toggle::before\s*\{[\s\S]*content:\s*'<';/, 'footer collapse control should render a clear left arrow')
+  assert.match(source, /\.layout-sider-restore::before\s*\{[\s\S]*content:\s*'>';/, 'restore control should render a clear right arrow')
+})
+
 test('layout background stays clean instead of gray haze', () => {
   assert.match(
     source,
@@ -64,17 +72,17 @@ test('expanded submenu children are visually nested to the right', () => {
   )
   assert.match(
     source,
-    /\.sider-menu\s+:deep\(\.ant-menu-sub\.ant-menu-inline::before\)\s*\{[\s\S]*left:\s*12px;[\s\S]*width:\s*1px;/,
+    /\.sider-menu\s+:deep\(\.ant-menu-sub\.ant-menu-inline::before\)\s*\{[\s\S]*left:\s*14px;[\s\S]*width:\s*2px;[\s\S]*rgba\(34,\s*211,\s*238,\s*0\.8\)/,
     'inline submenu container should render a subtle nesting guide line',
   )
   assert.match(
     source,
-    /\.sider-menu\s+:deep\(\.ant-menu-sub\.ant-menu-inline > \.ant-menu-item\),[\s\S]*width:\s*calc\(100% - 24px\);[\s\S]*margin-inline-start:\s*auto;/,
+    /\.sider-menu\s+:deep\(\.ant-menu-sub\.ant-menu-inline > \.ant-menu-item\),[\s\S]*width:\s*calc\(100% - 34px\);[\s\S]*margin-inline-start:\s*auto;/,
     'submenu entries should shrink and shift right to create a nested column effect',
   )
   assert.match(
     source,
-    /\.sider-menu\s+:deep\(\.ant-menu-sub\.ant-menu-inline \.ant-menu-submenu-title\),[\s\S]*padding-inline-start:\s*20px\s*!important;/,
+    /\.sider-menu\s+:deep\(\.ant-menu-sub\.ant-menu-inline \.ant-menu-submenu-title\),[\s\S]*padding-inline-start:\s*22px\s*!important;/,
     'submenu entry content should keep a deeper left inset inside the shifted column',
   )
 })

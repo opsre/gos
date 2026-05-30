@@ -642,31 +642,61 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: none;
-  background: transparent;
-  color: rgba(191, 219, 254, 0.76);
-  font-size: 18px;
+  border: 1px solid rgba(96, 165, 250, 0.34);
+  background:
+    radial-gradient(circle at top right, rgba(56, 189, 248, 0.2), transparent 42%),
+    rgba(15, 23, 42, 0.86);
+  color: #eff6ff;
+  font-size: 0;
   font-weight: 700;
   line-height: 1;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 24px rgba(2, 6, 23, 0.22);
   cursor: pointer;
-  transition: color 0.18s ease, opacity 0.18s ease, transform 0.18s ease;
+  transition:
+    color 0.18s ease,
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
 }
 
 .sider-footer-toggle {
-  width: 16px;
-  min-width: 16px;
-  height: 16px;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  border-radius: 9px;
 }
 
 .layout-sider-restore {
   position: fixed;
   top: 50%;
-  left: 8px;
+  left: 10px;
   z-index: 36;
-  width: 16px;
-  min-width: 16px;
-  height: 16px;
+  width: 30px;
+  min-width: 30px;
+  height: 64px;
+  border-radius: 14px;
   transform: translateY(-50%);
+}
+
+.sider-footer-toggle::before,
+.layout-sider-restore::before {
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.sider-footer-toggle::before {
+  content: '<';
+  transform: translateX(-1px);
+}
+
+.layout-sider-restore::before {
+  content: '>';
+  transform: translateX(1px);
 }
 
 .sider-footer-toggle:hover,
@@ -676,6 +706,13 @@ onUnmounted(() => {
 .layout-sider-restore:focus,
 .layout-sider-restore:focus-visible {
   color: #eff6ff;
+  border-color: rgba(125, 211, 252, 0.72);
+  background:
+    radial-gradient(circle at top right, rgba(56, 189, 248, 0.3), transparent 40%),
+    rgba(30, 41, 59, 0.94);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 14px 28px rgba(2, 6, 23, 0.28);
   transform: translateY(-1px);
 }
 
@@ -796,23 +833,24 @@ onUnmounted(() => {
   position: absolute;
   top: 8px;
   bottom: 14px;
-  left: 12px;
-  width: 1px;
+  left: 14px;
+  width: 2px;
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(56, 189, 248, 0.18), rgba(56, 189, 248, 0.04));
+  background: linear-gradient(180deg, rgba(34, 211, 238, 0.8), rgba(59, 130, 246, 0.28));
+  box-shadow: 0 0 12px rgba(34, 211, 238, 0.28);
   pointer-events: none;
 }
 
 .sider-menu :deep(.ant-menu-sub.ant-menu-inline > .ant-menu-item),
 .sider-menu :deep(.ant-menu-sub.ant-menu-inline > .ant-menu-submenu) {
-  width: calc(100% - 24px);
+  width: calc(100% - 34px);
   margin-inline-start: auto;
 }
 
 .sider-menu :deep(.ant-menu-sub.ant-menu-inline .ant-menu-submenu-title),
 .sider-menu :deep(.ant-menu-sub.ant-menu-inline .ant-menu-item) {
   margin-inline: 0;
-  padding-inline-start: 20px !important;
+  padding-inline-start: 22px !important;
   color: rgba(203, 213, 225, 0.84) !important;
   border-radius: 12px;
   background: rgba(2, 6, 23, 0.16) !important;
@@ -845,7 +883,7 @@ onUnmounted(() => {
 .sider-footer-role-group {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .sider-footer-version {
