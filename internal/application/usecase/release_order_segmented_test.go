@@ -843,6 +843,84 @@ func TestStartNextPendingExecutionPersistsChoiceCandidateMismatchReason(t *testi
 	}
 }
 
+func TestStartNextPendingExecutionAllowsStaleGitParameterCandidatesWhenSelectedValueStillExists(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	manager.now = func() time.Time { return now }
+	jenkins := &releaseExecutionGitParameterJenkinsFake{
+		jobSets: map[string]executorparamdomain.JenkinsJobParamSet{
+			"demo/job": {
+				JobFullName: "demo/job",
+				Params: []executorparamdomain.JenkinsParamSnapshot{
+					{
+						Name:      "BRANCH",
+						ParamType: executorparamdomain.ParamTypeChoice,
+						RawMeta:   `{"_class":"net.uaznia.lukanus.hudson.plugins.gitparameter.GitParameterDefinition","type":"GitParameterDefinition","choices":["origin/master","origin/develop"]}`,
+					},
+				},
+			},
+		},
+	}
+	manager.jenkins = jenkins
+	manager.pipelineRepo = segmentedReleasePipelineRepo{}
+	manager.paramRepo = &releasePrecheckParamRepoFake{
+		defs: map[string]executorparamdomain.ExecutorParamDef{
+			"ep-ci-branch": {
+				ID:                "ep-ci-branch",
+				PipelineID:        "pipeline-ci",
+				ExecutorType:      executorparamdomain.ExecutorTypeJenkins,
+				ExecutorParamName: "BRANCH",
+				ParamKey:          "branch",
+				ParamType:         executorparamdomain.ParamTypeChoice,
+				Status:            executorparamdomain.StatusActive,
+				RawMeta:           `{"_class":"net.uaznia.lukanus.hudson.plugins.gitparameter.GitParameterDefinition","type":"GitParameterDefinition","choices":["origin/release/v2.24.1","origin/master","origin/develop"]}`,
+			},
+		},
+	}
+
+	order := testReleaseOrder("ro-stale-git-param-start", "RO-STALE-GIT-PARAM-START", domain.OrderStatusPending, now)
+	order.TemplateID = ""
+	order.TemplateName = ""
+	executions := []domain.ReleaseOrderExecution{
+		{
+			ID:             "exec-ci",
+			ReleaseOrderID: order.ID,
+			PipelineScope:  domain.PipelineScopeCI,
+			Provider:       "jenkins",
+			PipelineID:     "pipeline-ci",
+			Status:         domain.ExecutionStatusPending,
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		},
+	}
+	params := []domain.ReleaseOrderParam{
+		{
+			ID:                "rop-ci-branch",
+			ReleaseOrderID:    order.ID,
+			PipelineScope:     domain.PipelineScopeCI,
+			ParamKey:          "branch",
+			ExecutorParamName: "BRANCH",
+			ParamValue:        "origin/master",
+			ValueSource:       domain.ValueSourceReleaseInput,
+			CreatedAt:         now,
+		},
+	}
+	steps := defaultReleaseOrderSteps(order.ID, executions, now, "", nil, order.EnvCode)
+	if err := repo.Create(ctx, order, executions, params, steps); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if err := manager.startNextPendingExecution(ctx, order, executions, params); err != nil {
+		t.Fatalf("startNextPendingExecution failed: %v", err)
+	}
+	if jenkins.triggerCount != 1 {
+		t.Fatalf("triggerCount = %d, want 1", jenkins.triggerCount)
+	}
+}
+
 // TestDeployReturnsSuccessWhenUpdateStatusReloadFails 更新业务资源并返回处理结果。
 func TestDeployReturnsSuccessWhenUpdateStatusReloadFails(t *testing.T) {
 	t.Parallel()
@@ -1072,6 +1150,11 @@ type releaseExecutionChoiceMismatchJenkinsFake struct {
 	jobSets      map[string]executorparamdomain.JenkinsJobParamSet
 }
 
+type releaseExecutionGitParameterJenkinsFake struct {
+	segmentedReleaseCountingJenkinsExecutor
+	jobSets map[string]executorparamdomain.JenkinsJobParamSet
+}
+
 type segmentedReleasePipelineRepo struct{}
 
 // InitSchema 封装当前模块的业务处理逻辑。
@@ -1284,6 +1367,14 @@ func (*releaseExecutionChoiceMismatchJenkinsFake) GetBuildStageLog(context.Conte
 
 // GetJobParamSet 查询并返回指定资源数据。
 func (e *releaseExecutionChoiceMismatchJenkinsFake) GetJobParamSet(_ context.Context, fullName string) (executorparamdomain.JenkinsJobParamSet, error) {
+	item, ok := e.jobSets[fullName]
+	if !ok {
+		return executorparamdomain.JenkinsJobParamSet{}, pipelinedomain.ErrPipelineNotFound
+	}
+	return item, nil
+}
+
+func (e *releaseExecutionGitParameterJenkinsFake) GetJobParamSet(_ context.Context, fullName string) (executorparamdomain.JenkinsJobParamSet, error) {
 	item, ok := e.jobSets[fullName]
 	if !ok {
 		return executorparamdomain.JenkinsJobParamSet{}, pipelinedomain.ErrPipelineNotFound

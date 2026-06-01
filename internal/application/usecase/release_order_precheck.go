@@ -140,7 +140,7 @@ func (uc *ReleaseOrderManager) buildOrderPrecheck(
 		output.Items = append(output.Items, templateItem)
 	}
 	if templateLoaded {
-		paramMappingItem, err := uc.buildTemplateParamMappingPrecheckItem(ctx, templateBindings, templateParams, executions, action)
+		paramMappingItem, err := uc.buildTemplateParamMappingPrecheckItem(ctx, templateBindings, templateParams, executions, params, action)
 		if err != nil {
 			return ReleaseOrderPrecheckOutput{}, err
 		}
@@ -260,6 +260,7 @@ func (uc *ReleaseOrderManager) buildTemplateParamMappingPrecheckItem(
 	bindings []domain.ReleaseTemplateBinding,
 	templateParams []domain.ReleaseTemplateParam,
 	executions []domain.ReleaseOrderExecution,
+	orderParams []domain.ReleaseOrderParam,
 	action ReleaseOrderDispatchAction,
 ) (ReleaseOrderPrecheckItem, error) {
 	item := ReleaseOrderPrecheckItem{
@@ -282,6 +283,7 @@ func (uc *ReleaseOrderManager) buildTemplateParamMappingPrecheckItem(
 	}
 
 	liveParamsByScope, liveParamErrors := uc.loadLiveJenkinsParamSnapshots(ctx, bindingByScope, scopes)
+	orderParamValues := indexReleaseOrderParamValues(orderParams)
 	missing := make([]string, 0)
 	missing = append(missing, liveParamErrors...)
 	for _, param := range templateParams {
@@ -292,7 +294,8 @@ func (uc *ReleaseOrderManager) buildTemplateParamMappingPrecheckItem(
 		if strings.ToLower(strings.TrimSpace(binding.Provider)) != string(pipelinedomain.ProviderJenkins) {
 			continue
 		}
-		missing = append(missing, uc.validateSingleTemplateParamMapping(ctx, param, liveParamsByScope[param.PipelineScope])...)
+		selectedValue := lookupReleaseOrderParamValue(orderParamValues, param.PipelineScope, param.ExecutorParamName, param.ParamKey)
+		missing = append(missing, uc.validateSingleTemplateParamMapping(ctx, param, liveParamsByScope[param.PipelineScope], selectedValue)...)
 	}
 
 	if len(missing) > 0 {
@@ -306,6 +309,7 @@ func (uc *ReleaseOrderManager) validateSingleTemplateParamMapping(
 	ctx context.Context,
 	param domain.ReleaseTemplateParam,
 	liveParams map[string]pipelineparamdomain.JenkinsParamSnapshot,
+	selectedValue string,
 ) []string {
 	scopeLabel := strings.ToUpper(string(param.PipelineScope))
 	paramLabel := executorParamNameOrKey(param.ExecutorParamName, firstNonEmpty(param.ParamName, param.ParamKey, param.ID))
@@ -355,7 +359,7 @@ func (uc *ReleaseOrderManager) validateSingleTemplateParamMapping(
 		if !ok && paramName != "" {
 			missing = append(missing, fmt.Sprintf("%s 参数 %s 在 Jenkins 真实管线中不存在", scopeLabel, paramLabel))
 		} else if ok && hasParamDef {
-			missing = append(missing, compareJenkinsChoiceCandidates(scopeLabel, paramLabel, paramDef, liveParam)...)
+			missing = append(missing, compareJenkinsChoiceCandidates(scopeLabel, paramLabel, paramDef, liveParam, selectedValue)...)
 		}
 	}
 	return missing
@@ -416,6 +420,7 @@ func compareJenkinsChoiceCandidates(
 	paramLabel string,
 	paramDef pipelineparamdomain.ExecutorParamDef,
 	liveParam pipelineparamdomain.JenkinsParamSnapshot,
+	selectedValue string,
 ) []string {
 	localChoices := extractChoiceCandidates(paramDef.RawMeta)
 	liveChoices := extractChoiceCandidates(liveParam.RawMeta)
@@ -423,6 +428,9 @@ func compareJenkinsChoiceCandidates(
 	liveIsChoice := liveParam.ParamType == pipelineparamdomain.ParamTypeChoice || len(liveChoices) > 0
 	if !localIsChoice && !liveIsChoice {
 		return nil
+	}
+	if isJenkinsGitParameterRawMeta(paramDef.RawMeta) || isJenkinsGitParameterRawMeta(liveParam.RawMeta) {
+		return validateSelectedJenkinsChoiceCandidate(scopeLabel, paramLabel, selectedValue, liveChoices)
 	}
 	if sameStringSlice(localChoices, liveChoices) {
 		return nil
@@ -436,6 +444,46 @@ func compareJenkinsChoiceCandidates(
 			formatChoiceCandidates(liveChoices),
 		),
 	}
+}
+
+func validateSelectedJenkinsChoiceCandidate(
+	scopeLabel string,
+	paramLabel string,
+	selectedValue string,
+	liveChoices []string,
+) []string {
+	selectedValue = strings.TrimSpace(selectedValue)
+	if selectedValue == "" || len(liveChoices) == 0 {
+		return nil
+	}
+	for _, choice := range liveChoices {
+		if selectedValue == strings.TrimSpace(choice) {
+			return nil
+		}
+	}
+	return []string{
+		fmt.Sprintf(
+			"%s 参数 %s 取值 %s 不在 Jenkins 真实候选值中，Jenkins=%s",
+			scopeLabel,
+			paramLabel,
+			selectedValue,
+			formatChoiceCandidates(liveChoices),
+		),
+	}
+}
+
+func isJenkinsGitParameterRawMeta(rawMeta string) bool {
+	rawMeta = strings.TrimSpace(rawMeta)
+	if rawMeta == "" {
+		return false
+	}
+	var fields map[string]any
+	if err := json.Unmarshal([]byte(rawMeta), &fields); err != nil {
+		return false
+	}
+	className := strings.ToLower(strings.TrimSpace(fmt.Sprint(fields["_class"])))
+	typeName := strings.ToLower(strings.TrimSpace(fmt.Sprint(fields["type"])))
+	return strings.Contains(className, "gitparameterdefinition") || strings.Contains(typeName, "gitparameterdefinition")
 }
 
 func extractChoiceCandidates(rawMeta string) []string {
@@ -513,6 +561,46 @@ func formatChoiceCandidates(values []string) string {
 		return "[]"
 	}
 	return "[" + strings.Join(values, ",") + "]"
+}
+
+func indexReleaseOrderParamValues(params []domain.ReleaseOrderParam) map[string]string {
+	result := make(map[string]string, len(params)*2)
+	for _, param := range params {
+		value := strings.TrimSpace(param.ParamValue)
+		if name := strings.ToLower(strings.TrimSpace(param.ExecutorParamName)); name != "" {
+			result[releaseOrderParamValueKey(param.PipelineScope, name)] = value
+		}
+		if key := strings.ToLower(strings.TrimSpace(param.ParamKey)); key != "" {
+			result[releaseOrderParamValueKey(param.PipelineScope, key)] = value
+		}
+	}
+	return result
+}
+
+func lookupReleaseOrderParamValue(
+	values map[string]string,
+	scope domain.PipelineScope,
+	executorParamName string,
+	paramKey string,
+) string {
+	if len(values) == 0 {
+		return ""
+	}
+	if name := strings.ToLower(strings.TrimSpace(executorParamName)); name != "" {
+		if value, ok := values[releaseOrderParamValueKey(scope, name)]; ok {
+			return value
+		}
+	}
+	if key := strings.ToLower(strings.TrimSpace(paramKey)); key != "" {
+		if value, ok := values[releaseOrderParamValueKey(scope, key)]; ok {
+			return value
+		}
+	}
+	return ""
+}
+
+func releaseOrderParamValueKey(scope domain.PipelineScope, key string) string {
+	return string(scope) + "\x00" + key
 }
 
 func precheckParamMappingScopes(

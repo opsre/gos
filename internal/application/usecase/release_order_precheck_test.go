@@ -382,6 +382,143 @@ func TestPrecheckExecuteBlocksJenkinsChoiceCandidateMismatch(t *testing.T) {
 	}
 }
 
+func TestPrecheckExecuteAllowsStaleGitParameterCandidatesWhenSelectedValueStillExists(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	manager.now = func() time.Time { return now }
+	manager.pipelineRepo = &pipelineScanPipelineRepoFake{
+		pipelines: map[string]pipelinedomain.Pipeline{
+			"pipeline-ci": {
+				ID:          "pipeline-ci",
+				Provider:    pipelinedomain.ProviderJenkins,
+				JobFullName: "folder/git-param-job",
+				JobName:     "git-param-job",
+				Status:      pipelinedomain.StatusActive,
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			},
+		},
+	}
+	manager.paramRepo = &releasePrecheckParamRepoFake{
+		defs: map[string]executorparamdomain.ExecutorParamDef{
+			"ep-ci-branch": {
+				ID:                "ep-ci-branch",
+				PipelineID:        "pipeline-ci",
+				ExecutorType:      executorparamdomain.ExecutorTypeJenkins,
+				ExecutorParamName: "BRANCH",
+				ParamKey:          "branch",
+				ParamType:         executorparamdomain.ParamTypeChoice,
+				Status:            executorparamdomain.StatusActive,
+				RawMeta:           `{"_class":"net.uaznia.lukanus.hudson.plugins.gitparameter.GitParameterDefinition","type":"GitParameterDefinition","choices":["origin/release/v2.24.1","origin/master","origin/develop"]}`,
+			},
+		},
+	}
+	manager.jenkins = &releasePrecheckJenkinsFake{
+		jobSets: map[string]executorparamdomain.JenkinsJobParamSet{
+			"folder/git-param-job": {
+				JobFullName: "folder/git-param-job",
+				Params: []executorparamdomain.JenkinsParamSnapshot{
+					{
+						Name:      "BRANCH",
+						ParamType: executorparamdomain.ParamTypeChoice,
+						RawMeta:   `{"_class":"net.uaznia.lukanus.hudson.plugins.gitparameter.GitParameterDefinition","type":"GitParameterDefinition","choices":["origin/master","origin/develop"]}`,
+					},
+				},
+			},
+		},
+	}
+
+	template := domain.ReleaseTemplate{
+		ID:              "rt-git-param",
+		Name:            "动态分支模板",
+		ApplicationID:   "app-1",
+		ApplicationName: "App 1",
+		BindingID:       "app-1",
+		BindingName:     "App 1",
+		BindingType:     "application",
+		Status:          domain.TemplateStatusActive,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	bindings := []domain.ReleaseTemplateBinding{
+		{
+			ID:            "rtb-git-param-ci",
+			TemplateID:    template.ID,
+			PipelineScope: domain.PipelineScopeCI,
+			BindingID:     "binding-ci",
+			BindingName:   "CI",
+			Provider:      "jenkins",
+			PipelineID:    "pipeline-ci",
+			Enabled:       true,
+			SortNo:        1,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		},
+	}
+	templateParams := []domain.ReleaseTemplateParam{
+		{
+			ID:                 "rtp-ci-branch",
+			TemplateID:         template.ID,
+			TemplateBindingID:  bindings[0].ID,
+			PipelineScope:      domain.PipelineScopeCI,
+			BindingID:          bindings[0].BindingID,
+			ExecutorParamDefID: "ep-ci-branch",
+			ParamKey:           "branch",
+			ParamName:          "分支",
+			ExecutorParamName:  "BRANCH",
+			ValueSource:        domain.TemplateParamValueSourceReleaseInput,
+			Required:           true,
+			SortNo:             1,
+			CreatedAt:          now,
+			UpdatedAt:          now,
+		},
+	}
+	if err := repo.CreateTemplate(ctx, template, bindings, templateParams, nil, nil); err != nil {
+		t.Fatalf("CreateTemplate failed: %v", err)
+	}
+
+	order := testReleaseOrder("ro-git-param", "RO-GIT-PARAM", domain.OrderStatusPending, now)
+	order.TemplateID = template.ID
+	order.TemplateName = template.Name
+	executions := []domain.ReleaseOrderExecution{
+		testReleaseExecution(order.ID, "exec-ci", domain.PipelineScopeCI, domain.ExecutionStatusPending, now),
+	}
+	orderParams := []domain.ReleaseOrderParam{
+		{
+			ID:                "rop-ci-branch",
+			ReleaseOrderID:    order.ID,
+			PipelineScope:     domain.PipelineScopeCI,
+			BindingID:         bindings[0].BindingID,
+			ParamKey:          "branch",
+			ExecutorParamName: "BRANCH",
+			ParamValue:        "origin/master",
+			ValueSource:       domain.ValueSourceReleaseInput,
+			CreatedAt:         now,
+		},
+	}
+	if err := repo.Create(ctx, order, executions, orderParams, nil); err != nil {
+		t.Fatalf("Create order failed: %v", err)
+	}
+
+	precheck, err := manager.PrecheckExecute(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("PrecheckExecute failed: %v", err)
+	}
+	if !precheck.Executable {
+		t.Fatalf("precheck executable = false, items = %#v", precheck.Items)
+	}
+	item := findPrecheckItem(precheck.Items, "template_param_mapping")
+	if item == nil {
+		t.Fatal("template_param_mapping item missing")
+	}
+	if item.Status != ReleaseOrderPrecheckItemStatusPass {
+		t.Fatalf("template_param_mapping status = %s, want pass, message=%q", item.Status, item.Message)
+	}
+}
+
 func findPrecheckItem(items []ReleaseOrderPrecheckItem, key string) *ReleaseOrderPrecheckItem {
 	for idx := range items {
 		if items[idx].Key == key {

@@ -3111,7 +3111,7 @@ func (uc *ReleaseOrderManager) validateJenkinsExecutionChoiceCandidates(
 			continue
 		}
 		paramLabel := executorParamNameOrKey(item.ExecutorParamName, firstNonEmpty(item.ParamKey, paramDef.ParamKey, paramDef.ID))
-		mismatches = append(mismatches, compareJenkinsChoiceCandidates(scopeLabel, paramLabel, paramDef, liveParam)...)
+		mismatches = append(mismatches, compareJenkinsChoiceCandidates(scopeLabel, paramLabel, paramDef, liveParam, item.ParamValue)...)
 	}
 	return mismatches
 }
