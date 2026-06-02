@@ -452,14 +452,19 @@ func (h *ReleaseTemplateHandler) Delete(c *gin.Context) {
 }
 
 func (h *ReleaseTemplateHandler) SyncExecutorParamDefs(c *gin.Context) {
-	if !ensurePermission(c, h.authz, "release.template.manage", "", "") {
+	template, _, _, _, _, err := h.manager.GetByID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		writeReleaseOrderHTTPError(c, err)
+		return
+	}
+	if !h.ensureTemplateAccess(c, template) {
 		return
 	}
 	if h.syncer == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "syncer is not configured"})
 		return
 	}
-	result, err := h.syncer.Execute(c.Request.Context(), c.Param("id"))
+	result, err := h.syncer.Execute(c.Request.Context(), template.ID)
 	if err != nil {
 		writeReleaseOrderHTTPError(c, err)
 		return
