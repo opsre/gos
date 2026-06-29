@@ -10,15 +10,15 @@ services:
     environment:
       MYSQL_DATABASE: gos_release
       MYSQL_USER: gos
-      MYSQL_PASSWORD: gos123
-      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_PASSWORD: ${GOS_MYSQL_PASSWORD:?set GOS_MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${GOS_MYSQL_ROOT_PASSWORD:?set GOS_MYSQL_ROOT_PASSWORD}
       TZ: Asia/Shanghai
     ports:
       - "3306:3306"
     volumes:
       - gos_mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-proot123"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -p\"$${MYSQL_ROOT_PASSWORD}\""]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -35,6 +35,12 @@ services:
         condition: service_healthy
     ports:
       - "8081:8081"
+    environment:
+      GOS_ENVIRONMENT: docker
+      GOS_DB_DRIVER: mysql
+      GOS_MYSQL_DSN: "gos:${GOS_MYSQL_PASSWORD:?set GOS_MYSQL_PASSWORD}@tcp(mysql:3306)/gos_release?charset=utf8mb4&parseTime=true&loc=UTC"
+      GOS_AUTH_ADMIN_PASSWORD: ${GOS_AUTH_ADMIN_PASSWORD:?set GOS_AUTH_ADMIN_PASSWORD}
+      GOS_SECURITY_ENCRYPTION_KEY: ${GOS_SECURITY_ENCRYPTION_KEY:?set GOS_SECURITY_ENCRYPTION_KEY}
     volumes:
       - ./configs/config.docker.json:/app/configs/config.docker.json:ro
     healthcheck:

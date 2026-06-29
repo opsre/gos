@@ -13,7 +13,7 @@
 #
 # 远程执行：
 #   wget -qO- https://gc-oa.oss-cn-shanghai.aliyuncs.com/tempUpdate/install_gos_agent.sh | bash -s -- \
-#     --server-url http://58.240.122.214:5174 \
+#     --server-url http://your-gos-server:5174 \
 #     --token agboot-xxxxxxxx \
 #     --work-dir /etc/gos-agent \
 #     --name prod-agent \
@@ -63,7 +63,7 @@ GOS Agent 一键安装脚本（systemd 终极版）
 
 示例:
   ./install_gos_agent.sh \\
-    --server-url http://58.240.122.214:5174 \\
+    --server-url http://your-gos-server:5174 \\
     --token agboot-xxxxxxxx \\
     --work-dir /etc/gos-agent \\
     --name prod-shicheng-10-5-5-200-gateway \\

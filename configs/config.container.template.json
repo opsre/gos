@@ -10,7 +10,7 @@
   },
   "database": {
     "driver": "mysql",
-    "mysql_dsn": "root:password@tcp(127.0.0.1:3306)/gos_release?charset=utf8mb4&parseTime=true&loc=UTC",
+    "mysql_dsn": "",
     "sqlite_path": "/app/data/demo.db",
     "max_open_conns": 10,
     "max_idle_conns": 5,
@@ -22,8 +22,8 @@
   },
   "jenkins": {
     "enabled": false,
-    "base_url": "http://127.0.0.1:8080/",
-    "username": "admin",
+    "base_url": "",
+    "username": "",
     "api_token": "",
     "timeout_sec": 60,
     "startup_check_enabled": false,
@@ -47,9 +47,9 @@
     "session_ttl_hours": 24,
     "admin_username": "admin",
     "admin_display_name": "Administrator",
-    "admin_password": "admin123"
+    "admin_password": ""
   },
   "security": {
-    "encryption_key": "gos-release-container-2026"
+    "encryption_key": ""
   }
 }

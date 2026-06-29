@@ -1,35 +1,35 @@
 {
   "auth": {
     "admin_display_name": "Administrator",
-    "admin_password": "admin123",
+    "admin_password": "change-me-local-admin-password",
     "admin_username": "admin",
     "session_ttl_hours": 24
   },
   "database": {
     "conn_max_idle_time_sec": 600,
     "conn_max_lifetime_sec": 1800,
-    "driver": "mysql",
+    "driver": "sqlite",
     "max_idle_conns": 5,
     "max_open_conns": 10,
-    "mysql_dsn": "root:JSgc_w29Sd@tcp(192.168.49.227:3306)/deploy_platform_test?charset=utf8mb4\u0026parseTime=true\u0026loc=UTC",
+    "mysql_dsn": "",
     "ping_timeout_sec": 5,
     "startup_max_retries": 10,
     "startup_retry_interval_sec": 2
   },
   "environment": "local",
   "jenkins": {
-    "api_token": "112aabb50308085b4c9fddb1cf7660a6f2",
+    "api_token": "",
     "auto_sync_enabled": true,
     "auto_sync_interval_sec": 5,
-    "base_url": "http://192.168.1.208:8000",
-    "enabled": true,
+    "base_url": "http://127.0.0.1:8080",
+    "enabled": false,
     "release_track_enabled": true,
     "release_track_interval_sec": 10,
-    "startup_check_enabled": true,
+    "startup_check_enabled": false,
     "startup_max_retries": 5,
     "startup_retry_interval_sec": 2,
     "timeout_sec": 60,
-    "username": "shuang"
+    "username": "admin"
   },
   "release": {
     "concurrency": {
@@ -44,7 +44,7 @@
     ]
   },
   "security": {
-    "encryption_key": "gos-release-local-2026"
+    "encryption_key": ""
   },
   "server": {
     "addr": ":8081",

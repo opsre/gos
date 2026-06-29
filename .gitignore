@@ -1,4 +1,10 @@
 .DS_Store
+.env
+.env.local
+.env.*.local
+configs/*.private.json
+configs/*.local.json
+!configs/config.local.json
 data/*.db
 tmp/
 docss/*

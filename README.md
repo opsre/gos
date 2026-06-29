@@ -307,7 +307,7 @@ docker run -d \
   -p 5174:5174 \
   -p 8081:8081 \
   -e GOS_DB_DRIVER=mysql \
-  -e GOS_MYSQL_DSN='user:password@tcp(mysql-host:3306)/deploy_platform?charset=utf8mb4&parseTime=true&loc=Local' \
+  -e GOS_MYSQL_DSN='<mysql-dsn>' \
   -e GOS_JENKINS_ENABLED=true \
   -e GOS_JENKINS_BASE_URL='http://jenkins.example.com/' \
   -e GOS_JENKINS_USERNAME='admin' \
@@ -319,6 +319,8 @@ docker run -d \
 ```
 
 > **说明**：GOS_SECURITY_ENCRYPTION_KEY 用于加密数据，请自定义 。
+
+Docker Compose 启动前可先复制 `.env.example` 到本地 `.env` 并填写真实值，`.env` 不应提交到仓库。
 
 访问地址：
 

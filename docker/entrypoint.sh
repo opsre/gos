@@ -59,7 +59,7 @@ cfg = {
     },
     "database": {
         "driver": env("GOS_DB_DRIVER", "mysql"),
-        "mysql_dsn": env("GOS_MYSQL_DSN", "root:password@tcp(127.0.0.1:3306)/gos_release?charset=utf8mb4&parseTime=true&loc=UTC"),
+        "mysql_dsn": env("GOS_MYSQL_DSN", ""),
         "sqlite_path": env("GOS_SQLITE_PATH", "/app/data/demo.db"),
         "max_open_conns": env_int("GOS_DB_MAX_OPEN_CONNS", 10),
         "max_idle_conns": env_int("GOS_DB_MAX_IDLE_CONNS", 5),
@@ -96,12 +96,22 @@ cfg = {
         "session_ttl_hours": env_int("GOS_AUTH_SESSION_TTL_HOURS", 24),
         "admin_username": env("GOS_AUTH_ADMIN_USERNAME", "admin"),
         "admin_display_name": env("GOS_AUTH_ADMIN_DISPLAY_NAME", "Administrator"),
-        "admin_password": env("GOS_AUTH_ADMIN_PASSWORD", "admin123"),
+        "admin_password": env("GOS_AUTH_ADMIN_PASSWORD", ""),
     },
     "security": {
-        "encryption_key": env("GOS_SECURITY_ENCRYPTION_KEY", "gos-release-container-2026"),
+        "encryption_key": env("GOS_SECURITY_ENCRYPTION_KEY", ""),
     },
 }
+
+missing = []
+if cfg["database"]["driver"] == "mysql" and not cfg["database"]["mysql_dsn"].strip():
+    missing.append("GOS_MYSQL_DSN")
+if not cfg["auth"]["admin_password"].strip():
+    missing.append("GOS_AUTH_ADMIN_PASSWORD")
+if not cfg["security"]["encryption_key"].strip():
+    missing.append("GOS_SECURITY_ENCRYPTION_KEY")
+if missing:
+    raise SystemExit("[gos-entrypoint] missing required environment variables: " + ", ".join(missing))
 
 out = Path('/app/configs/config.runtime.json')
 out.write_text(json.dumps(cfg, ensure_ascii=False, indent=2))
