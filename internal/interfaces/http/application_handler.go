@@ -19,12 +19,27 @@ import (
 )
 
 type ApplicationHandler struct {
-	creator *usecase.CreateApplication
-	query   *usecase.QueryApplication
-	updater *usecase.UpdateApplication
-	deleter *usecase.DeleteApplication
-	users   ApplicationUserReader
-	authz   RequestAuthorizer
+	creator             *usecase.CreateApplication
+	query               *usecase.QueryApplication
+	updater             *usecase.UpdateApplication
+	deleter             *usecase.DeleteApplication
+	workbench           *usecase.ApplicationWorkbench
+	approvalFlowManager *usecase.ReleaseOrderManager
+	users               ApplicationUserReader
+	authz               RequestAuthorizer
+}
+
+func (h *ApplicationHandler) SetApprovalFlowManager(manager *usecase.ReleaseOrderManager) {
+	if h != nil {
+		h.approvalFlowManager = manager
+	}
+}
+
+// SetWorkbenchQuery 注入应用工作台聚合查询；保留构造函数签名以兼容已有调用方。
+func (h *ApplicationHandler) SetWorkbenchQuery(query *usecase.ApplicationWorkbench) {
+	if h != nil {
+		h.workbench = query
+	}
 }
 
 type ApplicationUserReader interface {
@@ -54,6 +69,9 @@ func NewApplicationHandler(
 func (h *ApplicationHandler) RegisterRoutes(router gin.IRouter) {
 	router.POST("/applications", h.Create)
 	router.GET("/applications/options", h.ListOptions)
+	router.GET("/applications/workbench", h.Workbench)
+	router.GET("/applications/:id/approval-flow", h.GetApprovalFlowBinding)
+	router.PUT("/applications/:id/approval-flow", h.UpdateApprovalFlowBinding)
 	router.GET("/applications/:id", h.GetByID)
 	router.GET("/applications", h.List)
 	router.PUT("/applications/:id", h.Update)
@@ -125,6 +143,22 @@ type ApplicationListResponse struct {
 	Page     int                   `json:"page"`
 	PageSize int                   `json:"page_size"`
 	Total    int64                 `json:"total"`
+}
+
+type ApplicationWorkbenchOverviewResponse struct {
+	ApplicationIDs []string               `json:"application_ids"`
+	ReleaseOrders  []ReleaseOrderResponse `json:"release_orders"`
+}
+
+type ApplicationWorkbenchResponse struct {
+	Data                       []ApplicationResponse                `json:"data"`
+	Page                       int                                  `json:"page"`
+	PageSize                   int                                  `json:"page_size"`
+	Total                      int64                                `json:"total"`
+	TemplateNamesByApplication map[string][]string                  `json:"template_names_by_application"`
+	RecentReleaseOrders        []ReleaseOrderResponse               `json:"recent_release_orders"`
+	ReleaseStateSummaries      []AppReleaseStateSummaryResponse     `json:"release_state_summaries"`
+	Overview                   ApplicationWorkbenchOverviewResponse `json:"overview"`
 }
 
 type ApplicationOptionResponse struct {
@@ -287,6 +321,136 @@ func (h *ApplicationHandler) List(c *gin.Context) {
 	})
 }
 
+// Workbench 返回应用工作台一次渲染与一次轮询所需的聚合快照。
+// @Summary      查询应用工作台聚合数据
+// @Tags         applications
+// @Produce      json
+// @Router       /applications/workbench [get]
+func (h *ApplicationHandler) Workbench(c *gin.Context) {
+	if h.workbench == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "application workbench is not configured"})
+		return
+	}
+	page, err := parsePositiveIntQuery(c, "page")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	pageSize, err := parsePositiveIntQuery(c, "page_size")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	allowAllApplications, visibleApplicationIDs, ok := resolveVisibleApplicationIDsForApplications(c, h.authz)
+	if !ok {
+		return
+	}
+	allowAllReleases, visibleReleaseApplicationIDs, releaseScopes, releaseOK := resolveVisibleReleaseOrderApplicationIDs(c, h.authz)
+	if !releaseOK {
+		return
+	}
+	allowAllTemplates, visibleTemplateApplicationIDs, templateOK := resolveVisibleTemplateApplicationIDs(c, h.authz)
+	if !templateOK {
+		return
+	}
+
+	applicationFilter := domain.ListFilter{
+		Keyword:        c.Query("keyword"),
+		Key:            c.Query("key"),
+		Name:           c.Query("name"),
+		ProjectID:      c.Query("project_id"),
+		Status:         domain.Status(strings.TrimSpace(c.Query("status"))),
+		ApplicationIDs: resolveApplicationFilterIDs(strings.TrimSpace(c.Query("application_id")), allowAllApplications, visibleApplicationIDs),
+		Page:           page,
+		PageSize:       pageSize,
+	}
+	if !allowAllApplications && len(visibleApplicationIDs) == 0 {
+		applicationFilter.ApplicationIDs = []string{"__none__"}
+	}
+
+	overviewApplicationIDs := resolveApplicationFilterIDs("", allowAllApplications, visibleApplicationIDs)
+	if !allowAllApplications && len(overviewApplicationIDs) == 0 {
+		overviewApplicationIDs = []string{"__none__"}
+	}
+	output, err := h.workbench.Load(c.Request.Context(), usecase.ApplicationWorkbenchInput{
+		ApplicationFilter:       applicationFilter,
+		OverviewApplicationIDs:  overviewApplicationIDs,
+		ReleaseApplicationIDs:   releaseApplicationIDsForWorkbench(allowAllReleases, visibleReleaseApplicationIDs),
+		ReleaseApplicationScope: releaseScopes,
+		TemplateApplicationIDs:  templateApplicationIDsForWorkbench(allowAllTemplates, visibleTemplateApplicationIDs),
+		IncludeReleaseData:      allowAllReleases || len(visibleReleaseApplicationIDs) > 0 || len(releaseScopes) > 0,
+		IncludeTemplateData:     allowAllTemplates || len(visibleTemplateApplicationIDs) > 0,
+	})
+	if err != nil {
+		writeHTTPError(c, err)
+		return
+	}
+
+	applications := make([]ApplicationResponse, 0, len(output.Applications))
+	for _, item := range output.Applications {
+		applications = append(applications, toResponse(item))
+	}
+	templateNames := make(map[string][]string)
+	for _, item := range output.Templates {
+		applicationID := strings.TrimSpace(item.ApplicationID)
+		name := strings.TrimSpace(item.Name)
+		if applicationID == "" || name == "" || containsTemplateName(templateNames[applicationID], name) {
+			continue
+		}
+		templateNames[applicationID] = append(templateNames[applicationID], name)
+	}
+	recentOrders := make([]ReleaseOrderResponse, 0, len(output.RecentReleaseOrders))
+	for _, item := range output.RecentReleaseOrders {
+		recentOrders = append(recentOrders, toReleaseOrderResponse(item))
+	}
+	stateSummaries := make([]AppReleaseStateSummaryResponse, 0, len(output.ReleaseStateSummaries))
+	for _, item := range output.ReleaseStateSummaries {
+		stateSummaries = append(stateSummaries, toAppReleaseStateSummaryResponse(item))
+	}
+	overviewOrders := make([]ReleaseOrderResponse, 0, len(output.OverviewReleaseOrders))
+	for _, item := range output.OverviewReleaseOrders {
+		overviewOrders = append(overviewOrders, toReleaseOrderResponse(item))
+	}
+
+	c.JSON(http.StatusOK, ApplicationWorkbenchResponse{
+		Data:                       applications,
+		Page:                       output.Page,
+		PageSize:                   output.PageSize,
+		Total:                      output.Total,
+		TemplateNamesByApplication: templateNames,
+		RecentReleaseOrders:        recentOrders,
+		ReleaseStateSummaries:      stateSummaries,
+		Overview: ApplicationWorkbenchOverviewResponse{
+			ApplicationIDs: output.OverviewApplicationIDs,
+			ReleaseOrders:  overviewOrders,
+		},
+	})
+}
+
+func releaseApplicationIDsForWorkbench(allowAll bool, visibleIDs []string) []string {
+	if allowAll {
+		return nil
+	}
+	return append([]string(nil), visibleIDs...)
+}
+
+func templateApplicationIDsForWorkbench(allowAll bool, visibleIDs []string) []string {
+	if allowAll {
+		return nil
+	}
+	return append([]string(nil), visibleIDs...)
+}
+
+func containsTemplateName(items []string, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
+}
+
 // ListOptions 查询Options列表。
 // @Summary      查询Options列表
 // @Description  查询Options列表，并按统一响应结构返回处理结果。
@@ -447,6 +611,59 @@ func resolveVisibleApplicationIDsForApplications(
 	return false, result, true
 }
 
+// resolveVisibleTemplateApplicationIDs 保持工作台模板可见性与模板列表一致：
+// 管理员/模板管理员可见全部，其余用户只得到具备 release.create 权限的应用。
+func resolveVisibleTemplateApplicationIDs(
+	c *gin.Context,
+	authz RequestAuthorizer,
+) (allowAll bool, applicationIDs []string, ok bool) {
+	user, ok := getCurrentUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return false, nil, false
+	}
+	if authz == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "authorizer is not configured"})
+		return false, nil, false
+	}
+	if user.Role == userdomain.RoleAdmin {
+		return true, nil, true
+	}
+	manageAllowed, err := authz.HasPermission(c.Request.Context(), user, "release.template.manage", "", "")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return false, nil, false
+	}
+	if manageAllowed {
+		return true, nil, true
+	}
+	items, err := authz.ListEffectivePermissions(c.Request.Context(), user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return false, nil, false
+	}
+	applicationIDs, scopes := collectApplicationScopesFromPermissions(items, map[string]struct{}{
+		"release.create": {},
+	})
+	seen := make(map[string]struct{}, len(applicationIDs)+len(scopes))
+	for _, item := range applicationIDs {
+		seen[item] = struct{}{}
+	}
+	for _, item := range scopes {
+		applicationID := strings.TrimSpace(item.ApplicationID)
+		if applicationID == "" {
+			continue
+		}
+		if _, exists := seen[applicationID]; exists {
+			continue
+		}
+		seen[applicationID] = struct{}{}
+		applicationIDs = append(applicationIDs, applicationID)
+	}
+	sort.Strings(applicationIDs)
+	return false, applicationIDs, true
+}
+
 // resolveApplicationFilterIDs 解析上下文数据，得到后续流程需要的结果。
 func resolveApplicationFilterIDs(applicationID string, allowAll bool, visibleApplicationIDs []string) []string {
 	applicationID = strings.TrimSpace(applicationID)
@@ -601,6 +818,8 @@ func writeHTTPError(c *gin.Context, err error) {
 	case errors.Is(err, userdomain.ErrUserNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrKeyDuplicated):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, usecase.ErrReferencedConflict):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, projectdomain.ErrNotFound):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

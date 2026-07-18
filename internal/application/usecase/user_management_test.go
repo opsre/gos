@@ -91,9 +91,59 @@ func TestAuthSessionManagerLoginInvalidatesPreviousSession(t *testing.T) {
 	}
 }
 
+func TestUserManagementRejectsManagerHierarchyCycle(t *testing.T) {
+	t.Parallel()
+
+	repo := &authSessionUserRepoFake{
+		usersByUsername: map[string]userdomain.User{},
+		usersByID: map[string]userdomain.User{
+			"u-a": {ID: "u-a", Username: "a", Status: userdomain.StatusActive},
+			"u-b": {ID: "u-b", Username: "b", Status: userdomain.StatusActive},
+			"u-c": {ID: "u-c", Username: "c", Status: userdomain.StatusActive},
+		},
+		managers: map[string]string{},
+		sessions: map[string]userdomain.UserSession{},
+	}
+	manager := NewUserManagement(repo)
+	ctx := context.Background()
+	if err := manager.SetUserManagerID(ctx, "u-a", "u-b"); err != nil {
+		t.Fatalf("SetUserManagerID(a -> b) failed: %v", err)
+	}
+	if err := manager.SetUserManagerID(ctx, "u-b", "u-c"); err != nil {
+		t.Fatalf("SetUserManagerID(b -> c) failed: %v", err)
+	}
+	if err := manager.SetUserManagerID(ctx, "u-c", "u-a"); !errors.Is(err, userdomain.ErrUserManagerCycle) {
+		t.Fatalf("SetUserManagerID(c -> a) err=%v, want ErrUserManagerCycle", err)
+	}
+}
+
+func TestUserManagementKeepsAdministratorOutsideManagerHierarchy(t *testing.T) {
+	t.Parallel()
+
+	repo := &authSessionUserRepoFake{
+		usersByUsername: map[string]userdomain.User{},
+		usersByID: map[string]userdomain.User{
+			"u-admin": {ID: "u-admin", Username: "admin", Role: userdomain.RoleAdmin, Status: userdomain.StatusActive},
+			"u-user":  {ID: "u-user", Username: "user", Role: userdomain.RoleNormal, Status: userdomain.StatusActive},
+		},
+		managers: map[string]string{},
+		sessions: map[string]userdomain.UserSession{},
+	}
+	manager := NewUserManagement(repo)
+	ctx := context.Background()
+
+	if err := manager.SetUserManagerID(ctx, "u-user", "u-admin"); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("SetUserManagerID(user -> admin) err=%v, want ErrInvalidInput", err)
+	}
+	if err := manager.SetUserManagerID(ctx, "u-admin", "u-user"); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("SetUserManagerID(admin -> user) err=%v, want ErrInvalidInput", err)
+	}
+}
+
 type authSessionUserRepoFake struct {
 	usersByUsername map[string]userdomain.User
 	usersByID       map[string]userdomain.User
+	managers        map[string]string
 	sessions        map[string]userdomain.UserSession
 }
 
@@ -137,6 +187,26 @@ func (r *authSessionUserRepoFake) DeleteUser(context.Context, string) error { re
 
 func (r *authSessionUserRepoFake) ListUserOptions(context.Context) ([]userdomain.User, error) {
 	return nil, nil
+}
+
+func (r *authSessionUserRepoFake) GetUserManagerID(_ context.Context, userID string) (string, error) {
+	managerID, ok := r.managers[userID]
+	if !ok {
+		return "", userdomain.ErrUserManagerNotFound
+	}
+	return managerID, nil
+}
+
+func (r *authSessionUserRepoFake) SetUserManagerID(_ context.Context, userID string, managerUserID string, _ time.Time) error {
+	if r.managers == nil {
+		r.managers = map[string]string{}
+	}
+	if managerUserID == "" {
+		delete(r.managers, userID)
+		return nil
+	}
+	r.managers[userID] = managerUserID
+	return nil
 }
 
 func (r *authSessionUserRepoFake) ListPermissions(context.Context, userdomain.PermissionFilter) ([]userdomain.Permission, error) {

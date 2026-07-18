@@ -7,15 +7,16 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 MODE="local"
 CONFIG="configs/config.local.json"
-COMPOSE_FILE="docker-compose.yml"
 PID_FILE="runtime/backend.pid"
 LOG_FILE="logs/backend.log"
 BINARY_FILE="runtime/gos-server"
+BACKEND_SESSION="gos-backend"
 FRONTEND_DIR="frontend"
 FRONTEND_PORT=5174
 FRONTEND_PID_FILE="runtime/frontend.pid"
 FRONTEND_LOG_FILE="logs/frontend.log"
 FRONTEND_API_BASE_URL="http://127.0.0.1:8081"
+FRONTEND_SESSION="gos-frontend"
 HEALTH_URL="http://127.0.0.1:8081/healthz"
 HEALTH_TIMEOUT=60
 STOP_TIMEOUT=10
@@ -25,9 +26,8 @@ usage() {
 Usage: scripts/restart-backend.sh [options]
 
 Options:
-  --mode local|docker|prod     Start mode. Default: local
+  --mode local                 Compatibility option; only non-container local startup is supported. Default: local
   --config PATH                Config file for local mode. Default: configs/config.local.json
-  --compose-file PATH          Compose file for docker mode. Default: docker-compose.yml
   --health-url URL             Health endpoint to wait for. Default: http://127.0.0.1:8081/healthz
   --pid-file PATH              PID file for local mode. Default: runtime/backend.pid
   --log-file PATH              Log file for local mode. Default: logs/backend.log
@@ -37,8 +37,6 @@ Options:
 
 Examples:
   scripts/restart-backend.sh
-  scripts/restart-backend.sh --mode docker
-  scripts/restart-backend.sh --mode prod
 USAGE
 }
 
@@ -65,11 +63,6 @@ while [[ $# -gt 0 ]]; do
     --config)
       [[ $# -ge 2 ]] || fail "--config requires a value"
       CONFIG="$2"
-      shift 2
-      ;;
-    --compose-file)
-      [[ $# -ge 2 ]] || fail "--compose-file requires a value"
-      COMPOSE_FILE="$2"
       shift 2
       ;;
     --health-url)
@@ -106,16 +99,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "${MODE}" in
-  local|docker|prod)
+  local)
     ;;
   *)
-    fail "unsupported mode: ${MODE}"
+    fail "unsupported mode: ${MODE}; only local non-container startup is supported"
     ;;
 esac
-
-if [[ "${MODE}" == "prod" ]]; then
-  COMPOSE_FILE="docker-compose.prod.yml"
-fi
 
 cd "${ROOT_DIR}"
 
@@ -247,6 +236,14 @@ stop_port_listener() {
   done <<< "${pids}"
 }
 
+stop_screen_session() {
+  local session="$1"
+
+  if command -v screen >/dev/null 2>&1; then
+    screen -S "${session}" -X quit >/dev/null 2>&1 || true
+  fi
+}
+
 refresh_pid_file_from_listener() {
   local fallback_pid="${1:-}"
   local port
@@ -263,6 +260,19 @@ refresh_pid_file_from_listener() {
   elif [[ -n "${fallback_pid}" ]]; then
     printf '%s\n' "${fallback_pid}" > "${PID_FILE}"
     log "pid: ${fallback_pid}"
+  fi
+}
+
+refresh_frontend_pid_file_from_listener() {
+  local listener_pid=""
+
+  if command -v lsof >/dev/null 2>&1; then
+    listener_pid="$(stable_listener_pid "${FRONTEND_PORT}")"
+  fi
+
+  if [[ -n "${listener_pid}" ]]; then
+    printf '%s\n' "${listener_pid}" > "${FRONTEND_PID_FILE}"
+    log "frontend listener pid: ${listener_pid}"
   fi
 }
 
@@ -297,11 +307,19 @@ restart_local() {
 
   log "starting local backend with config: ${CONFIG}"
   : > "${LOG_FILE}"
-  nohup "${BINARY_FILE}" -config "${CONFIG}" >>"${LOG_FILE}" 2>&1 &
-  local backend_pid=$!
-  printf '%s\n' "${backend_pid}" > "${PID_FILE}"
+  local backend_pid=""
+  stop_screen_session "${BACKEND_SESSION}"
+  if command -v screen >/dev/null 2>&1; then
+    screen -dmS "${BACKEND_SESSION}" sh -c 'cd "$1" && exec "$2" -config "$3" >>"$4" 2>&1' sh "${ROOT_DIR}" "${ROOT_DIR}/${BINARY_FILE}" "${CONFIG}" "${ROOT_DIR}/${LOG_FILE}"
+    log "backend session: ${BACKEND_SESSION}"
+  else
+    nohup "${BINARY_FILE}" -config "${CONFIG}" >>"${LOG_FILE}" 2>&1 &
+    backend_pid=$!
+    printf '%s\n' "${backend_pid}" > "${PID_FILE}"
+    disown "${backend_pid}" >/dev/null 2>&1 || true
+    log "launch pid: ${backend_pid}"
+  fi
 
-  log "launch pid: ${backend_pid}"
   log "log: ${LOG_FILE}"
 
   wait_for_health "${backend_pid}"
@@ -357,54 +375,27 @@ ensure_frontend() {
 
   log "starting frontend dev server on port ${FRONTEND_PORT}"
   : > "${FRONTEND_LOG_FILE}"
-  (
-    cd "${FRONTEND_DIR}"
-    nohup env VITE_API_BASE_URL="${FRONTEND_API_BASE_URL}" npm run dev >>"${ROOT_DIR}/${FRONTEND_LOG_FILE}" 2>&1 &
-    printf '%s\n' "$!" > "${ROOT_DIR}/${FRONTEND_PID_FILE}"
-  )
-  log "frontend pid: $(cat "${FRONTEND_PID_FILE}")"
+  stop_screen_session "${FRONTEND_SESSION}"
+  if command -v screen >/dev/null 2>&1; then
+    screen -dmS "${FRONTEND_SESSION}" sh -c 'cd "$1" && exec env VITE_API_BASE_URL="$2" npm run dev >>"$3" 2>&1' sh "${ROOT_DIR}/${FRONTEND_DIR}" "${FRONTEND_API_BASE_URL}" "${ROOT_DIR}/${FRONTEND_LOG_FILE}"
+    log "frontend session: ${FRONTEND_SESSION}"
+  else
+    (
+      cd "${FRONTEND_DIR}"
+      nohup env VITE_API_BASE_URL="${FRONTEND_API_BASE_URL}" npm run dev >>"${ROOT_DIR}/${FRONTEND_LOG_FILE}" 2>&1 &
+      local frontend_pid=$!
+      printf '%s\n' "${frontend_pid}" > "${ROOT_DIR}/${FRONTEND_PID_FILE}"
+      disown "${frontend_pid}" >/dev/null 2>&1 || true
+    )
+    log "frontend pid: $(cat "${FRONTEND_PID_FILE}")"
+  fi
   log "frontend log: ${FRONTEND_LOG_FILE}"
 
   wait_for_frontend
+  refresh_frontend_pid_file_from_listener
 }
 
-compose_command() {
-  if docker compose version >/dev/null 2>&1; then
-    docker compose "$@"
-  elif command -v docker-compose >/dev/null 2>&1; then
-    docker-compose "$@"
-  else
-    fail "missing docker compose or docker-compose"
-  fi
-}
-
-restart_compose() {
-  require_command docker
-  require_command curl
-
-  [[ -f "${COMPOSE_FILE}" ]] || fail "compose file not found: ${COMPOSE_FILE}"
-
-  log "starting compose backend and frontend services with ${COMPOSE_FILE}"
-  if docker compose version >/dev/null 2>&1; then
-    docker compose -f "${COMPOSE_FILE}" up -d --build backend frontend
-  elif command -v docker-compose >/dev/null 2>&1; then
-    docker-compose -f "${COMPOSE_FILE}" up -d --build backend frontend
-  else
-    fail "missing docker compose or docker-compose"
-  fi
-
-  wait_for_health
-  compose_command -f "${COMPOSE_FILE}" ps backend frontend
-}
-
-case "${MODE}" in
-  local)
-    restart_local
-    ensure_frontend
-    ;;
-  docker|prod)
-    restart_compose
-    ;;
-esac
+restart_local
+ensure_frontend
 
 log "backend and frontend startup completed (${MODE})"

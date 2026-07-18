@@ -838,6 +838,41 @@ func (uc *ReleaseOrderManager) evaluateDispatchGuard(
 	}
 	guard := releaseDispatchGuard{Settings: settings}
 
+	// An active execution lock is the authoritative queue owner. Check it before
+	// comparing queued orders so a follower cannot make the lock owner wait for
+	// itself after the tracker refreshes the order state.
+	if settings.Enabled {
+		lockScope, lockKey, lockErr := uc.buildExecutionLockIdentity(ctx, order, execution, params, settings)
+		if lockErr != nil {
+			return releaseDispatchGuard{}, lockErr
+		}
+		guard.LockScope = lockScope
+		guard.LockKey = lockKey
+
+		lock, findLockErr := uc.repo.FindActiveExecutionLock(ctx, lockKey, "", uc.now())
+		if findLockErr != nil && !errors.Is(findLockErr, domain.ErrExecutionLockNotFound) {
+			return releaseDispatchGuard{}, findLockErr
+		}
+		if findLockErr == nil {
+			if strings.TrimSpace(lock.ReleaseOrderID) == strings.TrimSpace(order.ID) {
+				return guard, nil
+			}
+			guard.ConflictLock = &lock
+			if uc.shouldQueueInConcurrentBatch(ctx, order, lock) {
+				guard.WaitingForLock = true
+				guard.Message = fmt.Sprintf("当前批次的同应用同环境发布单 %s 正在执行，已进入顺序等待队列", firstNonEmpty(lock.ReleaseOrderNo, lock.ReleaseOrderID))
+				return guard, nil
+			}
+			if settings.ConflictStrategy == ReleaseConcurrencyConflictStrategyQueue {
+				guard.WaitingForLock = true
+				guard.Message = fmt.Sprintf("当前目标已被发布单 %s 占用，已进入排队等待", firstNonEmpty(lock.ReleaseOrderNo, lock.ReleaseOrderID))
+				return guard, nil
+			}
+			guard.Message = fmt.Sprintf("当前目标已被发布单 %s 占用，请稍后再试", firstNonEmpty(lock.ReleaseOrderNo, lock.ReleaseOrderID))
+			return guard, nil
+		}
+	}
+
 	conflictOrder, err := uc.repo.FindActiveOrderByApplicationEnv(ctx, order.ApplicationID, order.EnvCode, order.ID)
 	if err != nil && !errors.Is(err, domain.ErrOrderNotFound) {
 		return releaseDispatchGuard{}, err
@@ -852,38 +887,21 @@ func (uc *ReleaseOrderManager) evaluateDispatchGuard(
 			aheadCount = 1
 		}
 		guard.AheadCount = aheadCount
-		guard.Message = fmt.Sprintf("当前应用在环境 %s 前面还有 %d 单，请等待先前执行单结束后再点击发布", firstNonEmpty(strings.TrimSpace(order.EnvCode), "-"), aheadCount)
+		switch {
+		case shouldQueueBehindConcurrentOrder(order, conflictOrder):
+			guard.WaitingForLock = true
+			guard.Message = fmt.Sprintf("当前批次的同应用同环境发布单 %s 正在执行，已进入顺序等待队列", firstNonEmpty(conflictOrder.OrderNo, conflictOrder.ID))
+		case settings.ConflictStrategy == ReleaseConcurrencyConflictStrategyQueue:
+			guard.WaitingForLock = true
+			guard.Message = fmt.Sprintf("当前应用在环境 %s 前面还有 %d 单，已进入排队等待", firstNonEmpty(strings.TrimSpace(order.EnvCode), "-"), aheadCount)
+		default:
+			guard.Message = fmt.Sprintf("当前应用在环境 %s 前面还有 %d 单，请等待先前执行单结束后再点击发布", firstNonEmpty(strings.TrimSpace(order.EnvCode), "-"), aheadCount)
+		}
 		return guard, nil
 	}
 
 	if !settings.Enabled {
 		return guard, nil
-	}
-
-	lockScope, lockKey, err := uc.buildExecutionLockIdentity(ctx, order, execution, params, settings)
-	if err != nil {
-		return releaseDispatchGuard{}, err
-	}
-	guard.LockScope = lockScope
-	guard.LockKey = lockKey
-
-	lock, err := uc.repo.FindActiveExecutionLock(ctx, lockKey, order.ID, uc.now())
-	if err != nil && !errors.Is(err, domain.ErrExecutionLockNotFound) {
-		return releaseDispatchGuard{}, err
-	}
-	if err == nil {
-		guard.ConflictLock = &lock
-		if uc.shouldQueueInConcurrentBatch(ctx, order, lock) {
-			guard.WaitingForLock = true
-			guard.Message = fmt.Sprintf("当前批次的同应用同环境发布单 %s 正在执行，已进入顺序等待队列", firstNonEmpty(lock.ReleaseOrderNo, lock.ReleaseOrderID))
-			return guard, nil
-		}
-		if settings.ConflictStrategy == ReleaseConcurrencyConflictStrategyQueue {
-			guard.WaitingForLock = true
-			guard.Message = fmt.Sprintf("当前目标已被发布单 %s 占用，已进入排队等待", firstNonEmpty(lock.ReleaseOrderNo, lock.ReleaseOrderID))
-			return guard, nil
-		}
-		guard.Message = fmt.Sprintf("当前目标已被发布单 %s 占用，请稍后再试", firstNonEmpty(lock.ReleaseOrderNo, lock.ReleaseOrderID))
 	}
 	return guard, nil
 }
@@ -931,19 +949,24 @@ func (uc *ReleaseOrderManager) ensureExecutionLock(
 	}
 	expiredAt := uc.now().Add(time.Duration(guard.Settings.LockTimeoutSec) * time.Second)
 	lock.ExpiredAt = &expiredAt
-	_, acquired, err := uc.repo.AcquireExecutionLock(ctx, lock, uc.now())
+	resolvedLock, acquired, err := uc.repo.AcquireExecutionLock(ctx, lock, uc.now())
 	if err != nil {
 		return releaseDispatchGuard{}, false, err
 	}
 	if !acquired {
-		if guard.WaitingForLock || guard.Settings.ConflictStrategy == ReleaseConcurrencyConflictStrategyQueue {
+		guard.ConflictLock = &resolvedLock
+		if uc.shouldQueueInConcurrentBatch(ctx, order, resolvedLock) {
+			guard.WaitingForLock = true
+			guard.Message = fmt.Sprintf("当前批次的同应用同环境发布单 %s 正在执行，已进入顺序等待队列", firstNonEmpty(resolvedLock.ReleaseOrderNo, resolvedLock.ReleaseOrderID))
 			return guard, false, nil
 		}
 		if guard.Settings.ConflictStrategy == ReleaseConcurrencyConflictStrategyQueue {
 			guard.WaitingForLock = true
+			guard.Message = fmt.Sprintf("当前目标已被发布单 %s 占用，已进入排队等待", firstNonEmpty(resolvedLock.ReleaseOrderNo, resolvedLock.ReleaseOrderID))
 			return guard, false, nil
 		}
-		return releaseDispatchGuard{}, false, fmt.Errorf("%w: %s", ErrConcurrentReleaseBlocked, guard.Message)
+		guard.Message = fmt.Sprintf("当前目标已被发布单 %s 占用，请稍后再试", firstNonEmpty(resolvedLock.ReleaseOrderNo, resolvedLock.ReleaseOrderID))
+		return guard, false, fmt.Errorf("%w: %s", ErrConcurrentReleaseBlocked, guard.Message)
 	}
 	return guard, true, nil
 }

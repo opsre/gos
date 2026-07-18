@@ -40,10 +40,31 @@ func (r *ReleaseRepository) InitSchema(ctx context.Context) error {
 			return execErr
 		}
 	}
-	if err := r.migrateSchema(ctx); err != nil {
-		return err
-	}
-	return r.initScheduleSchema(ctx)
+	return runSchemaMigrations(
+		ctx,
+		r.db,
+		r.dbDriver,
+		schemaMigration{
+			Version:     "deploy_platform_v1_1_release_schema",
+			Description: "upgrade legacy release tables, columns, indexes and data",
+			Up:          r.migrateSchema,
+		},
+		schemaMigration{
+			Version:     "deploy_platform_v1_1_release_schedule",
+			Description: "create release scheduling tables",
+			Up:          r.initScheduleSchema,
+		},
+		schemaMigration{
+			Version:     "20260717_02_release_approval_flow",
+			Description: "create release approval flow definitions, instances, tasks and bindings",
+			Up:          r.initApprovalFlowSchema,
+		},
+		schemaMigration{
+			Version:     "20260718_01_release_approval_flow_runtime_columns",
+			Description: "ensure approval flow runtime columns after early v1.3 builds",
+			Up:          r.initApprovalFlowSchema,
+		},
+	)
 }
 
 // releaseSchemaStatements 封装当前模块的业务处理逻辑。
@@ -72,7 +93,6 @@ func releaseSchemaStatements(dbDriver string) ([]string, error) {
 	binding_id VARCHAR(64) NOT NULL,
 	pipeline_id VARCHAR(64) NOT NULL DEFAULT '',
 	env_code VARCHAR(50) NOT NULL,
-	son_service VARCHAR(200) NOT NULL DEFAULT '',
 	git_ref VARCHAR(200) NOT NULL DEFAULT '',
 	image_tag VARCHAR(200) NOT NULL DEFAULT '',
 	trigger_type VARCHAR(50) NOT NULL,
@@ -98,8 +118,6 @@ func releaseSchemaStatements(dbDriver string) ([]string, error) {
 	UNIQUE KEY uk_release_order_no (order_no),
 	KEY idx_release_order_application (application_id),
 	KEY idx_release_order_binding (binding_id),
-	KEY idx_release_order_batch (concurrent_batch_no),
-	KEY idx_release_order_batch_name (concurrent_batch_name),
 	KEY idx_release_order_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
 			`CREATE TABLE IF NOT EXISTS release_order_execution (
@@ -358,7 +376,6 @@ func releaseSchemaStatements(dbDriver string) ([]string, error) {
 	binding_id TEXT NOT NULL,
 	pipeline_id TEXT NOT NULL DEFAULT '',
 	env_code TEXT NOT NULL,
-	son_service TEXT NOT NULL DEFAULT '',
 	git_ref TEXT NOT NULL DEFAULT '',
 	image_tag TEXT NOT NULL DEFAULT '',
 	trigger_type TEXT NOT NULL,
@@ -384,8 +401,6 @@ func releaseSchemaStatements(dbDriver string) ([]string, error) {
 );`,
 			`CREATE INDEX IF NOT EXISTS idx_release_order_application ON release_order (application_id);`,
 			`CREATE INDEX IF NOT EXISTS idx_release_order_binding ON release_order (binding_id);`,
-			`CREATE INDEX IF NOT EXISTS idx_release_order_batch ON release_order (concurrent_batch_no);`,
-			`CREATE INDEX IF NOT EXISTS idx_release_order_batch_name ON release_order (concurrent_batch_name);`,
 			`CREATE INDEX IF NOT EXISTS idx_release_order_created_at ON release_order (created_at);`,
 			`CREATE TABLE IF NOT EXISTS release_order_execution (
 	id TEXT PRIMARY KEY,
@@ -650,18 +665,6 @@ func (r *ReleaseRepository) migrateSchema(ctx context.Context) error {
 			}
 		}
 
-		exists, err = r.mysqlColumnExists(ctx, "release_order", "son_service")
-		if err != nil {
-			return err
-		}
-		if !exists {
-			if _, err = r.db.ExecContext(
-				ctx,
-				`ALTER TABLE release_order ADD COLUMN son_service VARCHAR(200) NOT NULL DEFAULT '' AFTER env_code;`,
-			); err != nil {
-				return err
-			}
-		}
 		exists, err = r.mysqlColumnExists(ctx, "release_order", "creator_user_id")
 		if err != nil {
 			return err
@@ -1005,14 +1008,6 @@ WHERE (ro.creator_user_id IS NULL OR TRIM(ro.creator_user_id) = '')
 		if err != nil {
 			return err
 		}
-		if _, ok := columns["son_service"]; !ok {
-			if _, err = r.db.ExecContext(
-				ctx,
-				`ALTER TABLE release_order ADD COLUMN son_service TEXT NOT NULL DEFAULT '';`,
-			); err != nil {
-				return err
-			}
-		}
 		if _, ok := columns["creator_user_id"]; !ok {
 			if _, err = r.db.ExecContext(
 				ctx,
@@ -1351,9 +1346,7 @@ func (r *ReleaseRepository) ensureSQLiteDeploySnapshotTargetUnique(ctx context.C
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-
-	needsRebuild := false
+	uniqueIndexes := make([]string, 0)
 	for rows.Next() {
 		var (
 			seq     int
@@ -1368,6 +1361,18 @@ func (r *ReleaseRepository) ensureSQLiteDeploySnapshotTargetUnique(ctx context.C
 		if unique == 0 {
 			continue
 		}
+		uniqueIndexes = append(uniqueIndexes, name)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+
+	needsRebuild := false
+	for _, name := range uniqueIndexes {
 		infoRows, err := r.db.QueryContext(ctx, fmt.Sprintf("PRAGMA index_info(%q);", name))
 		if err != nil {
 			return err
@@ -1392,9 +1397,6 @@ func (r *ReleaseRepository) ensureSQLiteDeploySnapshotTargetUnique(ctx context.C
 			needsRebuild = true
 			break
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
 	}
 	if !needsRebuild {
 		return nil
@@ -1489,8 +1491,8 @@ func (r *ReleaseRepository) Create(
 	const insertOrder = `
 INSERT INTO release_order (
 	id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code,
-	son_service, git_ref, image_tag, trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
+	git_ref, image_tag, trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
 
 	_, err = tx.ExecContext(
 		ctx,
@@ -1515,7 +1517,6 @@ INSERT INTO release_order (
 		order.BindingID,
 		order.PipelineID,
 		order.EnvCode,
-		order.SonService,
 		order.GitRef,
 		order.ImageTag,
 		string(order.TriggerType),
@@ -1649,7 +1650,7 @@ func (r *ReleaseRepository) UpdateEditable(
 	const updateOrder = `
 UPDATE release_order
 SET release_name = ?, previous_order_no = ?, operation_type = ?, source_order_id = ?, source_order_no = ?, is_concurrent = ?, concurrent_batch_no = ?, concurrent_batch_name = ?, concurrent_batch_seq = ?, application_id = ?, application_name = ?, template_id = ?, template_name = ?, delivery_engine = ?, strategy_snapshot_json = ?, binding_id = ?, pipeline_id = ?, env_code = ?,
-	son_service = ?, git_ref = ?, image_tag = ?, trigger_type = ?, status = ?, approval_required = ?, approval_mode = ?, approval_approver_ids_json = ?, approval_approver_names_json = ?, approved_at = ?, approved_by = ?, rejected_at = ?, rejected_by = ?, rejected_reason = ?, remark = ?, creator_user_id = ?, triggered_by = ?, executor_user_id = ?, executor_name = ?, started_at = ?, finished_at = ?, created_at = ?, updated_at = ?
+	git_ref = ?, image_tag = ?, trigger_type = ?, status = ?, approval_required = ?, approval_mode = ?, approval_approver_ids_json = ?, approval_approver_names_json = ?, approved_at = ?, approved_by = ?, rejected_at = ?, rejected_by = ?, rejected_reason = ?, remark = ?, creator_user_id = ?, triggered_by = ?, executor_user_id = ?, executor_name = ?, started_at = ?, finished_at = ?, created_at = ?, updated_at = ?
 WHERE id = ?;`
 
 	res, err := tx.ExecContext(
@@ -1673,7 +1674,6 @@ WHERE id = ?;`
 		order.BindingID,
 		order.PipelineID,
 		order.EnvCode,
-		order.SonService,
 		order.GitRef,
 		order.ImageTag,
 		string(order.TriggerType),
@@ -1810,7 +1810,7 @@ INSERT INTO release_order_step (
 // GetByID 查询并返回指定资源数据。
 func (r *ReleaseRepository) GetByID(ctx context.Context, id string) (domain.ReleaseOrder, error) {
 	const q = `
-SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
+SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, git_ref, image_tag,
 	trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
 FROM release_order
 WHERE id = ?;`
@@ -1919,7 +1919,7 @@ func (r *ReleaseRepository) List(ctx context.Context, filter domain.ListFilter) 
 	}
 
 	listQuery := `
-SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
+SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, git_ref, image_tag,
 	trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
 FROM release_order`
 	if len(where) > 0 {
@@ -2095,6 +2095,16 @@ FROM release_order ro
 WHERE (
     ro.status IN (?, ?, ?, ?)
     OR (
+      ro.status IN (?, ?)
+      AND EXISTS (
+        SELECT 1
+        FROM release_order_step ros
+        WHERE ros.release_order_id = ro.id
+          AND ros.step_code LIKE 'hook:%'
+          AND ros.status IN (?, ?, ?)
+      )
+    )
+    OR (
       ro.status IN (?, ?, ?)
       AND EXISTS (
         SELECT 1
@@ -2115,7 +2125,12 @@ WHERE (
 		string(domain.OrderStatusQueued),
 		string(domain.OrderStatusDeploying),
 		string(domain.OrderStatusSuccess),
+		string(domain.OrderStatusDeploySuccess),
+		string(domain.StepStatusPending),
+		string(domain.StepStatusRunning),
+		string(domain.StepStatusFailed),
 		string(domain.OrderStatusFailed),
+		string(domain.OrderStatusDeployFailed),
 		string(domain.OrderStatusCancelled),
 		string(domain.StepStatusPending),
 		string(domain.StepStatusRunning),
@@ -2124,11 +2139,21 @@ WHERE (
 	}
 
 	const listQuery = `
-SELECT DISTINCT ro.id, ro.order_no, ro.release_name, ro.previous_order_no, ro.operation_type, ro.source_order_id, ro.source_order_no, ro.is_concurrent, ro.concurrent_batch_no, ro.concurrent_batch_name, ro.concurrent_batch_seq, ro.application_id, ro.application_name, ro.template_id, ro.template_name, ro.delivery_engine, ro.strategy_snapshot_json, ro.binding_id, ro.pipeline_id, ro.env_code, ro.son_service, ro.git_ref, ro.image_tag,
+SELECT DISTINCT ro.id, ro.order_no, ro.release_name, ro.previous_order_no, ro.operation_type, ro.source_order_id, ro.source_order_no, ro.is_concurrent, ro.concurrent_batch_no, ro.concurrent_batch_name, ro.concurrent_batch_seq, ro.application_id, ro.application_name, ro.template_id, ro.template_name, ro.delivery_engine, ro.strategy_snapshot_json, ro.binding_id, ro.pipeline_id, ro.env_code, ro.git_ref, ro.image_tag,
 	ro.trigger_type, ro.status, ro.approval_required, ro.approval_mode, ro.approval_approver_ids_json, ro.approval_approver_names_json, ro.approved_at, ro.approved_by, ro.rejected_at, ro.rejected_by, ro.rejected_reason, ro.remark, ro.creator_user_id, ro.triggered_by, ro.executor_user_id, ro.executor_name, ro.started_at, ro.finished_at, ro.created_at, ro.updated_at
 FROM release_order ro
 WHERE (
     ro.status IN (?, ?, ?, ?)
+    OR (
+      ro.status IN (?, ?)
+      AND EXISTS (
+        SELECT 1
+        FROM release_order_step ros
+        WHERE ros.release_order_id = ro.id
+          AND ros.step_code LIKE 'hook:%'
+          AND ros.status IN (?, ?, ?)
+      )
+    )
     OR (
       ro.status IN (?, ?, ?)
       AND EXISTS (
@@ -2140,7 +2165,7 @@ WHERE (
       )
     )
   )
-ORDER BY ro.created_at DESC
+ORDER BY CASE WHEN ro.status = ? THEN 1 ELSE 0 END, ro.updated_at ASC, ro.created_at ASC
 LIMIT ? OFFSET ?;`
 
 	offset := (page - 1) * pageSize
@@ -2152,10 +2177,16 @@ LIMIT ? OFFSET ?;`
 		string(domain.OrderStatusQueued),
 		string(domain.OrderStatusDeploying),
 		string(domain.OrderStatusSuccess),
+		string(domain.OrderStatusDeploySuccess),
+		string(domain.StepStatusPending),
+		string(domain.StepStatusRunning),
+		string(domain.StepStatusFailed),
 		string(domain.OrderStatusFailed),
+		string(domain.OrderStatusDeployFailed),
 		string(domain.OrderStatusCancelled),
 		string(domain.StepStatusPending),
 		string(domain.StepStatusRunning),
+		string(domain.OrderStatusQueued),
 		pageSize,
 		offset,
 	)
@@ -2887,7 +2918,7 @@ func (r *ReleaseRepository) ListByConcurrentBatchNo(ctx context.Context, batchNo
 		return []domain.ReleaseOrder{}, nil
 	}
 	const q = `
-SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
+SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, git_ref, image_tag,
 	trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
 FROM release_order
 WHERE concurrent_batch_no = ?
@@ -2920,50 +2951,14 @@ func (r *ReleaseRepository) FindActiveOrderByApplicationEnv(
 	envCode string,
 	excludeReleaseOrderID string,
 ) (domain.ReleaseOrder, error) {
-	applicationID = strings.TrimSpace(applicationID)
-	envCode = strings.TrimSpace(envCode)
-	excludeReleaseOrderID = strings.TrimSpace(excludeReleaseOrderID)
-	if applicationID == "" || envCode == "" {
-		return domain.ReleaseOrder{}, domain.ErrOrderNotFound
-	}
-
-	const q = `
-SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, son_service, git_ref, image_tag,
-	trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
-FROM release_order
-WHERE application_id = ?
-  AND env_code = ?
-  AND id <> ?
-  AND status IN (?, ?, ?)
-ORDER BY CASE status
-	WHEN ? THEN 0
-	WHEN ? THEN 1
-	WHEN ? THEN 2
-	ELSE 9
-END, created_at ASC
-LIMIT 1;`
-
-	row := r.db.QueryRowContext(
-		ctx,
-		q,
-		applicationID,
-		envCode,
-		excludeReleaseOrderID,
-		string(domain.OrderStatusQueued),
-		string(domain.OrderStatusDeploying),
-		string(domain.OrderStatusRunning),
-		string(domain.OrderStatusDeploying),
-		string(domain.OrderStatusRunning),
-		string(domain.OrderStatusQueued),
-	)
-	item, err := scanReleaseOrder(row)
+	items, err := r.listBlockingOrdersByApplicationEnv(ctx, applicationID, envCode, excludeReleaseOrderID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return domain.ReleaseOrder{}, domain.ErrOrderNotFound
-		}
 		return domain.ReleaseOrder{}, err
 	}
-	return item, nil
+	if len(items) == 0 {
+		return domain.ReleaseOrder{}, domain.ErrOrderNotFound
+	}
+	return items[0], nil
 }
 
 // CountActiveOrdersByApplicationEnv 封装当前模块的业务处理逻辑。
@@ -2973,35 +2968,126 @@ func (r *ReleaseRepository) CountActiveOrdersByApplicationEnv(
 	envCode string,
 	excludeReleaseOrderID string,
 ) (int, error) {
+	items, err := r.listBlockingOrdersByApplicationEnv(ctx, applicationID, envCode, excludeReleaseOrderID)
+	if err != nil {
+		return 0, err
+	}
+	return len(items), nil
+}
+
+// listBlockingOrdersByApplicationEnv returns only orders that are actually ahead of the current
+// release. Running/building orders always block; queued orders use batch sequence first and then
+// their queued timestamp (updated_at) to provide deterministic FIFO ordering.
+func (r *ReleaseRepository) listBlockingOrdersByApplicationEnv(
+	ctx context.Context,
+	applicationID string,
+	envCode string,
+	excludeReleaseOrderID string,
+) ([]domain.ReleaseOrder, error) {
 	applicationID = strings.TrimSpace(applicationID)
 	envCode = strings.TrimSpace(envCode)
 	excludeReleaseOrderID = strings.TrimSpace(excludeReleaseOrderID)
 	if applicationID == "" || envCode == "" {
-		return 0, nil
+		return []domain.ReleaseOrder{}, nil
+	}
+
+	current := domain.ReleaseOrder{}
+	if excludeReleaseOrderID != "" {
+		item, err := r.GetByID(ctx, excludeReleaseOrderID)
+		if err != nil && !errors.Is(err, domain.ErrOrderNotFound) {
+			return nil, err
+		}
+		if err == nil {
+			current = item
+		}
 	}
 
 	const q = `
-SELECT COUNT(1)
+SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, git_ref, image_tag,
+	trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
 FROM release_order
 WHERE application_id = ?
   AND env_code = ?
   AND id <> ?
-  AND status IN (?, ?, ?);`
+  AND status IN (?, ?, ?, ?)
+ORDER BY CASE status
+	WHEN ? THEN 0
+	WHEN ? THEN 1
+	WHEN ? THEN 2
+	WHEN ? THEN 3
+	ELSE 9
+END, updated_at ASC, created_at ASC, id ASC;`
 
-	var count int
-	if err := r.db.QueryRowContext(
+	rows, err := r.db.QueryContext(
 		ctx,
 		q,
 		applicationID,
 		envCode,
 		excludeReleaseOrderID,
 		string(domain.OrderStatusQueued),
+		string(domain.OrderStatusBuilding),
 		string(domain.OrderStatusDeploying),
 		string(domain.OrderStatusRunning),
-	).Scan(&count); err != nil {
-		return 0, err
+		string(domain.OrderStatusDeploying),
+		string(domain.OrderStatusRunning),
+		string(domain.OrderStatusBuilding),
+		string(domain.OrderStatusQueued),
+	)
+	if err != nil {
+		return nil, err
 	}
-	return count, nil
+	defer rows.Close()
+
+	items := make([]domain.ReleaseOrder, 0)
+	for rows.Next() {
+		item, scanErr := scanReleaseOrder(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		if item.Status == domain.OrderStatusQueued && !queuedReleaseOrderPrecedes(item, current) {
+			continue
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func queuedReleaseOrderPrecedes(candidate domain.ReleaseOrder, current domain.ReleaseOrder) bool {
+	if candidate.Status != domain.OrderStatusQueued {
+		return false
+	}
+	if strings.TrimSpace(current.ID) == "" {
+		return true
+	}
+	if current.Status != domain.OrderStatusQueued {
+		// A queued follower must never push an already running queue owner back to
+		// queued. Pending/approved orders still wait behind an existing queue.
+		switch current.Status {
+		case domain.OrderStatusBuilding, domain.OrderStatusDeploying, domain.OrderStatusRunning:
+			return false
+		default:
+			return true
+		}
+	}
+
+	candidateBatch := strings.TrimSpace(candidate.ConcurrentBatchNo)
+	currentBatch := strings.TrimSpace(current.ConcurrentBatchNo)
+	if candidate.IsConcurrent && current.IsConcurrent &&
+		candidateBatch != "" && candidateBatch == currentBatch &&
+		candidate.ConcurrentBatchSeq > 0 && current.ConcurrentBatchSeq > 0 &&
+		candidate.ConcurrentBatchSeq != current.ConcurrentBatchSeq {
+		return candidate.ConcurrentBatchSeq < current.ConcurrentBatchSeq
+	}
+	if !candidate.UpdatedAt.Equal(current.UpdatedAt) {
+		return candidate.UpdatedAt.Before(current.UpdatedAt)
+	}
+	if !candidate.CreatedAt.Equal(current.CreatedAt) {
+		return candidate.CreatedAt.Before(current.CreatedAt)
+	}
+	return strings.TrimSpace(candidate.ID) < strings.TrimSpace(current.ID)
 }
 
 // FindActiveExecutionLock 封装当前模块的业务处理逻辑。
@@ -4832,7 +4918,6 @@ func scanReleaseOrder(s scanner) (domain.ReleaseOrder, error) {
 		&item.BindingID,
 		&item.PipelineID,
 		&item.EnvCode,
-		&item.SonService,
 		&item.GitRef,
 		&item.ImageTag,
 		&triggerType,

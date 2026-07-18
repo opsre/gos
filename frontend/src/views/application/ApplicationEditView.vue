@@ -190,6 +190,7 @@ onMounted(async () => {
           :artifact-repository-loading="artifactRepositoryLoading"
           :loading="submitting"
           :show-actions="false"
+          key-readonly
           surface="plain"
           submit-text="保存修改"
           cancel-text="返回"

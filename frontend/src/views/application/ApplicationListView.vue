@@ -20,7 +20,7 @@ import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/compon
 import { CanvasRenderer } from 'echarts/renderers'
 import { computed, h, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { deleteApplication, listApplications } from '../../api/application'
+import { deleteApplication, getApplicationWorkbench, listApplications } from '../../api/application'
 import { listActiveAnnouncements } from '../../api/announcement'
 import type { Announcement } from '../../types/announcement'
 import { listProjects } from '../../api/project'
@@ -28,16 +28,12 @@ import {
   createApplicationRollbackOrder,
   getApplicationRollbackCapability,
   getApplicationRollbackPrecheck,
-  listAppReleaseStateSummaries,
-  listReleaseOrders,
-  listAllReleaseTemplates,
 } from '../../api/release'
 import { useApplicationListStore } from '../../stores/application-list'
 import { useAuthStore } from '../../stores/auth'
 import type { Application, ApplicationStatus } from '../../types/application'
 import type { Project } from '../../types/project'
 import type {
-  ApplicationRollbackCapability,
   ApplicationRollbackPrecheck,
   ApplicationRollbackPrecheckParam,
   AppReleaseStateSummary,
@@ -46,7 +42,7 @@ import type {
   ReleaseOrderBusinessStatus,
   RollbackSupportedAction,
 } from '../../types/release'
-import { extractHTTPErrorMessage, isHTTPStatus } from '../../utils/http-error'
+import { extractHTTPErrorMessage } from '../../utils/http-error'
 
 type MetricTone = 'default' | 'success' | 'running' | 'danger' | 'warning'
 type OverviewCardKey = 'pending' | 'running' | 'failed' | 'ready'
@@ -180,14 +176,10 @@ function markAsRead() {
   announcementPopoverVisible.value = false
 }
 const total = ref(0)
-const loadingTemplateAvailability = ref(false)
-const loadingRecentReleases = ref(false)
-const loadingReleaseStateSummaries = ref(false)
-const loadingOverviewMetrics = ref(false)
 const templateApplicationIDs = ref<Set<string>>(new Set())
 const templateNamesByApplication = ref<Map<string, string[]>>(new Map())
 const recentReleaseOrders = ref<ReleaseOrder[]>([])
-const overviewApplications = ref<Application[]>([])
+const overviewApplicationIDs = ref<string[]>([])
 const overviewRecentReleaseOrders = ref<ReleaseOrder[]>([])
 const releaseStateSummaries = ref<AppReleaseStateSummary[]>([])
 const projectOptions = ref<{ label: string; value: string }[]>([])
@@ -209,7 +201,6 @@ const searchDraft = reactive<{
   keyword: '',
 })
 const rollbackActionLoadingKey = ref('')
-const rollbackCapabilityHints = ref<Map<string, ApplicationRollbackCapability>>(new Map())
 const overflowingAppKeys = ref<Record<string, boolean>>({})
 const overflowingAppTitles = ref<Record<string, boolean>>({})
 const appKeyElements = new Map<string, HTMLElement>()
@@ -222,19 +213,12 @@ let overviewTrendChart: ECharts | null = null
 const canManageApplication = computed(() => authStore.hasPermission('application.manage'))
 const canViewPipeline = computed(() => authStore.hasPermission('pipeline.view'))
 const canOpenWorkbenchConfig = computed(() => canManageApplication.value)
-const overviewApplicationIDs = computed(() => new Set(overviewApplications.value.map((item) => String(item.id || '').trim()).filter(Boolean)))
 const overviewVisibleOrders = computed(() =>
   overviewRecentReleaseOrders.value.filter((item) =>
-    overviewApplicationIDs.value.has(String(item.application_id || '').trim()),
+    overviewApplicationIDs.value.includes(String(item.application_id || '').trim()),
   ),
 )
-const workbenchLoading = computed(() =>
-  loading.value ||
-  loadingTemplateAvailability.value ||
-  loadingRecentReleases.value ||
-  loadingReleaseStateSummaries.value ||
-  loadingOverviewMetrics.value,
-)
+const workbenchLoading = computed(() => loading.value)
 const initialWorkbenchLoading = computed(() => !firstWorkbenchLoaded.value && workbenchLoading.value && dataSource.value.length === 0)
 const projectFilterValue = computed<string | undefined>({
   get: () => {
@@ -725,7 +709,7 @@ const overviewSummaryCards = computed<OverviewStatCard[]>(() => {
       key: 'ready',
       label: '可发布',
       value: String(
-        overviewApplications.value.filter((item) => canReleaseApplication(String(item.id || '').trim())).length,
+        overviewApplicationIDs.value.filter((applicationID) => canReleaseApplication(applicationID)).length,
       ),
       hint: '有模板且具备发布权限',
       tone: 'success',
@@ -736,133 +720,14 @@ const overviewSummaryCards = computed<OverviewStatCard[]>(() => {
 })
 
 const overviewHeaderMeta = computed(() => {
-  if (overviewApplications.value.length === 0) {
+  if (overviewApplicationIDs.value.length === 0) {
     return '尚无可见应用'
   }
   if (overviewTrendModel.value.totalActivity <= 0) {
-    return `全部应用 ${overviewApplications.value.length} · 近 24 小时暂无波动`
+    return `全部应用 ${overviewApplicationIDs.value.length} · 近 24 小时暂无波动`
   }
-  return `全部应用 ${overviewApplications.value.length} · 近 24 小时共 ${overviewTrendModel.value.totalActivity} 次状态变化`
+  return `全部应用 ${overviewApplicationIDs.value.length} · 近 24 小时共 ${overviewTrendModel.value.totalActivity} 次状态变化`
 })
-
-async function listAllApplicationsForOverview() {
-  const pageSize = 100
-  let page = 1
-  const items: Application[] = []
-
-  for (;;) {
-    const response = await listApplications({
-      page,
-      page_size: pageSize,
-    })
-    items.push(...(response.data || []))
-    if (items.length >= response.total || (response.data || []).length < pageSize) {
-      break
-    }
-    page += 1
-  }
-
-  return items
-}
-
-async function mapSettledWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  worker: (item: T) => Promise<R>,
-) {
-  const results: PromiseSettledResult<R>[] = new Array(items.length)
-  let cursor = 0
-
-  async function runNext() {
-    for (;;) {
-      const index = cursor
-      cursor += 1
-      if (index >= items.length) {
-        return
-      }
-      try {
-        results[index] = {
-          status: 'fulfilled',
-          value: await worker(items[index]),
-        }
-      } catch (error) {
-        results[index] = {
-          status: 'rejected',
-          reason: error,
-        }
-      }
-    }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.max(1, Math.min(limit, items.length || 1)) }, () =>
-      runNext(),
-    ),
-  )
-  return results
-}
-
-async function loadOverviewMetrics(options: { silent?: boolean } = {}) {
-  if (!options.silent) {
-    loadingOverviewMetrics.value = true
-  }
-  try {
-    const applications = await listAllApplicationsForOverview()
-    overviewApplications.value = applications
-
-    const applicationIDs = applications
-      .map((item) => String(item.id || '').trim())
-      .filter(Boolean)
-    if (applicationIDs.length === 0) {
-      overviewRecentReleaseOrders.value = []
-      return
-    }
-
-    const results = await mapSettledWithConcurrency(
-      applicationIDs,
-      8,
-      (applicationID) =>
-        listReleaseOrders(
-          {
-            application_id: applicationID,
-            page: 1,
-            page_size: 100,
-          },
-          {
-            timeout: 30_000,
-          },
-        ),
-    )
-
-    const merged: ReleaseOrder[] = []
-    let successCount = 0
-    results.forEach((result) => {
-      if (result.status !== 'fulfilled') {
-        return
-      }
-      successCount += 1
-      merged.push(...result.value.data)
-    })
-
-    if (successCount === 0) {
-      throw new Error('overview recent release requests all failed')
-    }
-
-    overviewRecentReleaseOrders.value = merged.sort(
-      (left, right) => dayjs(right.created_at).valueOf() - dayjs(left.created_at).valueOf(),
-    )
-  } catch (error) {
-    overviewApplications.value = []
-    overviewRecentReleaseOrders.value = []
-    if (!options.silent && !isHTTPStatus(error, 403)) {
-      message.error(extractHTTPErrorMessage(error, '状态卡片汇总加载失败'))
-    }
-  } finally {
-    if (!options.silent) {
-      loadingOverviewMetrics.value = false
-    }
-  }
-}
 
 function overviewStatCardClass(tone: MetricTone) {
   switch (tone) {
@@ -1053,8 +918,7 @@ function handleOverviewCardClick(card: OverviewStatCard) {
 function canReleaseApplication(applicationID: string) {
   return (
     authStore.hasApplicationPermission('release.create', applicationID) &&
-    templateApplicationIDs.value.has(String(applicationID || '').trim()) &&
-    !loadingTemplateAvailability.value
+    templateApplicationIDs.value.has(String(applicationID || '').trim())
   )
 }
 
@@ -1067,22 +931,8 @@ function isRollbackActionLoading(applicationID: string, envCode: string) {
 }
 
 function rollbackActionLabelForEnv(applicationID: string, envCode: string) {
-  const key = rollbackActionKey(applicationID, envCode)
-  const capability = rollbackCapabilityHints.value.get(key)
-  if (!capability) {
-    return '标准回滚'
-  }
-  if (capability.supported_action === 'replay') {
-    return '标准重放'
-  }
-  const currentState = capability.current_state
-  const provider = String(currentState?.cd_provider || '').trim().toLowerCase()
-  if (currentState?.has_ci_execution && !currentState?.has_cd_execution) {
-    return '标准重放'
-  }
-  if (currentState?.has_cd_execution && provider !== '' && provider !== 'argocd') {
-    return '标准重放'
-  }
+  void applicationID
+  void envCode
   return '标准回滚'
 }
 
@@ -1118,19 +968,37 @@ async function loadActiveAnnouncements() {
   }
 }
 
-async function loadApplications(options: { silent?: boolean } = {}) {
+async function loadWorkbench(options: { silent?: boolean } = {}) {
   if (!options.silent) {
     loading.value = true
   }
   try {
-    const response = await listApplications(filters.value)
+    const response = await getApplicationWorkbench(filters.value)
     dataSource.value = response.data
     total.value = response.total
     listStore.setPage(response.page, response.page_size)
+    const templateNames = new Map<string, string[]>()
+    Object.entries(response.template_names_by_application || {}).forEach(([applicationID, names]) => {
+      templateNames.set(applicationID, [...new Set((names || []).map((item) => String(item || '').trim()).filter(Boolean))])
+    })
+    templateNamesByApplication.value = templateNames
+    templateApplicationIDs.value = new Set(templateNames.keys())
+    recentReleaseOrders.value = response.recent_release_orders || []
+    releaseStateSummaries.value = response.release_state_summaries || []
+    overviewApplicationIDs.value = response.overview?.application_ids || []
+    overviewRecentReleaseOrders.value = response.overview?.release_orders || []
     scheduleMeasureAppKeyOverflow()
   } catch (error) {
+    dataSource.value = []
+    total.value = 0
+    templateNamesByApplication.value = new Map()
+    templateApplicationIDs.value = new Set()
+    recentReleaseOrders.value = []
+    releaseStateSummaries.value = []
+    overviewApplicationIDs.value = []
+    overviewRecentReleaseOrders.value = []
     if (!options.silent) {
-      message.error(extractHTTPErrorMessage(error, '应用列表加载失败'))
+      message.error(extractHTTPErrorMessage(error, '应用工作台加载失败'))
     }
   } finally {
     if (!options.silent) {
@@ -1162,167 +1030,8 @@ async function loadProjectOptions() {
   }
 }
 
-async function loadTemplateAvailability(options: { silent?: boolean } = {}) {
-  if (!options.silent) {
-    loadingTemplateAvailability.value = true
-  }
-  try {
-    const items = await listAllReleaseTemplates({ status: 'active' })
-    const grouped = new Map<string, string[]>()
-    items.forEach((item) => {
-      const appID = String(item.application_id || '').trim()
-      if (!appID) {
-        return
-      }
-      const list = grouped.get(appID) || []
-      const templateName = String(item.name || '').trim()
-      if (templateName && !list.includes(templateName)) {
-        list.push(templateName)
-      }
-      grouped.set(appID, list)
-    })
-    templateNamesByApplication.value = grouped
-    templateApplicationIDs.value = new Set([...grouped.keys()])
-  } catch (error) {
-    templateNamesByApplication.value = new Map()
-    templateApplicationIDs.value = new Set()
-    if (!options.silent && !isHTTPStatus(error, 403)) {
-      message.error(extractHTTPErrorMessage(error, '发布模板状态加载失败'))
-    }
-  } finally {
-    if (!options.silent) {
-      loadingTemplateAvailability.value = false
-    }
-  }
-}
-
-async function loadRecentReleases(options: { silent?: boolean } = {}) {
-  if (!options.silent) {
-    loadingRecentReleases.value = true
-  }
-  try {
-    const applicationIDs = dataSource.value.map((item) => String(item.id || '').trim()).filter(Boolean)
-    if (applicationIDs.length === 0) {
-      recentReleaseOrders.value = []
-      return
-    }
-
-    const results = await Promise.allSettled(
-      applicationIDs.map((applicationID) =>
-        listReleaseOrders(
-          {
-            application_id: applicationID,
-            page: 1,
-            page_size: 12,
-          },
-          {
-            timeout: 30_000,
-          },
-        ),
-      ),
-    )
-
-    const merged: ReleaseOrder[] = []
-    let successCount = 0
-    results.forEach((result) => {
-      if (result.status !== 'fulfilled') {
-        return
-      }
-      successCount += 1
-      merged.push(...result.value.data)
-    })
-
-    if (successCount === 0) {
-      throw new Error('recent release requests all failed')
-    }
-
-    recentReleaseOrders.value = merged.sort((left, right) =>
-      dayjs(right.created_at).valueOf() - dayjs(left.created_at).valueOf(),
-    )
-  } catch (error) {
-    if (!options.silent && !isHTTPStatus(error, 403) && recentReleaseOrders.value.length === 0) {
-      message.error(extractHTTPErrorMessage(error, '最近发布动态加载失败'))
-    }
-  } finally {
-    if (!options.silent) {
-      loadingRecentReleases.value = false
-    }
-  }
-}
-
-async function loadReleaseStateSummaries(options: { silent?: boolean } = {}) {
-  if (!options.silent) {
-    loadingReleaseStateSummaries.value = true
-  }
-  try {
-    const applicationIDs = dataSource.value.map((item) => String(item.id || '').trim()).filter(Boolean)
-    if (applicationIDs.length === 0) {
-      releaseStateSummaries.value = []
-      return
-    }
-    const response = await listAppReleaseStateSummaries(applicationIDs)
-    releaseStateSummaries.value = response.data || []
-    await loadRollbackCapabilityHints()
-  } catch (error) {
-    releaseStateSummaries.value = []
-    rollbackCapabilityHints.value = new Map()
-    if (!options.silent && !isHTTPStatus(error, 403)) {
-      message.error(extractHTTPErrorMessage(error, '当前/上次版本加载失败'))
-    }
-  } finally {
-    if (!options.silent) {
-      loadingReleaseStateSummaries.value = false
-    }
-  }
-}
-
-async function loadRollbackCapabilityHints() {
-  const entryMap = new Map<string, { applicationID: string; envCode: string }>()
-  workbenchCards.value.forEach((card) => {
-    const applicationID = String(card.application.id || '').trim()
-    card.envSections.forEach((section) => {
-      const envCode = String(section.envCode || '').trim()
-      if (!applicationID || !envCode) {
-        return
-      }
-      entryMap.set(rollbackActionKey(applicationID, envCode), {
-        applicationID,
-        envCode,
-      })
-    })
-  })
-  const entries = [...entryMap.values()]
-
-  if (entries.length === 0) {
-    rollbackCapabilityHints.value = new Map()
-    return
-  }
-
-  const next = new Map<string, ApplicationRollbackCapability>()
-  const results = await Promise.allSettled(
-    entries.map(async (item) => {
-      const response = await getApplicationRollbackCapability(item.applicationID, {
-        env_code: item.envCode,
-      })
-      return {
-        key: rollbackActionKey(item.applicationID, item.envCode),
-        capability: response.data,
-      }
-    }),
-  )
-
-  results.forEach((result) => {
-    if (result.status !== 'fulfilled') {
-      return
-    }
-    next.set(result.value.key, result.value.capability)
-  })
-  rollbackCapabilityHints.value = next
-}
-
 async function applyWorkbenchFilters() {
-  await loadApplications()
-  await Promise.all([loadOverviewMetrics(), loadRecentReleases(), loadReleaseStateSummaries()])
+  await loadWorkbench()
 }
 
 function openSearchDialog() {
@@ -1409,10 +1118,7 @@ function handleReset() {
 
 function handlePageChange(page: number, pageSize: number) {
   listStore.setPage(page, pageSize)
-  void (async () => {
-    await loadApplications()
-    await Promise.all([loadRecentReleases(), loadReleaseStateSummaries()])
-  })()
+  void loadWorkbench()
 }
 
 function openIntroDrawer() {
@@ -1473,12 +1179,7 @@ function toApprovalWorkbench() {
 }
 
 async function refreshWorkbenchSilently() {
-  await loadApplications({ silent: true })
-  await Promise.all([
-    loadTemplateAvailability({ silent: true }),
-    loadRecentReleases({ silent: true }),
-    loadReleaseStateSummaries({ silent: true }),
-  ])
+  await loadWorkbench({ silent: true })
 }
 
 function startAutoRefresh() {
@@ -1546,8 +1247,7 @@ async function handleDelete(id: string) {
     if (dataSource.value.length === 1 && listStore.page > 1) {
       listStore.setPage(listStore.page - 1, listStore.pageSize)
     }
-    await loadApplications()
-    await Promise.all([loadOverviewMetrics(), loadRecentReleases(), loadReleaseStateSummaries()])
+    await loadWorkbench()
   } catch (error) {
     message.error(extractHTTPErrorMessage(error, '应用删除失败'))
   } finally {
@@ -1581,11 +1281,7 @@ async function createRollbackOrderForCard(
       action,
     })
     message.success(`${action === 'rollback' ? '标准回滚' : '标准重放'}单已创建：${response.data.order_no}`)
-    await Promise.all([
-      loadOverviewMetrics({ silent: true }),
-      loadRecentReleases({ silent: true }),
-      loadReleaseStateSummaries({ silent: true }),
-    ])
+    await loadWorkbench({ silent: true })
     void router.push(`/releases/${response.data.id}`)
   } catch (error) {
     message.error(extractHTTPErrorMessage(error, action === 'rollback' ? '标准回滚创建失败' : '标准重放创建失败'))
@@ -1967,8 +1663,7 @@ onMounted(() => {
   loadActiveAnnouncements()
   void (async () => {
     await loadProjectOptions()
-    await loadApplications()
-    await Promise.all([loadTemplateAvailability(), loadOverviewMetrics(), loadRecentReleases(), loadReleaseStateSummaries()])
+    await loadWorkbench()
     firstWorkbenchLoaded.value = true
     scheduleMeasureAppKeyOverflow()
   })()

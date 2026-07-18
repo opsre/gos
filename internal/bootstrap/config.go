@@ -93,9 +93,16 @@ type GitOpsConfig struct {
 }
 
 type ReleaseConfig struct {
-	EnvOptions   []string                 `json:"env_options"`
-	Concurrency  ReleaseConcurrencyConfig `json:"concurrency"`
-	GitOpsConfig ReleaseGitOpsConfig      `json:"gitops_config"`
+	EnvOptions     []string                   `json:"env_options"`
+	EnvConfigs     []ReleaseEnvironmentConfig `json:"env_configs"`
+	DefaultEnvCode string                     `json:"default_env_code"`
+	Concurrency    ReleaseConcurrencyConfig   `json:"concurrency"`
+	GitOpsConfig   ReleaseGitOpsConfig        `json:"gitops_config"`
+}
+
+type ReleaseEnvironmentConfig struct {
+	Code        string `json:"code"`
+	Description string `json:"description"`
 }
 
 type ReleaseGitOpsConfig struct {
@@ -385,6 +392,8 @@ func applyConfigDefaults(cfg *Config) {
 	}
 
 	cfg.Release.EnvOptions = normalizeStringList(cfg.Release.EnvOptions)
+	cfg.Release.EnvConfigs = normalizeReleaseEnvironmentConfigs(cfg.Release.EnvConfigs)
+	cfg.Release.DefaultEnvCode = strings.TrimSpace(cfg.Release.DefaultEnvCode)
 	if len(cfg.Release.EnvOptions) == 0 {
 		cfg.Release.EnvOptions = []string{"dev", "test", "prod"}
 	}
@@ -496,6 +505,32 @@ func normalizeStringList(values []string) []string {
 		}
 		seen[value] = struct{}{}
 		result = append(result, value)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func normalizeReleaseEnvironmentConfigs(values []ReleaseEnvironmentConfig) []ReleaseEnvironmentConfig {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make([]ReleaseEnvironmentConfig, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, item := range values {
+		code := strings.TrimSpace(item.Code)
+		if code == "" {
+			continue
+		}
+		if _, exists := seen[code]; exists {
+			continue
+		}
+		seen[code] = struct{}{}
+		result = append(result, ReleaseEnvironmentConfig{
+			Code:        code,
+			Description: strings.TrimSpace(item.Description),
+		})
 	}
 	if len(result) == 0 {
 		return nil

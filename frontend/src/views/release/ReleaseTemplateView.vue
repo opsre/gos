@@ -1528,11 +1528,6 @@ function normalizeGitOpsRulePayload(item: GitOpsRuleFormItem): ReleaseTemplateGi
 }
 
 function buildPayload(): ReleaseTemplatePayload | UpdateReleaseTemplatePayload {
-  const approverIDs = approvalApproverIDs.value.map((item) => String(item || '').trim()).filter(Boolean)
-  const approverNames = approverIDs.map((item) => {
-    const matched = userOptions.value.find((candidate) => candidate.id === item)
-    return matched?.display_name || matched?.username || item
-  })
   return {
     name: formState.name.trim(),
     ...(modalMode.value !== 'edit' ? { application_id: formState.application_id.trim() } : {}),
@@ -1541,10 +1536,6 @@ function buildPayload(): ReleaseTemplatePayload | UpdateReleaseTemplatePayload {
     cd_provider: scopeStates.cd.enabled ? (isCDUsingPipeline() ? (selectedBinding('cd')?.provider || 'jenkins') : 'argocd') : undefined,
     gitops_type: scopeStates.cd.enabled && isCDUsingArgoCD() ? normalizedGitOpsType(gitOpsType.value) : undefined,
     status: formState.status,
-    approval_enabled: formState.approval_enabled,
-    approval_mode: formState.approval_enabled ? formState.approval_mode : undefined,
-    approval_approver_ids: formState.approval_enabled ? approverIDs : [],
-    approval_approver_names: formState.approval_enabled ? approverNames : [],
     remark: formState.remark.trim() || undefined,
     ci_param_def_ids: scopeStates.ci.enabled ? [...scopeStates.ci.selected_param_def_ids] : [],
     cd_param_def_ids: scopeStates.cd.enabled && isCDUsingPipeline() ? [...scopeStates.cd.selected_param_def_ids] : [],
@@ -2369,9 +2360,6 @@ function validateScopeState() {
       }
     }
   }
-  if (formState.approval_enabled && approvalApproverIDs.value.length === 0) {
-    throw new Error('请至少选择一位审批人')
-  }
 }
 
 function validateTemplateParamConfigs(scope: ReleasePipelineScope) {
@@ -2700,63 +2688,6 @@ onBeforeUnmount(() => {
             <a-col :span="12">
               <a-form-item label="备注" name="remark">
                 <a-input v-model:value="formState.remark" allow-clear placeholder="可选，补充模板用途说明" />
-              </a-form-item>
-            </a-col>
-          </a-row>
-        </a-card>
-
-        <a-card class="scope-card scope-card-base" :bordered="false">
-          <div class="template-param-config-header">
-            <div style="display:flex;align-items:center;gap:8px;">
-              <div class="template-param-config-title">审批配置</div>
-              <a-popover
-                trigger="click"
-                placement="rightTop"
-                overlay-class-name="release-tip-popover"
-              >
-                <template #content>
-                  <div class="release-tip-content">
-                    当前模板启用<strong>{{ formState.approval_mode === 'all' ? '会签' : '或签' }}</strong>：{{ formState.approval_mode === 'all' ? '所有审批人都通过后，发布单才会进入已批准状态' : '任一审批人通过后，发布单即可进入已批准状态' }}
-                  </div>
-                </template>
-                <button
-                  class="release-tip-trigger release-tip-trigger-info"
-                  type="button"
-                  aria-label="查看审批方式说明"
-                >
-                  <ExclamationCircleOutlined />
-                </button>
-              </a-popover>
-            </div>
-            <div class="template-param-config-subtitle">按模板决定当前发布是否必须先走审批流审批通过后，发布单才允许进入执行阶段</div>
-          </div>
-          <a-row :gutter="16">
-            <a-col :xs="24" :md="8">
-              <a-form-item label="启用审批">
-                <a-switch v-model:checked="formState.approval_enabled" />
-              </a-form-item>
-            </a-col>
-            <a-col :xs="24" :md="8">
-              <a-form-item label="审批方式">
-                <a-select
-                  v-model:value="formState.approval_mode"
-                  :disabled="!formState.approval_enabled"
-                  :options="approvalModeOptions"
-                />
-              </a-form-item>
-            </a-col>
-            <a-col :xs="24" :md="8">
-              <a-form-item label="审批人">
-                <a-select
-                  v-model:value="approvalApproverIDs"
-                  mode="multiple"
-                  allow-clear
-                  show-search
-                  option-filter-prop="label"
-                  :disabled="!formState.approval_enabled"
-                  placeholder="请选择审批人"
-                  :options="userOptionChoices"
-                />
               </a-form-item>
             </a-col>
           </a-row>

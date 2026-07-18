@@ -66,8 +66,9 @@ func PingDB(db *sql.DB, timeoutSec int) error {
 // InitSchema 封装当前模块的业务处理逻辑。
 func InitSchema(initializer interface{ InitSchema(context.Context) error }) error {
 	// Release and GitOps schema migration can be slower on remote MySQL during
-	// startup, so we give initialization a wider window than a normal query.
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// startup. Old databases can require multiple ALTER TABLE statements, so the
+	// startup migration window must be wider than the MySQL advisory-lock wait.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	return initializer.InitSchema(ctx)
 }

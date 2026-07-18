@@ -554,6 +554,15 @@ func TestFinalizeOrderOverridesPrematureSuccessFinishStepWhenAgentHookFailed(t *
 
 	tracker := NewTrackReleaseExecution(manager, nil)
 	tracker.now = func() time.Time { return now }
+	prematureSuccess := order
+	prematureSuccess.Status = domain.OrderStatusSuccess
+	trackable, err := tracker.isRealtimeTrackableOrder(ctx, prematureSuccess)
+	if err != nil {
+		t.Fatalf("isRealtimeTrackableOrder failed: %v", err)
+	}
+	if !trackable {
+		t.Fatal("premature success with failed blocking hook must remain trackable")
+	}
 	if _, _, err := tracker.finalizeOrder(ctx, order, executions); err != nil {
 		t.Fatalf("finalizeOrder failed: %v", err)
 	}
@@ -575,6 +584,59 @@ func TestFinalizeOrderOverridesPrematureSuccessFinishStepWhenAgentHookFailed(t *
 	}
 	if finishStep.Status != domain.StepStatusFailed {
 		t.Fatalf("finish step status = %s, want %s", finishStep.Status, domain.StepStatusFailed)
+	}
+}
+
+func TestPrematureSuccessRepairSkipsWarnOnlyFailedHook(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Date(2026, 7, 17, 16, 0, 0, 0, time.UTC)
+	template := domain.ReleaseTemplate{
+		ID:              "rt-agent-hook-warn-only",
+		Name:            "Warn Only Hook Template",
+		ApplicationID:   "app-1",
+		ApplicationName: "App 1",
+		BindingID:       "app-1",
+		BindingName:     "App 1",
+		BindingType:     "application",
+		Status:          domain.TemplateStatusActive,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	hook := domain.ReleaseTemplateHook{
+		ID:               "hook-agent-warn-only",
+		TemplateID:       template.ID,
+		HookType:         domain.TemplateHookTypeAgentTask,
+		Name:             "非阻塞 Agent 校验",
+		ExecuteStage:     domain.TemplateHookExecuteStagePostRelease,
+		TriggerCondition: domain.TemplateHookTriggerOnSuccess,
+		FailurePolicy:    domain.TemplateHookFailurePolicyWarnOnly,
+		TargetID:         "agtask-warn-only",
+		TargetName:       "非阻塞 Agent 校验",
+		SortNo:           1,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}
+	if err := repo.CreateTemplate(ctx, template, nil, nil, nil, []domain.ReleaseTemplateHook{hook}); err != nil {
+		t.Fatalf("CreateTemplate failed: %v", err)
+	}
+	order := testReleaseOrder("ro-agent-hook-warn-only", "RO-AGENT-HOOK-WARN-ONLY", domain.OrderStatusSuccess, now)
+	order.TemplateID = template.ID
+	order.TemplateName = template.Name
+	step := testReleaseStep(order.ID, "step-agent-hook-warn-only", domain.StepScopeGlobal, "hook:post_release:agent_task:1", domain.StepStatusFailed, 1, now)
+	if err := repo.Create(ctx, order, nil, nil, []domain.ReleaseOrderStep{step}); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	tracker := NewTrackReleaseExecution(manager, nil)
+	trackable, err := tracker.isRealtimeTrackableOrder(ctx, order)
+	if err != nil {
+		t.Fatalf("isRealtimeTrackableOrder failed: %v", err)
+	}
+	if trackable {
+		t.Fatal("warn-only failed hook must not reopen an already successful order")
 	}
 }
 

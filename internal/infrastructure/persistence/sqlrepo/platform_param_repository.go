@@ -79,7 +79,11 @@ CREATE TABLE IF NOT EXISTS platform_param_dict (
 			return err
 		}
 	}
-	if err := r.migrateSchema(ctx); err != nil {
+	if err := runSchemaMigrations(ctx, r.db, r.dbDriver, schemaMigration{
+		Version:     "deploy_platform_v1_1_platform_param",
+		Description: "add GitOps locator and CD self-fill platform parameter fields",
+		Up:          r.migrateSchema,
+	}); err != nil {
 		return err
 	}
 	return r.ensureBuiltinParams(ctx)

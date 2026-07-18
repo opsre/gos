@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { ExclamationCircleOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons-vue'
+import {
+  ApartmentOutlined,
+  ExclamationCircleOutlined,
+  PlusOutlined,
+  SearchOutlined,
+  UnorderedListOutlined,
+} from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { FormInstance, TableColumnsType } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
@@ -7,14 +13,18 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'v
 import {
   createUser,
   deleteUser,
+  getUserManager,
   getUserByID,
+  listUserOptions,
   listUsers,
   type UserListParams,
   updateUser,
+  updateUserManager,
   type UserPayload,
 } from '../../api/user'
 import { useResizableColumns } from '../../composables/useResizableColumns'
-import type { UserProfile, UserRole, UserStatus } from '../../types/user'
+import UserOrganizationCanvas from '../../components/system/UserOrganizationCanvas.vue'
+import type { UserOption, UserProfile, UserRole, UserStatus } from '../../types/user'
 import { extractHTTPErrorMessage } from '../../utils/http-error'
 
 interface UserFormState {
@@ -25,6 +35,7 @@ interface UserFormState {
   role: UserRole
   status: UserStatus
   password: string
+  manager_user_id: string
 }
 
 interface SearchSuggestion {
@@ -37,7 +48,11 @@ const loading = ref(false)
 const submitting = ref(false)
 const deletingID = ref('')
 const userList = ref<UserProfile[]>([])
+const managerUsers = ref<UserOption[]>([])
+const organizationCanvasRef = ref<InstanceType<typeof UserOrganizationCanvas> | null>(null)
 const total = ref(0)
+
+const viewMode = ref<'organization' | 'list'>('organization')
 
 const keyword = ref('')
 const page = ref(1)
@@ -54,9 +69,18 @@ const formState = reactive<UserFormState>({
   role: 'normal',
   status: 'active',
   password: '',
+  manager_user_id: '',
 })
 
 const isEdit = computed(() => Boolean(editingID.value))
+const managerOptions = computed(() =>
+  managerUsers.value
+    .filter((item) => item.id !== editingID.value && item.role !== 'admin')
+    .map((item) => ({
+      label: `${item.display_name || item.username} (${item.username})`,
+      value: item.id,
+    })),
+)
 
 // ---- search overlay ----
 const searchVisible = ref(false)
@@ -181,6 +205,7 @@ function resetFormState() {
   formState.role = 'normal'
   formState.status = 'active'
   formState.password = ''
+  formState.manager_user_id = ''
 }
 
 function fillFormState(item: UserProfile) {
@@ -230,6 +255,15 @@ async function loadUsers() {
     message.error(extractHTTPErrorMessage(error, '用户列表加载失败'))
   } finally {
     loading.value = false
+  }
+}
+
+async function loadManagerUsers() {
+  try {
+    const response = await listUserOptions()
+    managerUsers.value = response.data || []
+  } catch (error) {
+    message.error(extractHTTPErrorMessage(error, '主管候选人加载失败'))
   }
 }
 
@@ -320,8 +354,15 @@ function openCreateModal() {
   modalVisible.value = true
 }
 
-function openEditModal(item: UserProfile) {
+async function openEditModal(item: UserProfile) {
   fillFormState(item)
+  formState.manager_user_id = ''
+  try {
+    const response = await getUserManager(item.id)
+    formState.manager_user_id = response.data.manager_user_id || ''
+  } catch (error) {
+    message.error(extractHTTPErrorMessage(error, '直属主管加载失败'))
+  }
   syncUserFormViewportInset()
   modalVisible.value = true
 }
@@ -347,14 +388,17 @@ async function handleSubmit() {
   try {
     const payload = toUserPayload()
     if (isEdit.value) {
-      await updateUser(editingID.value, payload)
+      const response = await updateUser(editingID.value, payload)
+      await updateUserManager(response.data.id, formState.role === 'admin' ? '' : formState.manager_user_id)
       message.success('用户更新成功')
     } else {
-      await createUser(payload)
+      const response = await createUser(payload)
+      await updateUserManager(response.data.id, formState.role === 'admin' ? '' : formState.manager_user_id)
       message.success('用户创建成功')
     }
     closeModal()
-    await loadUsers()
+    await Promise.all([loadUsers(), loadManagerUsers()])
+    await organizationCanvasRef.value?.reload()
   } catch (error) {
     message.error(extractHTTPErrorMessage(error, '用户保存失败'))
   } finally {
@@ -370,7 +414,8 @@ async function handleDelete(id: string) {
     if (userList.value.length === 1 && page.value > 1) {
       page.value -= 1
     }
-    await loadUsers()
+    await Promise.all([loadUsers(), loadManagerUsers()])
+    await organizationCanvasRef.value?.reload()
   } catch (error) {
     message.error(extractHTTPErrorMessage(error, '用户删除失败'))
   } finally {
@@ -410,6 +455,7 @@ onMounted(() => {
   syncUserFormViewportInset()
   observeUserFormViewportInset()
   void loadUsers()
+  void loadManagerUsers()
 })
 
 onBeforeUnmount(() => {
@@ -424,7 +470,11 @@ onBeforeUnmount(() => {
         <h2 class="page-title">用户</h2>
       </div>
       <div class="page-header-actions">
-        <a-button class="user-toolbar-icon-btn" @click="openSearchDialog">
+        <a-radio-group v-model:value="viewMode" button-style="solid" class="user-view-toggle">
+          <a-radio-button value="organization"><ApartmentOutlined />组织架构</a-radio-button>
+          <a-radio-button value="list"><UnorderedListOutlined />用户列表</a-radio-button>
+        </a-radio-group>
+        <a-button v-if="viewMode === 'list'" class="user-toolbar-icon-btn" @click="openSearchDialog">
           <template #icon>
             <SearchOutlined />
           </template>
@@ -475,7 +525,9 @@ onBeforeUnmount(() => {
       </div>
     </transition>
 
-    <a-card class="table-card" :bordered="false">
+    <UserOrganizationCanvas v-if="viewMode === 'organization'" ref="organizationCanvasRef" />
+
+    <a-card v-else class="table-card" :bordered="false">
       <a-table
         row-key="id"
         :columns="columns"
@@ -608,6 +660,18 @@ onBeforeUnmount(() => {
             </a-col>
           </a-row>
 
+          <a-form-item v-if="formState.role !== 'admin'" name="manager_user_id">
+            <template #label><span class="user-form-label">直属主管</span></template>
+            <a-select
+              v-model:value="formState.manager_user_id"
+              allow-clear
+              show-search
+              option-filter-prop="label"
+              :options="managerOptions"
+              placeholder="选择直属主管（用于组织层级审批）"
+            />
+          </a-form-item>
+
           <a-form-item name="email">
             <template #label>
               <span class="user-form-label">邮箱</span>
@@ -686,6 +750,43 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   gap: 12px;
   min-width: 0;
+}
+
+.user-view-toggle {
+  display: inline-flex;
+  height: 42px;
+  align-items: center;
+  padding: 4px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
+}
+
+.user-view-toggle :deep(.ant-radio-button-wrapper) {
+  display: inline-flex;
+  height: 32px;
+  align-items: center;
+  gap: 6px;
+  padding-inline: 12px;
+  border: 0 !important;
+  border-radius: 11px;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 32px;
+  box-shadow: none !important;
+}
+
+.user-view-toggle :deep(.ant-radio-button-wrapper::before) {
+  display: none;
+}
+
+.user-view-toggle :deep(.ant-radio-button-wrapper-checked) {
+  background: #fff !important;
+  color: #2563eb !important;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12) !important;
 }
 
 /* ---- header glass buttons ---- */

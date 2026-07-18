@@ -9,4 +9,6 @@ var (
 	ErrSessionNotFound         = errors.New("session not found")
 	ErrSessionRevoked          = errors.New("session revoked")
 	ErrParamPermissionNotFound = errors.New("param permission not found")
+	ErrUserManagerNotFound     = errors.New("user manager not found")
+	ErrUserManagerCycle        = errors.New("user manager cycle")
 )

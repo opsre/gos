@@ -9,6 +9,10 @@ import (
 type ReleaseSettingsStore interface {
 	LoadEnvOptions(ctx context.Context) ([]string, error)
 	SaveEnvOptions(ctx context.Context, values []string) error
+	LoadEnvConfigs(ctx context.Context) ([]ReleaseEnvironmentConfig, error)
+	SaveEnvConfigs(ctx context.Context, values []ReleaseEnvironmentConfig) error
+	LoadDefaultEnvCode(ctx context.Context) (string, error)
+	SaveDefaultEnvCode(ctx context.Context, value string) error
 	LoadConcurrencySettings(ctx context.Context) (ReleaseConcurrencySettingsOutput, error)
 	SaveConcurrencySettings(ctx context.Context, input ReleaseConcurrencySettingsInput) error
 	LoadGitOpsConfig(ctx context.Context) (ReleaseGitOpsConfigOutput, error)
@@ -66,10 +70,17 @@ type ReleaseGitOpsConfigOutput struct {
 
 type ReleaseGitOpsConfigInput = ReleaseGitOpsConfigOutput
 
+type ReleaseEnvironmentConfig struct {
+	Code        string `json:"code"`
+	Description string `json:"description"`
+}
+
 type ReleaseSettingsOutput struct {
-	EnvOptions   []string                         `json:"env_options"`
-	Concurrency  ReleaseConcurrencySettingsOutput `json:"concurrency"`
-	GitOpsConfig ReleaseGitOpsConfigOutput        `json:"gitops_config"`
+	EnvOptions     []string                         `json:"env_options"`
+	EnvConfigs     []ReleaseEnvironmentConfig       `json:"env_configs"`
+	DefaultEnvCode string                           `json:"default_env_code"`
+	Concurrency    ReleaseConcurrencySettingsOutput `json:"concurrency"`
+	GitOpsConfig   ReleaseGitOpsConfigOutput        `json:"gitops_config"`
 }
 
 type QueryReleaseSettings struct {
@@ -86,7 +97,21 @@ func (uc *QueryReleaseSettings) Execute(ctx context.Context) (ReleaseSettingsOut
 	if uc == nil || uc.store == nil {
 		return ReleaseSettingsOutput{}, fmt.Errorf("%w: release settings are not configured", ErrInvalidInput)
 	}
-	options, err := uc.store.LoadEnvOptions(ctx)
+	envConfigs, err := uc.store.LoadEnvConfigs(ctx)
+	if err != nil {
+		return ReleaseSettingsOutput{}, err
+	}
+	envConfigs = normalizeReleaseEnvConfigs(envConfigs)
+	options := releaseEnvOptionsFromConfigs(envConfigs)
+	if len(options) == 0 {
+		loadedOptions, err := uc.store.LoadEnvOptions(ctx)
+		if err != nil {
+			return ReleaseSettingsOutput{}, err
+		}
+		options = normalizeReleaseEnvOptions(loadedOptions)
+		envConfigs = releaseEnvConfigsFromOptions(options)
+	}
+	defaultEnv, err := uc.store.LoadDefaultEnvCode(ctx)
 	if err != nil {
 		return ReleaseSettingsOutput{}, err
 	}
@@ -99,16 +124,20 @@ func (uc *QueryReleaseSettings) Execute(ctx context.Context) (ReleaseSettingsOut
 		return ReleaseSettingsOutput{}, err
 	}
 	return ReleaseSettingsOutput{
-		EnvOptions:   normalizeReleaseEnvOptions(options),
-		Concurrency:  normalizeConcurrencySettings(concurrency),
-		GitOpsConfig: normalizeGitOpsConfig(gitopsConfig),
+		EnvOptions:     options,
+		EnvConfigs:     envConfigs,
+		DefaultEnvCode: defaultEnv,
+		Concurrency:    normalizeConcurrencySettings(concurrency),
+		GitOpsConfig:   normalizeGitOpsConfig(gitopsConfig),
 	}, nil
 }
 
 type UpdateReleaseSettingsInput struct {
-	EnvOptions   []string
-	Concurrency  ReleaseConcurrencySettingsInput
-	GitOpsConfig ReleaseGitOpsConfigInput
+	EnvOptions     []string
+	EnvConfigs     []ReleaseEnvironmentConfig
+	DefaultEnvCode string
+	Concurrency    ReleaseConcurrencySettingsInput
+	GitOpsConfig   ReleaseGitOpsConfigInput
 }
 
 type UpdateReleaseSettings struct {
@@ -126,11 +155,18 @@ func (uc *UpdateReleaseSettings) Execute(ctx context.Context, input UpdateReleas
 	if uc == nil || uc.store == nil || uc.reader == nil {
 		return ReleaseSettingsOutput{}, fmt.Errorf("%w: release settings are not configured", ErrInvalidInput)
 	}
-	options := normalizeReleaseEnvOptions(input.EnvOptions)
+	envConfigs := normalizeReleaseEnvConfigs(input.EnvConfigs)
+	if len(envConfigs) == 0 {
+		envConfigs = releaseEnvConfigsFromOptions(input.EnvOptions)
+	}
+	options := releaseEnvOptionsFromConfigs(envConfigs)
 	if false && len(options) == 0 {
 		return ReleaseSettingsOutput{}, fmt.Errorf("%w: 至少需要配置一个发布环境", ErrInvalidInput)
 	}
-	if err := uc.store.SaveEnvOptions(ctx, options); err != nil {
+	if err := uc.store.SaveEnvConfigs(ctx, envConfigs); err != nil {
+		return ReleaseSettingsOutput{}, err
+	}
+	if err := uc.store.SaveDefaultEnvCode(ctx, strings.TrimSpace(input.DefaultEnvCode)); err != nil {
 		return ReleaseSettingsOutput{}, err
 	}
 	if err := uc.store.SaveConcurrencySettings(ctx, normalizeConcurrencySettings(input.Concurrency)); err != nil {
@@ -140,6 +176,45 @@ func (uc *UpdateReleaseSettings) Execute(ctx context.Context, input UpdateReleas
 		return ReleaseSettingsOutput{}, err
 	}
 	return uc.reader.Execute(ctx)
+}
+
+func normalizeReleaseEnvConfigs(values []ReleaseEnvironmentConfig) []ReleaseEnvironmentConfig {
+	result := make([]ReleaseEnvironmentConfig, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, item := range values {
+		code := strings.TrimSpace(item.Code)
+		if code == "" {
+			continue
+		}
+		if _, exists := seen[code]; exists {
+			continue
+		}
+		seen[code] = struct{}{}
+		result = append(result, ReleaseEnvironmentConfig{
+			Code:        code,
+			Description: strings.TrimSpace(item.Description),
+		})
+	}
+	return result
+}
+
+func releaseEnvConfigsFromOptions(values []string) []ReleaseEnvironmentConfig {
+	options := normalizeReleaseEnvOptions(values)
+	result := make([]ReleaseEnvironmentConfig, 0, len(options))
+	for _, item := range options {
+		result = append(result, ReleaseEnvironmentConfig{
+			Code: item,
+		})
+	}
+	return result
+}
+
+func releaseEnvOptionsFromConfigs(values []ReleaseEnvironmentConfig) []string {
+	result := make([]string, 0, len(values))
+	for _, item := range normalizeReleaseEnvConfigs(values) {
+		result = append(result, item.Code)
+	}
+	return result
 }
 
 // normalizeReleaseEnvOptions 标准化输入值，保证后续逻辑使用统一格式。

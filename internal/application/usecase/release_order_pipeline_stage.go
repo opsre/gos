@@ -19,6 +19,60 @@ type ReleaseOrderPipelineStageView struct {
 	Stages       []domain.ReleaseOrderPipelineStage
 }
 
+// ListStoredPipelineStagesView 从本地持久化快照构建阶段视图，不主动访问 Jenkins/ArgoCD。
+// 实时详情 watcher 会先通过 TrackReleaseExecution 同步一次外部状态，再调用本方法，
+// 避免同一个 2 秒周期内重复请求外部执行器。
+func (uc *ReleaseOrderManager) ListStoredPipelineStagesView(
+	ctx context.Context,
+	orderID string,
+) (ReleaseOrderPipelineStageView, error) {
+	orderID = strings.TrimSpace(orderID)
+	if orderID == "" {
+		return ReleaseOrderPipelineStageView{}, ErrInvalidID
+	}
+	order, err := uc.repo.GetByID(ctx, orderID)
+	if err != nil {
+		return ReleaseOrderPipelineStageView{}, err
+	}
+	executions, err := uc.repo.ListExecutions(ctx, order.ID)
+	if err != nil {
+		return ReleaseOrderPipelineStageView{}, err
+	}
+	stages, err := uc.repo.ListPipelineStages(ctx, order.ID)
+	if err != nil {
+		return ReleaseOrderPipelineStageView{}, err
+	}
+	return buildStoredPipelineStagesView(order, executions, stages), nil
+}
+
+func buildStoredPipelineStagesView(
+	order domain.ReleaseOrder,
+	executions []domain.ReleaseOrderExecution,
+	stages []domain.ReleaseOrderPipelineStage,
+) ReleaseOrderPipelineStageView {
+	view := ReleaseOrderPipelineStageView{}
+	for _, execution := range executions {
+		provider := strings.ToLower(strings.TrimSpace(execution.Provider))
+		if provider != string(pipelinedomain.ProviderJenkins) && provider != string(pipelinedomain.ProviderArgoCD) {
+			continue
+		}
+		view.ShowModule = true
+		if view.ExecutorType == "" {
+			view.ExecutorType = strings.TrimSpace(execution.Provider)
+		} else if !strings.EqualFold(view.ExecutorType, execution.Provider) {
+			view.ExecutorType = "mixed"
+		}
+	}
+	if !view.ShowModule {
+		return view
+	}
+	view.Stages = stages
+	if len(stages) == 0 {
+		view.Message = defaultPipelineStageMessage(order.Status)
+	}
+	return view
+}
+
 // ListPipelineStagesView 查询并返回列表数据。
 func (uc *ReleaseOrderManager) ListPipelineStagesView(
 	ctx context.Context,
@@ -282,17 +336,11 @@ func (uc *ReleaseOrderManager) refreshPipelineStages(
 	if err != nil {
 		return "", err
 	}
-	merged := make([]domain.ReleaseOrderPipelineStage, 0, len(existing)+len(persisted))
-	for _, item := range existing {
-		if strings.EqualFold(strings.TrimSpace(item.PipelineScope), string(execution.PipelineScope)) {
-			continue
+	merged, changed := mergeRefreshedPipelineStages(existing, persisted, execution.PipelineScope, now)
+	if changed {
+		if err := uc.repo.ReplacePipelineStages(ctx, order.ID, merged); err != nil {
+			return "", err
 		}
-		merged = append(merged, item)
-	}
-	merged = append(merged, persisted...)
-
-	if err := uc.repo.ReplacePipelineStages(ctx, order.ID, merged); err != nil {
-		return "", err
 	}
 	if len(persisted) == 0 {
 		return defaultPipelineStageMessage(order.Status), nil
@@ -486,19 +534,103 @@ func (uc *ReleaseOrderManager) refreshArgoCDStages(
 	if err != nil {
 		return "", err
 	}
-	merged := make([]domain.ReleaseOrderPipelineStage, 0, len(existing)+len(persisted))
+	merged, changed := mergeRefreshedPipelineStages(existing, persisted, execution.PipelineScope, now)
+	if changed {
+		if err := uc.repo.ReplacePipelineStages(ctx, order.ID, merged); err != nil {
+			return "", err
+		}
+	}
+	return syncMessage, nil
+}
+
+func mergeRefreshedPipelineStages(
+	existing []domain.ReleaseOrderPipelineStage,
+	refreshed []domain.ReleaseOrderPipelineStage,
+	scope domain.PipelineScope,
+	now time.Time,
+) ([]domain.ReleaseOrderPipelineStage, bool) {
+	existingByID := make(map[string]domain.ReleaseOrderPipelineStage, len(existing))
 	for _, item := range existing {
-		if strings.EqualFold(strings.TrimSpace(item.PipelineScope), string(execution.PipelineScope)) {
+		existingByID[strings.TrimSpace(item.ID)] = item
+	}
+
+	normalized := make([]domain.ReleaseOrderPipelineStage, 0, len(refreshed))
+	for _, item := range refreshed {
+		if previous, ok := existingByID[strings.TrimSpace(item.ID)]; ok {
+			item.CreatedAt = previous.CreatedAt
+			if pipelineStageBusinessEqual(previous, item) {
+				item.UpdatedAt = previous.UpdatedAt
+			} else {
+				item.UpdatedAt = now
+			}
+		} else {
+			item.CreatedAt = now
+			item.UpdatedAt = now
+		}
+		normalized = append(normalized, item)
+	}
+
+	merged := make([]domain.ReleaseOrderPipelineStage, 0, len(existing)+len(normalized))
+	for _, item := range existing {
+		if strings.EqualFold(strings.TrimSpace(item.PipelineScope), strings.TrimSpace(string(scope))) {
 			continue
 		}
 		merged = append(merged, item)
 	}
-	merged = append(merged, persisted...)
+	merged = append(merged, normalized...)
+	return merged, !pipelineStageCollectionsEqual(existing, merged)
+}
 
-	if err := uc.repo.ReplacePipelineStages(ctx, order.ID, merged); err != nil {
-		return "", err
+func pipelineStageCollectionsEqual(
+	left []domain.ReleaseOrderPipelineStage,
+	right []domain.ReleaseOrderPipelineStage,
+) bool {
+	if len(left) != len(right) {
+		return false
 	}
-	return syncMessage, nil
+	rightByID := make(map[string]domain.ReleaseOrderPipelineStage, len(right))
+	for _, item := range right {
+		rightByID[strings.TrimSpace(item.ID)] = item
+	}
+	if len(rightByID) != len(right) {
+		return false
+	}
+	for _, item := range left {
+		other, ok := rightByID[strings.TrimSpace(item.ID)]
+		if !ok || !pipelineStagePersistedEqual(item, other) {
+			return false
+		}
+	}
+	return true
+}
+
+func pipelineStagePersistedEqual(left domain.ReleaseOrderPipelineStage, right domain.ReleaseOrderPipelineStage) bool {
+	return pipelineStageBusinessEqual(left, right) &&
+		left.CreatedAt.Equal(right.CreatedAt) &&
+		left.UpdatedAt.Equal(right.UpdatedAt)
+}
+
+func pipelineStageBusinessEqual(left domain.ReleaseOrderPipelineStage, right domain.ReleaseOrderPipelineStage) bool {
+	return strings.TrimSpace(left.ID) == strings.TrimSpace(right.ID) &&
+		strings.TrimSpace(left.ReleaseOrderID) == strings.TrimSpace(right.ReleaseOrderID) &&
+		strings.TrimSpace(left.ExecutionID) == strings.TrimSpace(right.ExecutionID) &&
+		strings.TrimSpace(left.PipelineScope) == strings.TrimSpace(right.PipelineScope) &&
+		strings.TrimSpace(left.ExecutorType) == strings.TrimSpace(right.ExecutorType) &&
+		strings.TrimSpace(left.StageKey) == strings.TrimSpace(right.StageKey) &&
+		strings.TrimSpace(left.StageName) == strings.TrimSpace(right.StageName) &&
+		left.Status == right.Status &&
+		strings.TrimSpace(left.RawStatus) == strings.TrimSpace(right.RawStatus) &&
+		left.SortNo == right.SortNo &&
+		left.DurationMillis == right.DurationMillis &&
+		optionalTimesEqual(left.StartedAt, right.StartedAt) &&
+		optionalTimesEqual(left.FinishedAt, right.FinishedAt)
+}
+
+func optionalTimesEqual(left *time.Time, right *time.Time) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return left.Equal(*right)
 }
 
 // argoCDUpdateStageName 更新业务资源并返回处理结果。

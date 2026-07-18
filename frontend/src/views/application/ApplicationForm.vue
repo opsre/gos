@@ -49,6 +49,7 @@ const props = withDefaults(
     cancelText?: string
     showActions?: boolean
     showAdvancedConfig?: boolean
+    keyReadonly?: boolean
     surface?: 'card' | 'plain'
   }>(),
   {
@@ -64,6 +65,7 @@ const props = withDefaults(
     cancelText: '取消',
     showActions: true,
     showAdvancedConfig: true,
+    keyReadonly: false,
     surface: 'card',
   },
 )
@@ -78,6 +80,7 @@ const formRef = ref<FormInstance>()
 
 const submitHovered = ref(false)
 const cancelHovered = ref(false)
+const keyReadonly = computed(() => props.keyReadonly)
 
 const glassPrimaryButtonStyle = computed(() => ({
   background: submitHovered.value
@@ -155,13 +158,10 @@ const rules: Record<string, Rule[]> = {
 }
 
 function validateArtifactDirectory(_rule: Rule, value: string) {
-  const repositoryID = model.artifact_repository_id.trim()
+  const repositoryID = String(model.artifact_repository_id || '').trim()
   const directory = String(value || '').trim()
   if (!repositoryID && directory) {
     return Promise.reject('请先选择制品库')
-  }
-  if (repositoryID && !directory) {
-    return Promise.reject('请输入制品路径')
   }
   return Promise.resolve()
 }
@@ -283,9 +283,18 @@ function removeReleaseBranch(index: number) {
         <a-col :xs="24" :md="12">
           <a-form-item class="form-item-compact form-item-key" name="key">
             <template #label>
-              <span class="field-label-with-hint">应用 Key <span class="field-required-hint">必填</span></span>
+              <span class="field-label-with-hint">
+                应用 Key
+                <span v-if="keyReadonly" class="field-readonly-hint">只读</span>
+                <span v-else class="field-required-hint">必填</span>
+              </span>
             </template>
-            <a-input v-model:value="model.key" :maxlength="64" />
+            <a-input
+              v-model:value="model.key"
+              :maxlength="64"
+              :readonly="keyReadonly"
+              :aria-readonly="keyReadonly"
+            />
           </a-form-item>
         </a-col>
       </a-row>
@@ -603,6 +612,21 @@ function removeReleaseBranch(index: number) {
   border-radius: 6px;
   background: rgba(59, 130, 246, 0.1);
   color: #2563eb;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.field-readonly-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: rgba(100, 116, 139, 0.12);
+  color: #475569;
   font-size: 11px;
   font-weight: 700;
   line-height: 20px;

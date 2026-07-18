@@ -1,11 +1,21 @@
 -- ============================================================
 -- GOS 数据库完整表结构导出
--- 生成时间: 2026-05-07
+-- 生成时间: 2026-07-17
 -- 说明: 包含所有内置字段信息
 -- ============================================================
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
+
+-- --------------------------------------------------------
+-- 0. 数据库迁移 - gos_schema_migration (启动迁移版本记录表)
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `gos_schema_migration` (
+    `version` VARCHAR(128) NOT NULL COMMENT '不可变迁移版本',
+    `description` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '迁移说明',
+    `applied_at` BIGINT NOT NULL COMMENT '执行完成时间，Unix纳秒时间戳',
+    PRIMARY KEY (`version`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='GOS启动数据库迁移版本记录表';
 
 -- --------------------------------------------------------
 -- 1. 系统模块 - sys_user (用户表)
@@ -97,6 +107,17 @@ CREATE TABLE IF NOT EXISTS `sys_user_session` (
     KEY `idx_sus_user` (`user_id`),
     KEY `idx_sus_expired` (`expired_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户会话表(基于数据库的Token存储)';
+
+-- --------------------------------------------------------
+-- 5A. 系统模块 - sys_user_manager (用户直属主管关系表)
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `sys_user_manager` (
+    `user_id` VARCHAR(64) NOT NULL COMMENT '用户ID',
+    `manager_user_id` VARCHAR(64) NOT NULL COMMENT '直属主管用户ID',
+    `updated_at` BIGINT NOT NULL COMMENT '更新时间，Unix纳秒时间戳',
+    PRIMARY KEY (`user_id`),
+    KEY `idx_sum_manager` (`manager_user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户直属主管关系表';
 
 -- --------------------------------------------------------
 -- 6. 项目模块 - projects (项目表)
@@ -293,7 +314,6 @@ CREATE TABLE IF NOT EXISTS `release_order` (
     `binding_id` VARCHAR(64) NOT NULL COMMENT '关联模板绑定ID',
     `pipeline_id` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '关联管线ID',
     `env_code` VARCHAR(50) NOT NULL COMMENT '目标环境代码',
-    `son_service` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '子服务标识',
     `git_ref` VARCHAR(200) NOT NULL DEFAULT '' COMMENT 'Git引用: 分支/tag/commit',
     `image_tag` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '镜像版本标签',
     `trigger_type` VARCHAR(50) NOT NULL COMMENT '触发类型: manual=手动, scheduled=定时, webhook= webhook触发, api=API触发',
@@ -591,6 +611,87 @@ CREATE TABLE IF NOT EXISTS `release_order_approval_record` (
     PRIMARY KEY (`id`),
     KEY `idx_release_order_approval_record_order_created` (`release_order_id`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='发布单审批记录表';
+
+-- --------------------------------------------------------
+-- 25A. 发布审批流 - release_approval_flow_definition (审批流定义表)
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `release_approval_flow_definition` (
+    `id` VARCHAR(64) NOT NULL,
+    `name` VARCHAR(128) NOT NULL,
+    `status` VARCHAR(32) NOT NULL,
+    `nodes_json` TEXT NOT NULL,
+    `created_at` BIGINT NOT NULL,
+    `updated_at` BIGINT NOT NULL,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='发布审批流定义表';
+
+-- --------------------------------------------------------
+-- 25B. 发布审批流 - release_order_approval_flow_instance (发布单审批流实例表)
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `release_order_approval_flow_instance` (
+    `id` VARCHAR(64) NOT NULL,
+    `release_order_id` VARCHAR(64) NOT NULL,
+    `flow_definition_id` VARCHAR(64) NOT NULL,
+    `flow_name` VARCHAR(128) NOT NULL,
+    `flow_snapshot_json` TEXT NOT NULL,
+    `status` VARCHAR(32) NOT NULL,
+    `current_gate` VARCHAR(32) NOT NULL DEFAULT '',
+    `current_scope` VARCHAR(32) NOT NULL DEFAULT '',
+    `current_node_code` VARCHAR(64) NOT NULL DEFAULT '',
+    `current_task_id` VARCHAR(64) NOT NULL DEFAULT '',
+    `created_at` BIGINT NOT NULL,
+    `updated_at` BIGINT NOT NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_release_order_approval_flow_instance_order` (`release_order_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='发布单审批流实例表';
+
+-- --------------------------------------------------------
+-- 25C. 发布审批流 - release_order_approval_flow_task (审批流任务表)
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `release_order_approval_flow_task` (
+    `id` VARCHAR(64) NOT NULL,
+    `instance_id` VARCHAR(64) NOT NULL,
+    `release_order_id` VARCHAR(64) NOT NULL,
+    `node_code` VARCHAR(64) NOT NULL,
+    `node_name` VARCHAR(128) NOT NULL,
+    `gate` VARCHAR(32) NOT NULL,
+    `node_type` VARCHAR(32) NOT NULL DEFAULT 'approval',
+    `approval_mode` VARCHAR(32) NOT NULL,
+    `approver_ids_json` TEXT NOT NULL,
+    `approver_names_json` TEXT NOT NULL,
+    `agent_task_id` VARCHAR(64) NOT NULL DEFAULT '',
+    `agent_task_name` VARCHAR(128) NOT NULL DEFAULT '',
+    `agent_batch_id` VARCHAR(64) NOT NULL DEFAULT '',
+    `message` VARCHAR(2000) NOT NULL DEFAULT '',
+    `status` VARCHAR(32) NOT NULL,
+    `created_at` BIGINT NOT NULL,
+    `updated_at` BIGINT NOT NULL,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='发布审批流任务表';
+
+-- --------------------------------------------------------
+-- 25D. 发布审批流 - release_order_approval_flow_task_record (审批流任务操作记录表)
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `release_order_approval_flow_task_record` (
+    `id` VARCHAR(64) NOT NULL,
+    `task_id` VARCHAR(64) NOT NULL,
+    `action` VARCHAR(32) NOT NULL,
+    `operator_user_id` VARCHAR(64) NOT NULL DEFAULT '',
+    `operator_name` VARCHAR(128) NOT NULL DEFAULT '',
+    `comment` VARCHAR(1000) NOT NULL DEFAULT '',
+    `created_at` BIGINT NOT NULL,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='发布审批流任务操作记录表';
+
+-- --------------------------------------------------------
+-- 25E. 发布审批流 - release_application_approval_flow_binding (应用审批流绑定表)
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `release_application_approval_flow_binding` (
+    `application_id` VARCHAR(64) NOT NULL,
+    `approval_flow_id` VARCHAR(64) NOT NULL DEFAULT '',
+    `updated_at` BIGINT NOT NULL,
+    PRIMARY KEY (`application_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='应用审批流绑定表';
 
 -- --------------------------------------------------------
 -- 26. 发布模块 - release_order_schedule (发布单计划表)
@@ -1228,4 +1329,18 @@ CREATE TABLE IF NOT EXISTS `system_settings` (
   `updated_at` datetime NOT NULL,
   PRIMARY KEY (`setting_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO `gos_schema_migration` (`version`, `description`, `applied_at`)
+VALUES
+  ('deploy_platform_v1_1_user_session', 'add user session revocation fields', CAST(UNIX_TIMESTAMP(CURRENT_TIMESTAMP(6)) * 1000000000 AS SIGNED)),
+  ('deploy_platform_v1_1_platform_param', 'add GitOps locator and CD self-fill platform parameter fields', CAST(UNIX_TIMESTAMP(CURRENT_TIMESTAMP(6)) * 1000000000 AS SIGNED)),
+  ('deploy_platform_v1_1_release_schema', 'upgrade legacy release tables, columns, indexes and data', CAST(UNIX_TIMESTAMP(CURRENT_TIMESTAMP(6)) * 1000000000 AS SIGNED)),
+  ('deploy_platform_v1_1_release_schedule', 'create release scheduling tables', CAST(UNIX_TIMESTAMP(CURRENT_TIMESTAMP(6)) * 1000000000 AS SIGNED)),
+  ('deploy_platform_v1_2_argocd_multi_instance', 'upgrade ArgoCD applications and environment bindings for multiple instances', CAST(UNIX_TIMESTAMP(CURRENT_TIMESTAMP(6)) * 1000000000 AS SIGNED)),
+  ('20260717_01_user_manager', 'create direct user manager relationships', CAST(UNIX_TIMESTAMP(CURRENT_TIMESTAMP(6)) * 1000000000 AS SIGNED)),
+  ('20260717_02_release_approval_flow', 'create release approval flow definitions, instances, tasks and bindings', CAST(UNIX_TIMESTAMP(CURRENT_TIMESTAMP(6)) * 1000000000 AS SIGNED)),
+  ('20260718_01_release_approval_flow_runtime_columns', 'ensure approval flow runtime columns after early v1.3 builds', CAST(UNIX_TIMESTAMP(CURRENT_TIMESTAMP(6)) * 1000000000 AS SIGNED))
+ON DUPLICATE KEY UPDATE
+  `description` = VALUES(`description`);
+
 SET FOREIGN_KEY_CHECKS = 1;

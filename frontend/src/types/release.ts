@@ -102,7 +102,6 @@ export interface ReleaseOrder {
   pipeline_id: string;
   env_code: string;
   project_name: string;
-  son_service: string;
   git_ref: string;
   image_tag: string;
   trigger_type: ReleaseTriggerType;
@@ -380,6 +379,25 @@ export interface ReleaseOrderDataResponse {
   data: ReleaseOrder;
 }
 
+export interface BatchCreateReleaseOrdersPayload {
+  orders: CreateReleaseOrderPayload[];
+}
+
+export interface BatchCreateReleaseOrderFailure {
+  index: number;
+  release_name: string;
+  error: string;
+}
+
+export interface ReleaseOrderBatchCreateResult {
+  orders: ReleaseOrder[];
+  failures: BatchCreateReleaseOrderFailure[];
+}
+
+export interface ReleaseOrderBatchCreateResponse {
+  data: ReleaseOrderBatchCreateResult;
+}
+
 export interface ReleaseOrderSchedule {
   id: string;
   schedule_no: string;
@@ -606,6 +624,24 @@ export interface ReleaseOrderArtifactMetadataListResponse {
   data: ReleaseOrderArtifactMetadata[];
 }
 
+export interface ReleaseOrderRealtimeSnapshot {
+  version: string;
+  generated_at: string;
+  order: ReleaseOrder;
+  executions: ReleaseOrderExecution[];
+  steps: ReleaseOrderStep[];
+  value_progress: ReleaseOrderValueProgress[];
+  value_progress_visible: boolean;
+  pipeline_stage_view: ReleaseOrderPipelineStageListResponse;
+  artifact_metadata: ReleaseOrderArtifactMetadata[];
+  approval_records: ReleaseOrderApprovalRecord[];
+  concurrent_batch_progress: ReleaseOrderConcurrentBatchProgress | null;
+}
+
+export interface ReleaseOrderRealtimeSnapshotResponse {
+  data: ReleaseOrderRealtimeSnapshot;
+}
+
 export interface ReleaseOrderPipelineStageLogResponse {
   data: {
     stage: ReleaseOrderPipelineStage;
@@ -720,7 +756,6 @@ export interface CreateReleaseOrderPayload {
   release_name?: string;
   env_code?: string;
   project_name?: string;
-  son_service?: string;
   git_ref?: string;
   image_tag?: string;
   trigger_type?: ReleaseTriggerType;
@@ -728,6 +763,183 @@ export interface CreateReleaseOrderPayload {
   triggered_by?: string;
   params?: CreateReleaseOrderParamPayload[];
   steps?: CreateReleaseOrderStepPayload[];
+}
+
+export type ApprovalFlowStatus = 'active' | 'disabled'
+export type ApprovalFlowGate = 'before_execute' | 'before_ci' | 'before_cd'
+export type ApprovalFlowNodeType = 'approval' | 'agent_task'
+export type ApprovalFlowTaskStatus = 'pending' | 'running' | 'approved' | 'rejected' | 'failed'
+export type ApprovalFlowApproverSource = 'users' | 'manager'
+
+export interface ApprovalFlowNode {
+  code: string
+  name: string
+  gate: ApprovalFlowGate
+  node_type: ApprovalFlowNodeType
+  applicable_env_codes: string[]
+  approval_mode: ReleaseTemplateApprovalMode | ''
+  approver_source: ApprovalFlowApproverSource
+  manager_level: number
+  approver_ids: string[]
+  approver_names: string[]
+  agent_task_id: string
+  agent_task_name: string
+  position_x: number
+  position_y: number
+  sort_no: number
+}
+
+export type ApprovalFlowExecutionScope = 'build_only' | 'deploy_only' | 'full_release'
+export interface ApprovalFlowLink {
+  from_code: string
+  to_code: string
+  execution_scopes: ApprovalFlowExecutionScope[]
+  priority: number
+}
+
+export interface ApprovalFlowDefinition {
+  id: string
+  name: string
+  status: ApprovalFlowStatus
+  nodes: ApprovalFlowNode[]
+  links: ApprovalFlowLink[]
+  created_at: string
+  updated_at: string
+}
+
+export interface ApprovalFlowDefinitionListResponse {
+  data: ApprovalFlowDefinition[]
+}
+
+export interface ApprovalFlowDefinitionDataResponse {
+  data: ApprovalFlowDefinition
+}
+
+export interface ApprovalFlowDefinitionPayload {
+  name: string
+  status: ApprovalFlowStatus
+  nodes: Array<Pick<ApprovalFlowNode, 'code' | 'name' | 'gate' | 'node_type' | 'applicable_env_codes' | 'approval_mode' | 'approver_source' | 'manager_level' | 'approver_ids' | 'approver_names' | 'agent_task_id' | 'agent_task_name' | 'position_x' | 'position_y'>>
+  links: ApprovalFlowLink[]
+}
+
+export interface ReleaseOrderApprovalFlowTaskRecord {
+  id: string
+  task_id: string
+  action: "approve" | "reject"
+  operator_user_id: string
+  operator_name: string
+  comment: string
+  created_at: string
+}
+
+export interface ReleaseOrderApprovalFlowTask {
+  id: string
+  node_code: string
+  node_name: string
+  gate: ApprovalFlowGate
+  node_type: ApprovalFlowNodeType
+  approval_mode: ReleaseTemplateApprovalMode | ''
+  approver_ids: string[]
+  approver_names: string[]
+  agent_task_id: string
+  agent_task_name: string
+  agent_batch_id: string
+  message: string
+  status: ApprovalFlowTaskStatus
+  records: ReleaseOrderApprovalFlowTaskRecord[]
+  created_at: string
+  updated_at: string
+}
+
+export interface ReleaseOrderApprovalFlow {
+  id: string
+  flow_definition_id: string
+  flow_name: string
+  nodes: ApprovalFlowNode[]
+  links: ApprovalFlowLink[]
+  status: string
+  current_gate: ApprovalFlowGate
+  current_scope: ApprovalFlowExecutionScope | ''
+  current_node_code: string
+  current_task_id: string
+  tasks: ReleaseOrderApprovalFlowTask[]
+  created_at: string
+  updated_at: string
+}
+
+export interface ReleaseOrderApprovalFlowDataResponse {
+  data: ReleaseOrderApprovalFlow | null
+}
+
+export interface ReleaseOrderApprovalFlowTaskDataResponse {
+  data: ReleaseOrderApprovalFlowTask
+}
+
+export type ReleaseApprovalWorkbenchSource = 'flow' | 'legacy'
+
+export interface ReleaseApprovalWorkbenchTask {
+  source: ReleaseApprovalWorkbenchSource
+  task_id: string
+  release_order_id: string
+  order_no: string
+  application_id: string
+  application_name: string
+  env_code: string
+  operation_type: ReleaseOperationType
+  triggered_by: string
+  flow_name: string
+  node_name: string
+  gate: ApprovalFlowGate
+  execution_scope: ApprovalFlowExecutionScope | ''
+  approval_mode: ReleaseTemplateApprovalMode | ''
+  approver_ids: string[]
+  approver_names: string[]
+  release_order_status: ReleaseOrderStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface ReleaseApprovalWorkbenchRecord {
+  id: string
+  source: ReleaseApprovalWorkbenchSource
+  task_id: string
+  release_order_id: string
+  order_no: string
+  application_id: string
+  application_name: string
+  env_code: string
+  operation_type: ReleaseOperationType
+  triggered_by: string
+  flow_name: string
+  node_name: string
+  gate: ApprovalFlowGate
+  execution_scope: ApprovalFlowExecutionScope | ''
+  action: 'approve' | 'reject'
+  operator_user_id: string
+  operator_name: string
+  comment: string
+  release_order_status: ReleaseOrderStatus
+  created_at: string
+}
+
+export interface ReleaseApprovalWorkbenchListParams {
+  view: 'pending' | 'handled'
+  page?: number
+  page_size?: number
+}
+
+export interface ReleaseApprovalWorkbenchTaskListResponse {
+  data: ReleaseApprovalWorkbenchTask[]
+  page: number
+  page_size: number
+  total: number
+}
+
+export interface ReleaseApprovalWorkbenchRecordListResponse {
+  data: ReleaseApprovalWorkbenchRecord[]
+  page: number
+  page_size: number
+  total: number
 }
 
 export interface ReleaseTemplate {

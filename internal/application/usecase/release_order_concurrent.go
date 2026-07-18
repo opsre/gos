@@ -182,6 +182,13 @@ func (uc *ReleaseOrderManager) GetConcurrentBatchProgress(ctx context.Context, i
 	if err != nil {
 		return ReleaseOrderConcurrentBatchProgressOutput{}, err
 	}
+	return uc.getStoredConcurrentBatchProgress(ctx, order)
+}
+
+func (uc *ReleaseOrderManager) getStoredConcurrentBatchProgress(
+	ctx context.Context,
+	order domain.ReleaseOrder,
+) (ReleaseOrderConcurrentBatchProgressOutput, error) {
 	output := ReleaseOrderConcurrentBatchProgressOutput{
 		OrderID:      order.ID,
 		OrderNo:      order.OrderNo,
@@ -433,4 +440,15 @@ func (uc *ReleaseOrderManager) shouldQueueInConcurrentBatch(
 		strings.TrimSpace(conflictOrder.ConcurrentBatchNo) == batchNo &&
 		strings.TrimSpace(conflictOrder.ApplicationID) == strings.TrimSpace(order.ApplicationID) &&
 		strings.TrimSpace(conflictOrder.EnvCode) == strings.TrimSpace(order.EnvCode)
+}
+
+// shouldQueueBehindConcurrentOrder 判断两个发布单是否属于同一并发批次的同应用同环境队列。
+func shouldQueueBehindConcurrentOrder(order domain.ReleaseOrder, conflict domain.ReleaseOrder) bool {
+	batchNo := strings.TrimSpace(order.ConcurrentBatchNo)
+	return order.IsConcurrent &&
+		conflict.IsConcurrent &&
+		batchNo != "" &&
+		strings.TrimSpace(conflict.ConcurrentBatchNo) == batchNo &&
+		strings.TrimSpace(conflict.ApplicationID) == strings.TrimSpace(order.ApplicationID) &&
+		strings.TrimSpace(conflict.EnvCode) == strings.TrimSpace(order.EnvCode)
 }

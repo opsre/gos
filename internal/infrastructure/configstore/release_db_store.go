@@ -13,6 +13,8 @@ import (
 
 const (
 	releaseSettingsKeyEnvOptions   = "release_env_options"
+	releaseSettingsKeyEnvConfigs   = "release_env_configs"
+	releaseSettingsKeyDefaultEnv   = "release_default_env"
 	releaseSettingsKeyConcurrency  = "release_concurrency"
 	releaseSettingsKeyGitOpsConfig = "release_gitops_config"
 	settingsUpdatedAtSQLiteLayout  = "2006-01-02 15:04:05"
@@ -62,6 +64,13 @@ CREATE TABLE IF NOT EXISTS system_settings (
 
 // LoadEnvOptions 封装当前模块的业务处理逻辑。
 func (s *DatabaseReleaseStore) LoadEnvOptions(ctx context.Context) ([]string, error) {
+	configs, err := s.LoadEnvConfigs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(configs) > 0 {
+		return releaseEnvOptionsFromConfigs(configs), nil
+	}
 	var stored []string
 	ok, err := s.loadJSONSetting(ctx, releaseSettingsKeyEnvOptions, &stored)
 	if err != nil {
@@ -76,6 +85,31 @@ func (s *DatabaseReleaseStore) LoadEnvOptions(ctx context.Context) ([]string, er
 	return s.fallback.LoadEnvOptions(ctx)
 }
 
+// LoadEnvConfigs 封装当前模块的业务处理逻辑。
+func (s *DatabaseReleaseStore) LoadEnvConfigs(ctx context.Context) ([]usecase.ReleaseEnvironmentConfig, error) {
+	var stored []usecase.ReleaseEnvironmentConfig
+	ok, err := s.loadJSONSetting(ctx, releaseSettingsKeyEnvConfigs, &stored)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return normalizeEnvConfigs(stored), nil
+	}
+
+	var storedOptions []string
+	ok, err = s.loadJSONSetting(ctx, releaseSettingsKeyEnvOptions, &storedOptions)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return releaseEnvConfigsFromOptions(storedOptions), nil
+	}
+	if s.fallback == nil {
+		return nil, nil
+	}
+	return s.fallback.LoadEnvConfigs(ctx)
+}
+
 // SaveEnvOptions 封装当前模块的业务处理逻辑。
 func (s *DatabaseReleaseStore) SaveEnvOptions(ctx context.Context, values []string) error {
 	values = normalizeStringList(values)
@@ -85,8 +119,60 @@ func (s *DatabaseReleaseStore) SaveEnvOptions(ctx context.Context, values []stri
 	if err := s.saveJSONSetting(ctx, releaseSettingsKeyEnvOptions, values); err != nil {
 		return err
 	}
+	configs := releaseEnvConfigsFromOptions(values)
+	if err := s.saveJSONSetting(ctx, releaseSettingsKeyEnvConfigs, configs); err != nil {
+		return err
+	}
 	if s.fallback != nil {
 		_ = s.fallback.SaveEnvOptions(ctx, values)
+	}
+	return nil
+}
+
+// SaveEnvConfigs 封装当前模块的业务处理逻辑。
+func (s *DatabaseReleaseStore) SaveEnvConfigs(ctx context.Context, values []usecase.ReleaseEnvironmentConfig) error {
+	values = normalizeEnvConfigs(values)
+	if values == nil {
+		values = []usecase.ReleaseEnvironmentConfig{}
+	}
+	if err := s.saveJSONSetting(ctx, releaseSettingsKeyEnvConfigs, values); err != nil {
+		return err
+	}
+	options := releaseEnvOptionsFromConfigs(values)
+	if err := s.saveJSONSetting(ctx, releaseSettingsKeyEnvOptions, options); err != nil {
+		return err
+	}
+	if s.fallback != nil {
+		_ = s.fallback.SaveEnvConfigs(ctx, values)
+		_ = s.fallback.SaveEnvOptions(ctx, options)
+	}
+	return nil
+}
+
+// LoadDefaultEnvCode 封装当前模块的业务处理逻辑。
+func (s *DatabaseReleaseStore) LoadDefaultEnvCode(ctx context.Context) (string, error) {
+	var stored string
+	ok, err := s.loadJSONSetting(ctx, releaseSettingsKeyDefaultEnv, &stored)
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		return strings.TrimSpace(stored), nil
+	}
+	if s.fallback == nil {
+		return "", nil
+	}
+	return s.fallback.LoadDefaultEnvCode(ctx)
+}
+
+// SaveDefaultEnvCode 封装当前模块的业务处理逻辑。
+func (s *DatabaseReleaseStore) SaveDefaultEnvCode(ctx context.Context, value string) error {
+	value = strings.TrimSpace(value)
+	if err := s.saveJSONSetting(ctx, releaseSettingsKeyDefaultEnv, value); err != nil {
+		return err
+	}
+	if s.fallback != nil {
+		_ = s.fallback.SaveDefaultEnvCode(ctx, value)
 	}
 	return nil
 }

@@ -55,3 +55,34 @@ func TestResolveConfigPathUsesDefaultWhenEmpty(t *testing.T) {
 		t.Fatalf("ResolveConfigPath(custom) = %q", got)
 	}
 }
+
+func TestLoadConfigFromPathAcceptsReleaseEnvironmentSettings(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	content := `{
+  "auth": {
+    "admin_password": "test-password"
+  },
+  "release": {
+    "default_env_code": " prod ",
+    "env_configs": [
+      {"code": "dev", "description": "日常联调"},
+      {"code": "prod", "description": "生产发布"}
+    ]
+  }
+}`
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := LoadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfigFromPath() error = %v", err)
+	}
+	if cfg.Release.DefaultEnvCode != "prod" {
+		t.Fatalf("DefaultEnvCode = %q, want prod", cfg.Release.DefaultEnvCode)
+	}
+	if len(cfg.Release.EnvConfigs) != 2 || cfg.Release.EnvConfigs[0].Code != "dev" || cfg.Release.EnvConfigs[1].Description != "生产发布" {
+		t.Fatalf("EnvConfigs = %#v, want configured env metadata", cfg.Release.EnvConfigs)
+	}
+}

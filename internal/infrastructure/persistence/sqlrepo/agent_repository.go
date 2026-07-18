@@ -60,7 +60,6 @@ func (r *AgentRepository) InitSchema(ctx context.Context) error {
 	created_at BIGINT NOT NULL,
 	updated_at BIGINT NOT NULL,
 	UNIQUE KEY uk_agent_instance_code (agent_code),
-	KEY idx_agent_instance_machine (machine_id),
 	KEY idx_agent_instance_status (status),
 	KEY idx_agent_instance_env (environment_code),
 	KEY idx_agent_instance_heartbeat (last_heartbeat_at)
@@ -106,7 +105,6 @@ func (r *AgentRepository) InitSchema(ctx context.Context) error {
 	created_at BIGINT NOT NULL,
 	updated_at BIGINT NOT NULL,
 	KEY idx_agent_task_agent_status (agent_id, status),
-	KEY idx_agent_task_agent_mode_status (agent_id, task_mode, status),
 	KEY idx_agent_task_status_created (status, created_at),
 	KEY idx_agent_task_agent_created (agent_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
@@ -155,7 +153,6 @@ func (r *AgentRepository) InitSchema(ctx context.Context) error {
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL
 );`,
-			`CREATE INDEX IF NOT EXISTS idx_agent_instance_machine ON agent_instance (machine_id);`,
 			`CREATE INDEX IF NOT EXISTS idx_agent_instance_status ON agent_instance (status);`,
 			`CREATE INDEX IF NOT EXISTS idx_agent_instance_env ON agent_instance (environment_code);`,
 			`CREATE INDEX IF NOT EXISTS idx_agent_instance_heartbeat ON agent_instance (last_heartbeat_at);`,
@@ -201,7 +198,6 @@ func (r *AgentRepository) InitSchema(ctx context.Context) error {
 	updated_at INTEGER NOT NULL
 );`,
 			`CREATE INDEX IF NOT EXISTS idx_agent_task_agent_status ON agent_task (agent_id, status);`,
-			`CREATE INDEX IF NOT EXISTS idx_agent_task_agent_mode_status ON agent_task (agent_id, task_mode, status);`,
 			`CREATE INDEX IF NOT EXISTS idx_agent_task_status_created ON agent_task (status, created_at);`,
 			`CREATE INDEX IF NOT EXISTS idx_agent_task_agent_created ON agent_task (agent_id, created_at);`,
 			`CREATE TABLE IF NOT EXISTS agent_script (

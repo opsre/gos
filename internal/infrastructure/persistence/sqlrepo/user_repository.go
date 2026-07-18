@@ -39,7 +39,21 @@ func (r *UserRepository) InitSchema(ctx context.Context) error {
 			return execErr
 		}
 	}
-	return r.migrateUserSessionSchema(ctx)
+	return runSchemaMigrations(
+		ctx,
+		r.db,
+		r.dbDriver,
+		schemaMigration{
+			Version:     "deploy_platform_v1_1_user_session",
+			Description: "add user session revocation fields",
+			Up:          r.migrateUserSessionSchema,
+		},
+		schemaMigration{
+			Version:     "20260717_01_user_manager",
+			Description: "create direct user manager relationships",
+			Up:          r.ensureUserManagerSchema,
+		},
+	)
 }
 
 // schemaStatements 封装当前模块的业务处理逻辑。
@@ -183,6 +197,36 @@ func (r *UserRepository) schemaStatements() ([]string, error) {
 	default:
 		return nil, fmt.Errorf("unsupported db driver: %s", r.dbDriver)
 	}
+}
+
+func (r *UserRepository) ensureUserManagerSchema(ctx context.Context) error {
+	var statements []string
+	switch r.dbDriver {
+	case "mysql":
+		statements = []string{`CREATE TABLE IF NOT EXISTS sys_user_manager (
+	user_id VARCHAR(64) PRIMARY KEY,
+	manager_user_id VARCHAR(64) NOT NULL,
+	updated_at BIGINT NOT NULL,
+	KEY idx_sum_manager (manager_user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`}
+	case "sqlite":
+		statements = []string{
+			`CREATE TABLE IF NOT EXISTS sys_user_manager (
+	user_id TEXT PRIMARY KEY,
+	manager_user_id TEXT NOT NULL,
+	updated_at INTEGER NOT NULL
+);`,
+			`CREATE INDEX IF NOT EXISTS idx_sum_manager ON sys_user_manager (manager_user_id);`,
+		}
+	default:
+		return fmt.Errorf("unsupported db driver: %s", r.dbDriver)
+	}
+	for _, statement := range statements {
+		if _, err := r.db.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // migrateUserSessionSchema 补齐历史 session 表字段。
@@ -554,8 +598,17 @@ WHERE id = ?;`
 
 // DeleteUser 删除业务资源并返回处理结果。
 func (r *UserRepository) DeleteUser(ctx context.Context, id string) error {
+	id = strings.TrimSpace(id)
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM sys_user_manager WHERE user_id = ? OR manager_user_id = ?;`, id, id); err != nil {
+		return err
+	}
 	const q = `DELETE FROM sys_user WHERE id = ?;`
-	res, err := r.db.ExecContext(ctx, q, strings.TrimSpace(id))
+	res, err := tx.ExecContext(ctx, q, id)
 	if err != nil {
 		return err
 	}
@@ -566,7 +619,7 @@ func (r *UserRepository) DeleteUser(ctx context.Context, id string) error {
 	if affected == 0 {
 		return domain.ErrUserNotFound
 	}
-	return nil
+	return tx.Commit()
 }
 
 // ListUserOptions 查询并返回列表数据。
@@ -589,6 +642,110 @@ ORDER BY display_name ASC, username ASC;`
 			return nil, scanErr
 		}
 		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// GetUserManagerID 返回用户的直属主管。
+func (r *UserRepository) GetUserManagerID(ctx context.Context, userID string) (string, error) {
+	var managerUserID string
+	err := r.db.QueryRowContext(ctx, `SELECT manager_user_id FROM sys_user_manager WHERE user_id = ?;`, strings.TrimSpace(userID)).Scan(&managerUserID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", domain.ErrUserManagerNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(managerUserID), nil
+}
+
+// SetUserManagerID 设置用户直属主管；空主管表示解除关系。
+func (r *UserRepository) SetUserManagerID(ctx context.Context, userID string, managerUserID string, updatedAt time.Time) error {
+	userID, managerUserID = strings.TrimSpace(userID), strings.TrimSpace(managerUserID)
+	if managerUserID == "" {
+		_, err := r.db.ExecContext(ctx, `DELETE FROM sys_user_manager WHERE user_id = ?;`, userID)
+		return err
+	}
+	if r.dbDriver == "mysql" {
+		_, err := r.db.ExecContext(ctx, `INSERT INTO sys_user_manager (user_id, manager_user_id, updated_at) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE manager_user_id = VALUES(manager_user_id), updated_at = VALUES(updated_at);`, userID, managerUserID, updatedAt.UTC().UnixNano())
+		return err
+	}
+	_, err := r.db.ExecContext(ctx, `INSERT INTO sys_user_manager (user_id, manager_user_id, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET manager_user_id = excluded.manager_user_id, updated_at = excluded.updated_at;`, userID, managerUserID, updatedAt.UTC().UnixNano())
+	return err
+}
+
+// ResolveUserManager 沿直属主管链向上解析第 level 级主管。
+func (r *UserRepository) ResolveUserManager(ctx context.Context, userID string, level int) (domain.User, error) {
+	current := strings.TrimSpace(userID)
+	if current == "" || level <= 0 {
+		return domain.User{}, domain.ErrUserManagerNotFound
+	}
+	for index := 0; index < level; index++ {
+		next, err := r.GetUserManagerID(ctx, current)
+		if err != nil {
+			return domain.User{}, err
+		}
+		current = next
+	}
+	manager, err := r.GetUserByID(ctx, current)
+	if err != nil {
+		return domain.User{}, err
+	}
+	if manager.Status != domain.StatusActive || manager.Role == domain.RoleAdmin {
+		return domain.User{}, domain.ErrUserManagerNotFound
+	}
+	return manager, nil
+}
+
+// ListUserOrganization 一次查询返回全部用户及直属主管关系，供组织架构画布使用。
+func (r *UserRepository) ListUserOrganization(ctx context.Context) ([]domain.OrganizationNode, error) {
+	const q = `
+SELECT u.id, u.username, u.display_name, u.email, u.phone, u.role, u.status,
+       u.password_hash, u.created_at, u.updated_at, COALESCE(manager_user.id, '')
+FROM sys_user u
+LEFT JOIN sys_user_manager m ON m.user_id = u.id
+LEFT JOIN sys_user manager_user ON manager_user.id = m.manager_user_id AND manager_user.role <> ?
+WHERE u.role <> ?
+ORDER BY u.display_name ASC, u.username ASC;`
+	rows, err := r.db.QueryContext(ctx, q, string(domain.RoleAdmin), string(domain.RoleAdmin))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]domain.OrganizationNode, 0)
+	for rows.Next() {
+		var (
+			item              domain.User
+			managerUserID     string
+			roleRaw           string
+			statusRaw         string
+			createdAtUnixNano int64
+			updatedAtUnixNano int64
+		)
+		if err := rows.Scan(
+			&item.ID,
+			&item.Username,
+			&item.DisplayName,
+			&item.Email,
+			&item.Phone,
+			&roleRaw,
+			&statusRaw,
+			&item.PasswordHash,
+			&createdAtUnixNano,
+			&updatedAtUnixNano,
+			&managerUserID,
+		); err != nil {
+			return nil, err
+		}
+		item.Role = domain.Role(strings.TrimSpace(roleRaw))
+		item.Status = domain.Status(strings.TrimSpace(statusRaw))
+		item.CreatedAt = time.Unix(0, createdAtUnixNano).UTC()
+		item.UpdatedAt = time.Unix(0, updatedAtUnixNano).UTC()
+		result = append(result, domain.OrganizationNode{User: item, ManagerUserID: strings.TrimSpace(managerUserID)})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

@@ -39,9 +39,11 @@ type ReleaseSettingsResponse struct {
 }
 
 type UpdateReleaseSettingsRequest struct {
-	EnvOptions   []string                                `json:"env_options"`
-	Concurrency  usecase.ReleaseConcurrencySettingsInput `json:"concurrency"`
-	GitOpsConfig usecase.ReleaseGitOpsConfigInput        `json:"gitops_config"`
+	EnvOptions     []string                                `json:"env_options"`
+	EnvConfigs     []usecase.ReleaseEnvironmentConfig      `json:"env_configs"`
+	DefaultEnvCode string                                  `json:"default_env_code"`
+	Concurrency    usecase.ReleaseConcurrencySettingsInput `json:"concurrency"`
+	GitOpsConfig   usecase.ReleaseGitOpsConfigInput        `json:"gitops_config"`
 }
 
 // GetReleaseSettings 获取Release Settings详情。
@@ -143,9 +145,11 @@ func (h *SystemSettingsHandler) UpdateReleaseSettings(c *gin.Context) {
 		return
 	}
 	output, err := h.update.Execute(c.Request.Context(), usecase.UpdateReleaseSettingsInput{
-		EnvOptions:   req.EnvOptions,
-		Concurrency:  req.Concurrency,
-		GitOpsConfig: req.GitOpsConfig,
+		EnvOptions:     req.EnvOptions,
+		EnvConfigs:     req.EnvConfigs,
+		DefaultEnvCode: req.DefaultEnvCode,
+		Concurrency:    req.Concurrency,
+		GitOpsConfig:   req.GitOpsConfig,
 	})
 	if err != nil {
 		switch {

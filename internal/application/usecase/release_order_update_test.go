@@ -2,6 +2,8 @@ package usecase
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -369,6 +371,17 @@ func TestMaterializeCreateTemplateParamsResolvesBuiltinReleaseName(t *testing.T)
 	}
 	if got := resolved[0].ValueSource; got != domain.ValueSourceBuiltin {
 		t.Fatalf("resolved value source = %q, want %q", got, domain.ValueSourceBuiltin)
+	}
+}
+
+func TestReleaseOrderUsecaseInputDoesNotExposeDeprecatedSonService(t *testing.T) {
+	source, err := os.ReadFile("release_order.go")
+	if err != nil {
+		t.Fatalf("ReadFile release_order.go failed: %v", err)
+	}
+
+	if strings.Contains(string(source), "SonService") {
+		t.Fatal("release order usecase input should not expose deprecated SonService")
 	}
 }
 

@@ -80,20 +80,32 @@ GOS 的标准化不是要求所有团队使用同一条流水线，而是把发�
 
 - 发布单创建、编辑、删除、执行、取消。
 - 支持标准发布、极速发布、仅构建、分段部署、回滚和重放。
-- 批量执行、批量删除、并发批次进度和执行状态追踪。
+- 支持批量新建发布单：创建清单最多暂存 50 项，一次生成多张相互独立的发布单，不自动发起审批或执行。
+- 创建清单中存在待创建项时，顶部“批量创建”入口自动锁定，只允许通过“创建全部”统一提交，避免重复入单。
+- 批量执行、批量删除、并发批次进度和执行状态追踪；列表选择控件独立占位，不遮挡发布单号。
 - 发布前预检覆盖发布单状态、执行单元、参数完整性、并发锁冲突和模板合规性。
+- 同应用、同环境启用并发锁后，冲突发布单进入队列；当前单结束后自动提升并执行下一张已放行发布单，避免队列全部卡住。
 - 应用维度回滚能力检测、当前上线状态确认与历史状态追踪。
-- 发布详情聚合执行单元、实时日志、阶段日志、Hook 进度、制品信息和 AI 诊断结果。
+- 发布详情聚合执行单元、实时日志、阶段日志、审批进度、Hook 进度、制品信息和 AI 诊断结果。
+- 发布单聚合快照通过 SSE 实时刷新，并保留轮询兜底；Agent 任务、阶段状态和列表进度不需要手动刷新页面。
 
 ### ✅ 审批与发布模板
 
 把发布规则前置到模板，而不是让每次发布临时决定。
 
 - 发布模板 CRUD，按应用绑定可用发布流程。
+- 应用级审批流采用可视化画布编排，支持开始、整单审批、CI 前审批、CD 前审批、待部署和结束节点。
+- 审批节点支持按环境匹配或自动跳过，支持指定审批人、直属主管，以及或签、会签两种通过方式。
+- 审批流绑定到应用；应用调整绑定后，尚未进入执行的历史发布单会在发起时同步最新审批流。
+- 创建发布单只保存业务参数，不提前进入审批；用户点击发布、构建或部署后才按对应阶段发起流程。
+- 审批通过后自动推进到下一审批节点、下一执行阶段或直接触发已放行任务，不需要再次手动点击发布。
+- 审批备注与审批结果一并持久化，并展示在审批工作台、发布单列表展开节点和发布单详情中。
+- 等待审批、等待部署等未执行节点使用静态状态图标，只有真正执行中的节点展示加载动画。
+- Agent 任务若位于人工 CD 审批之前，会先完成受控任务，再进入对应人工审批节点。
 - CI / CD 执行器绑定，支持 Jenkins、ArgoCD / GitOps 和 Agent 任务组合。
 - CI / CD 参数映射、固定值、基础字段、CI 参数沿用和高级参数展示。
 - 隐藏基础字段映射和 CD 沿用 CI 的参数，降低发布申请页面复杂度。
-- 模板审批开关、审批模式、审批人配置、审批工作台和审批记录。
+- 审批工作台聚合待我审批、我已处理任务，支持通过、拒绝和审批备注留痕。
 - 模板 Hook 配置，支持 Agent 任务、通知 Hook 和发布后补充动作。
 - 发布创建前校验模板执行单元、参数、管线规范和权限边界。
 
@@ -189,9 +201,83 @@ GOS 的标准化不是要求所有团队使用同一条流水线，而是把发�
 - 应用级可见 / 发布权限控制、用户管理、权限授权和参数权限。
 - 系统设置：发布环境、并发控制、GitOps 扫描路径和 AI 模型配置。
 
+### 👥 组织架构与环境治理
+
+把审批人选择和发布环境从自由文本提升为可维护的平台数据。
+
+- 用户管理提供组织架构画布，可搜索成员、拖动布局并查看或调整直属主管关系。
+- 直属主管关系自动参与“主管审批”节点解析，并校验循环关系；内置管理员不进入普通组织层级。
+- 发布环境按编码、名称和描述结构化维护，支持新增、编辑、删除和默认环境设置。
+- 新建发布单、审批节点适用环境和系统并发策略共用同一套环境配置，环境卡片优先展示平台维护的描述。
+
+### 🗄️ 自动数据库迁移
+
+升级 GOS 不再要求运维人员手工导入增量 SQL。
+
+- 服务启动时自动检测并执行版本化数据库迁移，迁移记录写入 `gos_schema_migration`。
+- 旧版本直接替换为最新二进制并重启即可升级表结构，迁移具备版本判断和幂等保护。
+- MySQL 多实例启动使用迁移锁，避免多个实例重复执行同一结构变更。
+- 任一迁移失败时服务停止启动，防止最新代码在旧表结构上继续运行；`script_sql/` 只保留给结构核查和故障应急。
+
 ---
 
 ## 🖼️ 界面预览
+
+<p align="center"><strong>可视化审批流管理</strong></p>
+
+<p align="center">按应用绑定流程，在画布中配置审批阶段、适用环境、审批人以及或签 / 会签规则。</p>
+
+<p align="center">
+  <img src="images/release-approval-flow-management.png" alt="可视化审批流管理" width="90%" />
+</p>
+
+<p align="center"><strong>审批工作台</strong></p>
+
+<p align="center">统一聚合待我审批和我已处理任务，审批结果与备注会同步回发布单。</p>
+
+<p align="center">
+  <img src="images/release-approval-workbench.png" alt="审批工作台" width="90%" />
+</p>
+
+<p align="center"><strong>批量新建发布单</strong></p>
+
+<p align="center">创建清单暂存多项配置，通过“创建全部”一次生成多张独立发布单。</p>
+
+<p align="center">
+  <img src="images/release-order-batch-create.png" alt="批量新建发布单" width="90%" />
+</p>
+
+<p align="center"><strong>发布单列表：审批流程与备注</strong></p>
+
+<p align="center">列表展开后展示冻结的审批路径、节点状态、审批人和审批备注；等待节点不使用执行中动画。</p>
+
+<p align="center">
+  <img src="images/release-order-approval-progress.png" alt="发布单列表审批流程" width="90%" />
+</p>
+
+<p align="center"><strong>发布单详情：审批记录</strong></p>
+
+<p align="center">审批方式、审批人、通过时间与备注和执行单元并列展示，便于完整审计。</p>
+
+<p align="center">
+  <img src="images/release-order-approval-detail.png" alt="发布单详情审批记录" width="90%" />
+</p>
+
+<p align="center"><strong>用户组织架构</strong></p>
+
+<p align="center">通过组织画布维护直属主管关系，为主管审批节点提供统一的数据来源。</p>
+
+<p align="center">
+  <img src="images/user-organization-canvas.png" alt="用户组织架构" width="90%" />
+</p>
+
+<p align="center"><strong>结构化发布环境</strong></p>
+
+<p align="center">集中维护环境编码、名称、描述和默认值，供发布、审批和并发控制复用。</p>
+
+<p align="center">
+  <img src="images/release-environment-settings.png" alt="结构化发布环境配置" width="90%" />
+</p>
 
 <p align="center"><strong>应用工作台</strong></p>
 
@@ -315,7 +401,7 @@ docker run -d \
   -e GOS_AUTH_ADMIN_USERNAME='admin' \
   -e GOS_AUTH_ADMIN_PASSWORD='your-admin-password' \
   -e GOS_SECURITY_ENCRYPTION_KEY='replace-with-a-strong-key' \
-  yl10115658529/gos-release:v1.2.3
+  yl10115658529/gos-release:v1.3
 ```
 
 > **说明**：GOS_SECURITY_ENCRYPTION_KEY 用于加密数据，请自定义 。
@@ -326,11 +412,9 @@ Docker Compose 启动前可先复制 `.env.example` 到本地 `.env` 并填写�
 
 - 登入：`http://127.0.0.1:5174/login`
 
-首次部署 MySQL 时，可先导入仓库内表结构：
+首次部署只需要预先创建空数据库，并确保 GOS 数据库账号具备建表、建索引和修改表结构的权限。服务启动时会自动创建表并执行版本化迁移。
 
-```bash
-mysql -h mysql-host -P 3306 -u user -p < ./deploy_platform.sql
-```
+后续升级只需替换 GOS 二进制并重启，无需人工导入增量 SQL。迁移结果记录在 `gos_schema_migration`，多实例同时启动时由 MySQL 迁移锁保证只有一个实例执行；迁移失败时服务会停止启动，避免新代码运行在旧表结构上。`script_sql/` 仅用于首次结构核查和迁移故障时的应急处理。
 
 ### 方式二：源码开发
 
@@ -409,9 +493,12 @@ Docker 单容器运行时由 `docker/entrypoint.sh` 根据环境变量生成：
 | 应用管理 | 标准字库 | `/platform-param-dicts` |
 | 发布管理 | 发布单 | `/releases` |
 | 发布管理 | 新建发布单 | `/releases/new` |
+| 发布管理 | 批量新建发布单 | `/releases/new?batch=1` |
 | 发布管理 | 编辑发布单 | `/releases/:id/edit` |
 | 发布管理 | 发布单详情 | `/releases/:id` |
+| 发布管理 | 预约发布 | `/release-schedules` |
 | 发布管理 | 审批工作台 | `/release-approvals` |
+| 发布管理 | 审批流管理 | `/release-approval-flows` |
 | 发布管理 | 发布模板 | `/release-templates` |
 | 制品中心 | 制品目录 | `/artifacts` |
 | 制品中心 | 制品库配置 | `/artifacts/repositories` |
@@ -439,13 +526,14 @@ Docker 单容器运行时由 `docker/entrypoint.sh` 根据环境变量生成：
 1. 启动后端和前端
 2. 登录管理员账号
 3. 配置发布环境和并发策略
-4. 创建用户并授权
+4. 创建用户、维护直属主管关系并授权
 5. 创建项目和应用
 6. 按需接入 Jenkins / ArgoCD / GitOps / Agent / 制品库 / AI 模型 / 通知源
 7. 绑定应用与 CI/CD 执行器
 8. 维护标准字库、执行器参数和管线规范
-9. 创建发布模板，配置审批与 Hook
-10. 创建发布单，执行并查看详情
+9. 创建审批流并绑定应用
+10. 创建发布模板，配置 Hook 和执行参数
+11. 创建发布单，执行并查看详情
 
 完整说明见：`docs/使用手册/GOS从0到1初始化使用指南.md`
 

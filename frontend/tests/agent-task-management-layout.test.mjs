@@ -28,7 +28,10 @@ test('agent task management uses the standard top bar without extra module wrapp
   assert.match(source, /<a-tab-pane key="resident" tab="常驻任务">[\s\S]*filteredResidentTaskList/, 'resident task tab should render the filtered list')
   assert.match(source, /<a-tab-pane key="history" tab="临时任务">[\s\S]*pagedHistoryTaskList/, 'temporary task tab should be preserved')
   const historyPane = source.match(/<a-tab-pane key="history" tab="临时任务">([\s\S]*?)<\/a-tab-pane>/)?.[1] || ''
-  assert.doesNotMatch(historyPane, /taskStatusColor\(item\.status\)|taskStatusText\(item\.status\)/, 'temporary task cards should not show a status tag')
+  assert.match(historyPane, /taskStatusColor\(item\.status\)[\s\S]*taskStatusText\(item\.status\)/, 'temporary task cards should show their current execution status')
+  assert.match(source, /const AUTO_REFRESH_INTERVAL = 3000/, 'agent task state should refresh with a short near-realtime interval')
+  assert.match(source, /autoRefreshInFlight[\s\S]*async function runAutoRefresh\(\)[\s\S]*loadAgents\(\{ silent: true \}\)[\s\S]*loadTaskViews\(\{ silent: true \}\)/, 'automatic refresh should avoid overlaps and reload agent plus task state')
+  assert.match(source, /document\.addEventListener\('visibilitychange', handlePageVisibilityChange\)[\s\S]*window\.addEventListener\('focus', handleWindowFocus\)/, 'returning to the task page should trigger an immediate refresh')
   assert.doesNotMatch(source, /page-wrapper|page-header-card|filter-card|task-view-toolbar|任务视图|这里展示任务管理中维护的常驻任务模板|agent-task-module|agent-task-unified-layout|type="primary"|history-toolbar|history-toolbar-actions|component-toolbar-select|component-toolbar-query-btn|按 Agent 分类/, 'task page should not keep old shells, extra task-view card, local temporary filters, new module wrappers, or primary buttons')
 
   const tabsRule = extractStyleRule('.task-view-tabs')
@@ -67,7 +70,9 @@ test('agent task create modal follows the standard button modal pattern', () => 
 
   const modalContentRule = extractStyleRule('.task-form-modal-wrap :deep(.ant-modal-content)')
   assert.match(modalContentRule, /border-radius:\s*24px/, 'create modal shell should use the standard rounded surface')
-  assert.match(modalContentRule, /backdrop-filter:\s*blur\(18px\) saturate\(180%\)/, 'create modal shell should use the standard glass surface')
+  assert.match(modalContentRule, /overflow:\s*visible/, 'create modal shell should not clip the multi-select popup')
+  assert.doesNotMatch(modalContentRule, /backdrop-filter/, 'interactive modal content should not create a blur stacking context')
+  assert.match(createModal, /:get-popup-container="getTaskSelectPopupContainer"/, 'target Agent dropdown should mount inside the active modal')
 
   const panelRule = extractStyleRule('.task-form-panel')
   assert.doesNotMatch(panelRule, /box-shadow|background:\s*var\(--color-bg-card\)/, 'create modal panels should stay lightweight instead of nested heavy cards')

@@ -178,7 +178,9 @@ CREATE TABLE IF NOT EXISTS sys_user (
 		t.Fatalf("artifact repository InitSchema failed: %v", err)
 	}
 
-	return NewReleaseOrderManager(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), repo
+	manager := NewReleaseOrderManager(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	manager.runAsync = func(task func()) { task() }
+	return manager, repo
 }
 
 // testReleaseOrder 封装当前模块的业务处理逻辑。

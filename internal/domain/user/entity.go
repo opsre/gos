@@ -49,6 +49,12 @@ type User struct {
 	UpdatedAt    time.Time
 }
 
+// OrganizationNode 是用户及其直属主管关系的聚合读取模型。
+type OrganizationNode struct {
+	User          User
+	ManagerUserID string
+}
+
 type Permission struct {
 	ID          string
 	Code        string

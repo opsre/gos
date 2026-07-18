@@ -329,8 +329,15 @@ test('release order multi-select hover applies full-row glass background', () =>
   const selectedOverlayRule = extractStyleRule(
     '.release-order-table--selecting :deep(.ant-table-tbody > tr.release-order-effect-row--selected > td::after)',
   )
-  assert.match(selectedOverlayRule, /background:\s*rgba\(239,\s*246,\s*255,\s*0\.62\)/, 'selected rows should apply a blue-tinted frosted overlay')
+  assert.match(selectedOverlayRule, /content:\s*none/, 'selected rows should remove the overlay so release-order information stays visible')
+  assert.match(selectedOverlayRule, /background:\s*transparent/, 'selected rows should keep their blue cell background without a content-covering overlay')
+  assert.match(selectedOverlayRule, /backdrop-filter:\s*none/, 'selected rows must not blur release-order information')
+  assert.match(selectedOverlayRule, /-webkit-backdrop-filter:\s*none/, 'selected rows must also disable blur in webkit browsers')
   assert.match(selectedOverlayRule, /pointer-events:\s*none/, 'selected overlay should not block mouse events')
+
+  const selectingOrderNoCellRule = extractStyleRule('.release-order-no-cell--selecting')
+  assert.match(selectingOrderNoCellRule, /box-sizing:\s*border-box/, 'the selecting order-number cell should keep reserved space inside the column width')
+  assert.match(selectingOrderNoCellRule, /padding-left:\s*72px/, 'the selecting order-number cell should reserve enough room for the select button without covering the order number')
 
   // button positioned at leftmost edge inside order_no column
   const selectBtnRule = extractStyleRule('.release-row-select-btn')

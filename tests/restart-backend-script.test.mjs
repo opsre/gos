@@ -32,12 +32,15 @@ test('local restart confirms stable health and records the listener pid best eff
   assert.match(restartScript, /refresh_pid_file_from_listener "\$\{backend_pid\}"/, 'local mode should update the pid file after the backend becomes healthy')
 })
 
-test('backend restart script supports docker compose restarts and health checks', () => {
-  assert.match(restartScript, /docker compose -f "\$\{COMPOSE_FILE\}" up -d --build backend frontend/, 'docker mode should start backend and frontend services through compose')
-  assert.match(restartScript, /docker-compose -f "\$\{COMPOSE_FILE\}" up -d --build backend frontend/, 'docker mode should support legacy docker-compose')
-  assert.match(restartScript, /docker-compose\.prod\.yml/, 'prod mode should select the production compose file')
+test('backend restart script stays non-container and verifies health checks', () => {
+  assert.doesNotMatch(restartScript, /docker compose/, 'restart script should not start services through docker compose')
+  assert.doesNotMatch(restartScript, /docker-compose/, 'restart script should not support the legacy docker-compose path')
+  assert.doesNotMatch(restartScript, /COMPOSE_FILE/, 'restart script should not carry compose file state')
+  assert.doesNotMatch(restartScript, /restart_compose/, 'restart script should not include a container restart branch')
+  assert.doesNotMatch(restartScript, /require_command docker/, 'restart script should not require Docker')
   assert.match(restartScript, /curl -fsS "\$\{HEALTH_URL\}"/, 'script should verify the backend health endpoint')
-  assert.match(restartScript, /--mode local\|docker\|prod/, 'help text should document supported modes')
+  assert.match(restartScript, /--mode local/, 'help text may keep local mode as a compatibility option')
+  assert.doesNotMatch(restartScript, /--mode local\|docker\|prod/, 'help text should not advertise container modes')
 })
 
 test('local mode starts frontend only when it is not already listening', () => {
@@ -48,4 +51,13 @@ test('local mode starts frontend only when it is not already listening', () => {
   assert.doesNotMatch(restartScript, /frontend port \$\{FRONTEND_PORT\} is occupied by another process/, 'frontend should not fail just because another process already listens on the frontend port')
   assert.match(restartScript, /VITE_API_BASE_URL="\$\{FRONTEND_API_BASE_URL\}" npm run dev/, 'frontend should start with the backend API base URL')
   assert.match(restartScript, /ensure_frontend/, 'local mode should call the frontend ensure step')
+})
+
+test('local mode can detach backend and frontend processes from the launcher', () => {
+  assert.match(restartScript, /BACKEND_SESSION="gos-backend"/, 'backend should use a stable detached session name')
+  assert.match(restartScript, /FRONTEND_SESSION="gos-frontend"/, 'frontend should use a stable detached session name')
+  assert.match(restartScript, /screen -dmS "\$\{BACKEND_SESSION\}"/, 'backend should prefer screen when available so it survives launcher exit')
+  assert.match(restartScript, /screen -dmS "\$\{FRONTEND_SESSION\}"/, 'frontend should prefer screen when available so it survives launcher exit')
+  assert.match(restartScript, /nohup "\$\{BINARY_FILE\}" -config "\$\{CONFIG\}"/, 'backend should keep a nohup fallback for hosts without screen')
+  assert.match(restartScript, /nohup env VITE_API_BASE_URL="\$\{FRONTEND_API_BASE_URL\}" npm run dev/, 'frontend should keep a nohup fallback for hosts without screen')
 })

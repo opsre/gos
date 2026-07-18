@@ -2,13 +2,22 @@ import type { AxiosRequestConfig } from "axios";
 import { apiBaseURL, http } from "./http";
 import type {
   AppReleaseStateSummaryListResponse,
+  ApprovalFlowDefinitionListResponse,
+  ApprovalFlowDefinitionDataResponse,
+  ApprovalFlowDefinitionPayload,
   ApplicationRollbackCapabilityResponse,
   ApplicationRollbackPrecheckResponse,
+  BatchCreateReleaseOrdersPayload,
   BatchDeleteReleaseOrdersPayload,
   BatchExecuteReleaseOrdersPayload,
   CreateReleaseOrderPayload,
   ReleaseOrderApprovalActionPayload,
   ReleaseOrderApprovalRecordListResponse,
+  ReleaseOrderApprovalFlowDataResponse,
+  ReleaseOrderApprovalFlowTaskDataResponse,
+  ReleaseApprovalWorkbenchListParams,
+  ReleaseApprovalWorkbenchRecordListResponse,
+  ReleaseApprovalWorkbenchTaskListResponse,
   ReleaseOrderApprovalRecordSummaryListParams,
   ReleaseOrderApprovalRecordSummaryListResponse,
   ReleaseOrderScheduleApprovalActionPayload,
@@ -19,6 +28,7 @@ import type {
   ReleaseOrderScheduleMode,
   ReleaseOrderSchedulePayload,
   ReleaseOrderBatchDeleteResponse,
+  ReleaseOrderBatchCreateResponse,
   ReleaseOrderBatchExecuteResponse,
   ReleaseOrderConcurrentBatchProgressResponse,
   ReleaseOrderDataResponse,
@@ -27,6 +37,7 @@ import type {
   ReleaseOrderListParams,
   ReleaseOrderStatsResponse,
   ReleaseOrderPrecheckResponse,
+  ReleaseOrderRealtimeSnapshotResponse,
   ReleaseOrderPipelineStageListResponse,
   ReleaseOrderPipelineStageLogResponse,
   ReleaseOrderPipelineStageDiagnosisFollowUpPayload,
@@ -93,6 +104,36 @@ export async function createReleaseOrder(
     payload,
   );
   return response.data;
+}
+
+export async function batchCreateReleaseOrders(
+  payload: BatchCreateReleaseOrdersPayload,
+): Promise<ReleaseOrderBatchCreateResponse> {
+  const response = await http.post<ReleaseOrderBatchCreateResponse>(
+    "/release-orders/batch-create",
+    payload,
+    {
+      timeout: 120_000,
+    },
+  );
+  return response.data;
+}
+
+export async function listApprovalFlows(): Promise<ApprovalFlowDefinitionListResponse> {
+  const response = await http.get<ApprovalFlowDefinitionListResponse>('/release-approval-flows', {
+    params: { status: 'active' },
+  })
+  return response.data
+}
+
+export async function createApprovalFlow(payload: ApprovalFlowDefinitionPayload): Promise<ApprovalFlowDefinitionDataResponse> {
+  const response = await http.post<ApprovalFlowDefinitionDataResponse>('/release-approval-flows', payload)
+  return response.data
+}
+
+export async function updateApprovalFlow(id: string, payload: ApprovalFlowDefinitionPayload): Promise<ApprovalFlowDefinitionDataResponse> {
+  const response = await http.put<ApprovalFlowDefinitionDataResponse>(`/release-approval-flows/${encodeURIComponent(id)}`, payload)
+  return response.data
 }
 
 export async function updateReleaseOrder(
@@ -208,6 +249,18 @@ export async function getReleaseOrderByID(
 ): Promise<ReleaseOrderDataResponse> {
   const response = await http.get<ReleaseOrderDataResponse>(
     `/release-orders/${id}`,
+  );
+  return response.data;
+}
+
+export async function getReleaseOrderRealtimeSnapshot(
+  id: string,
+  config?: AxiosRequestConfig,
+): Promise<ReleaseOrderRealtimeSnapshotResponse> {
+  const orderID = encodeURIComponent(String(id || "").trim());
+  const response = await http.get<ReleaseOrderRealtimeSnapshotResponse>(
+    `/release-orders/${orderID}/realtime-snapshot`,
+    config,
   );
   return response.data;
 }
@@ -339,6 +392,57 @@ export async function listReleaseOrderApprovalRecords(
     `/release-orders/${id}/approval-records`,
   );
   return response.data;
+}
+
+export async function getReleaseOrderApprovalFlow(
+  id: string,
+): Promise<ReleaseOrderApprovalFlowDataResponse> {
+  const response = await http.get<ReleaseOrderApprovalFlowDataResponse>(
+    `/release-orders/${encodeURIComponent(String(id || '').trim())}/approval-flow`,
+  )
+  return response.data
+}
+
+export async function approveReleaseOrderApprovalFlowTask(
+  orderID: string,
+  taskID: string,
+  payload: ReleaseOrderApprovalActionPayload = {},
+): Promise<ReleaseOrderApprovalFlowTaskDataResponse> {
+  const response = await http.post<ReleaseOrderApprovalFlowTaskDataResponse>(
+    `/release-orders/${encodeURIComponent(String(orderID || '').trim())}/approval-flow/tasks/${encodeURIComponent(String(taskID || '').trim())}/approve`,
+    payload,
+  )
+  return response.data
+}
+
+export async function rejectReleaseOrderApprovalFlowTask(
+  orderID: string,
+  taskID: string,
+  payload: ReleaseOrderApprovalActionPayload,
+): Promise<ReleaseOrderApprovalFlowTaskDataResponse> {
+  const response = await http.post<ReleaseOrderApprovalFlowTaskDataResponse>(
+    `/release-orders/${encodeURIComponent(String(orderID || '').trim())}/approval-flow/tasks/${encodeURIComponent(String(taskID || '').trim())}/reject`,
+    payload,
+  )
+  return response.data
+}
+
+export async function listReleaseApprovalWorkbenchTasks(
+  params: Omit<ReleaseApprovalWorkbenchListParams, 'view'>,
+): Promise<ReleaseApprovalWorkbenchTaskListResponse> {
+  const response = await http.get<ReleaseApprovalWorkbenchTaskListResponse>('/release-approval-tasks', {
+    params: { ...params, view: 'pending' },
+  })
+  return response.data
+}
+
+export async function listReleaseApprovalWorkbenchRecords(
+  params: Omit<ReleaseApprovalWorkbenchListParams, 'view'>,
+): Promise<ReleaseApprovalWorkbenchRecordListResponse> {
+  const response = await http.get<ReleaseApprovalWorkbenchRecordListResponse>('/release-approval-tasks', {
+    params: { ...params, view: 'handled' },
+  })
+  return response.data
 }
 
 export async function listReleaseApprovalRecordSummaries(
@@ -662,4 +766,10 @@ export function buildReleaseOrderLogStreamURL(
   }
   params.push(`access_token=${encodeURIComponent(token)}`);
   return `${base}/release-orders/${orderID}/logs/stream?${params.join("&")}`;
+}
+
+export function buildReleaseOrderRealtimeEventsURL(id: string): string {
+  const base = apiBaseURL.replace(/\/+$/, "");
+  const orderID = encodeURIComponent(String(id || "").trim());
+  return `${base}/release-orders/${orderID}/events`;
 }

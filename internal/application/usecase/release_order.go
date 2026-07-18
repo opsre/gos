@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	agentdomain "gos/internal/domain/agent"
@@ -21,30 +22,44 @@ import (
 	scandomain "gos/internal/domain/pipelinescan"
 	platformparamdomain "gos/internal/domain/platformparam"
 	domain "gos/internal/domain/release"
+	userdomain "gos/internal/domain/user"
 	"gos/internal/support/logx"
 )
 
 type ReleaseOrderManager struct {
-	repo               domain.Repository
-	appRepo            appdomain.Repository
-	pipelineRepo       pipelinedomain.Repository
-	paramRepo          pipelineparamdomain.Repository
-	platformRepo       platformparamdomain.Repository
-	artifactRepo       artifactrepodomain.Repository
-	releaseSettings    ReleaseSettingsStore
-	jenkins            JenkinsReleaseExecutor
-	agentRepo          agentdomain.Repository
-	argocdRepo         argocddomain.Repository
-	gitopsRepo         gitopsdomain.Repository
-	notificationRepo   notificationdomain.Repository
-	pipelineScanRepo   scandomain.Repository
-	aiModelRepo        aidomain.ModelConfigRepository
-	stageDiagnosisRepo aidomain.StageDiagnosisRepository
-	aiClientFactory    AIModelClientFactory
-	argocdFactory      ArgoCDClientFactory
-	gitopsFactory      GitOpsServiceFactory
-	gitops             GitOpsReleaseService
-	now                func() time.Time
+	repo                    domain.Repository
+	appRepo                 appdomain.Repository
+	pipelineRepo            pipelinedomain.Repository
+	paramRepo               pipelineparamdomain.Repository
+	platformRepo            platformparamdomain.Repository
+	artifactRepo            artifactrepodomain.Repository
+	releaseSettings         ReleaseSettingsStore
+	jenkins                 JenkinsReleaseExecutor
+	agentRepo               agentdomain.Repository
+	argocdRepo              argocddomain.Repository
+	gitopsRepo              gitopsdomain.Repository
+	notificationRepo        notificationdomain.Repository
+	pipelineScanRepo        scandomain.Repository
+	aiModelRepo             aidomain.ModelConfigRepository
+	stageDiagnosisRepo      aidomain.StageDiagnosisRepository
+	aiClientFactory         AIModelClientFactory
+	argocdFactory           ArgoCDClientFactory
+	gitopsFactory           GitOpsServiceFactory
+	gitops                  GitOpsReleaseService
+	approvalManagerResolver ApprovalManagerResolver
+	now                     func() time.Time
+	runAsync                func(func())
+	orderLocksMu            sync.Mutex
+	orderLocks              map[string]*releaseOrderOperationLock
+}
+
+type ApprovalManagerResolver interface {
+	ResolveUserManager(ctx context.Context, userID string, level int) (userdomain.User, error)
+}
+
+type releaseOrderOperationLock struct {
+	mu   sync.Mutex
+	refs int
 }
 
 type CreateReleaseOrderInput struct {
@@ -53,7 +68,6 @@ type CreateReleaseOrderInput struct {
 	ReleaseName     string
 	PreviousOrderNo string
 	EnvCode         string
-	SonService      string
 	GitRef          string
 	ImageTag        string
 	TriggerType     domain.TriggerType
@@ -192,9 +206,41 @@ func NewReleaseOrderManager(
 		argocdFactory:    argocdFactory,
 		gitopsFactory:    gitopsFactory,
 		gitops:           gitops,
+		orderLocks:       make(map[string]*releaseOrderOperationLock),
+		runAsync: func(task func()) {
+			go task()
+		},
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
+	}
+}
+
+// lockOrderOperation serializes state-changing operations for one release order in this process.
+// Tracker, cancel and dispatch all use it, so an external status read cannot race a user action's writes.
+func (uc *ReleaseOrderManager) lockOrderOperation(orderID string) func() {
+	key := strings.TrimSpace(orderID)
+	uc.orderLocksMu.Lock()
+	if uc.orderLocks == nil {
+		uc.orderLocks = make(map[string]*releaseOrderOperationLock)
+	}
+	lock := uc.orderLocks[key]
+	if lock == nil {
+		lock = &releaseOrderOperationLock{}
+		uc.orderLocks[key] = lock
+	}
+	lock.refs++
+	uc.orderLocksMu.Unlock()
+
+	lock.mu.Lock()
+	return func() {
+		lock.mu.Unlock()
+		uc.orderLocksMu.Lock()
+		lock.refs--
+		if lock.refs == 0 && uc.orderLocks[key] == lock {
+			delete(uc.orderLocks, key)
+		}
+		uc.orderLocksMu.Unlock()
 	}
 }
 
@@ -203,6 +249,12 @@ func (uc *ReleaseOrderManager) SetPipelineScanRepository(repo scandomain.Reposit
 		return
 	}
 	uc.pipelineScanRepo = repo
+}
+
+func (uc *ReleaseOrderManager) SetApprovalManagerResolver(resolver ApprovalManagerResolver) {
+	if uc != nil {
+		uc.approvalManagerResolver = resolver
+	}
 }
 
 func (uc *ReleaseOrderManager) SetAIModelRepository(repo aidomain.ModelConfigRepository) {
@@ -289,6 +341,27 @@ func (uc *ReleaseOrderManager) Create(
 		)
 		return domain.ReleaseOrder{}, err
 	}
+	approvalFlowID, flowBindingErr := uc.repo.GetApplicationApprovalFlowID(ctx, applicationID)
+	if flowBindingErr != nil {
+		return domain.ReleaseOrder{}, flowBindingErr
+	}
+	if approvalFlowID != "" {
+		flow, flowErr := uc.repo.GetApprovalFlowDefinitionByID(ctx, approvalFlowID)
+		if flowErr != nil {
+			return domain.ReleaseOrder{}, flowErr
+		}
+		if flow.Status != domain.ApprovalFlowStatusActive {
+			return domain.ReleaseOrder{}, fmt.Errorf("%w: approval flow is disabled", ErrInvalidInput)
+		}
+		if _, flowErr = normalizeApprovalFlowNodes(flow.Nodes); flowErr != nil {
+			return domain.ReleaseOrder{}, flowErr
+		}
+	}
+
+	if strings.TrimSpace(input.ReleaseName) == "" {
+		input.ReleaseName = fmt.Sprintf("%s-%s-%s发布", app.Name, template.Name, time.Now().In(time.FixedZone("CST", 8*3600)).Format("20060102150405"))
+	}
+
 	if err := uc.validateCreateTemplateParams(ctx, template.ID, templateBindings, templateParams, input.Params); err != nil {
 		logx.Error("release_order", "create_failed", err,
 			logx.F("application_id", applicationID),
@@ -315,7 +388,7 @@ func (uc *ReleaseOrderManager) Create(
 		input.Params,
 		envCode,
 		firstNonEmpty(strings.TrimSpace(input.GitRef), inputSummary.GitRef),
-		firstNonEmpty(strings.TrimSpace(input.SonService), inputSummary.ProjectName),
+		inputSummary.ProjectName,
 		firstNonEmpty(strings.TrimSpace(input.ImageTag), inputSummary.ImageTag),
 		strings.TrimSpace(input.ReleaseName),
 	)
@@ -339,8 +412,12 @@ func (uc *ReleaseOrderManager) Create(
 	}
 
 	now := uc.now()
-	autoApproved := shouldAutoApproveOnCreate(template.ApprovalEnabled, template.ApprovalApproverIDs, strings.TrimSpace(input.CreatorUserID))
-	initialStatus := resolveInitialReleaseOrderStatus(template, strings.TrimSpace(input.CreatorUserID))
+	useLegacyApproval := approvalFlowID == ""
+	autoApproved := useLegacyApproval && shouldAutoApproveOnCreate(template.ApprovalEnabled, template.ApprovalApproverIDs, strings.TrimSpace(input.CreatorUserID))
+	initialStatus := domain.OrderStatusPending
+	if useLegacyApproval {
+		initialStatus = resolveInitialReleaseOrderStatus(template, strings.TrimSpace(input.CreatorUserID))
+	}
 	var approvedAt *time.Time
 	approvedBy := ""
 	if autoApproved {
@@ -360,12 +437,11 @@ func (uc *ReleaseOrderManager) Create(
 		BindingID:             primaryExecution.BindingID,
 		PipelineID:            primaryExecution.PipelineID,
 		EnvCode:               envCode,
-		SonService:            firstNonEmpty(summary.ProjectName, strings.TrimSpace(input.SonService)),
 		GitRef:                firstNonEmpty(strings.TrimSpace(input.GitRef), summary.GitRef),
 		ImageTag:              firstNonEmpty(summary.ImageTag, strings.TrimSpace(input.ImageTag)),
 		TriggerType:           triggerType,
 		Status:                initialStatus,
-		ApprovalRequired:      template.ApprovalEnabled,
+		ApprovalRequired:      useLegacyApproval && template.ApprovalEnabled,
 		ApprovalMode:          template.ApprovalMode,
 		ApprovalApproverIDs:   append([]string(nil), template.ApprovalApproverIDs...),
 		ApprovalApproverNames: append([]string(nil), template.ApprovalApproverNames...),
@@ -402,6 +478,9 @@ func (uc *ReleaseOrderManager) Create(
 			logx.F("order_id", order.ID),
 			logx.F("order_no", order.OrderNo),
 		)
+		return domain.ReleaseOrder{}, err
+	}
+	if err := uc.initializeApprovalFlow(ctx, order.ID, approvalFlowID); err != nil {
 		return domain.ReleaseOrder{}, err
 	}
 	if autoApproved {
@@ -547,7 +626,7 @@ func (uc *ReleaseOrderManager) Update(
 		input.Params,
 		envCode,
 		firstNonEmpty(strings.TrimSpace(input.GitRef), inputSummary.GitRef),
-		firstNonEmpty(strings.TrimSpace(input.SonService), inputSummary.ProjectName),
+		inputSummary.ProjectName,
 		firstNonEmpty(strings.TrimSpace(input.ImageTag), inputSummary.ImageTag),
 		strings.TrimSpace(input.ReleaseName),
 	)
@@ -594,7 +673,6 @@ func (uc *ReleaseOrderManager) Update(
 		BindingID:             primaryExecution.BindingID,
 		PipelineID:            primaryExecution.PipelineID,
 		EnvCode:               envCode,
-		SonService:            firstNonEmpty(summary.ProjectName, strings.TrimSpace(input.SonService)),
 		GitRef:                firstNonEmpty(strings.TrimSpace(input.GitRef), summary.GitRef),
 		ImageTag:              firstNonEmpty(summary.ImageTag, strings.TrimSpace(input.ImageTag)),
 		TriggerType:           triggerType,
@@ -1318,6 +1396,14 @@ type releaseOrderSummaryFields struct {
 	ImageTag    string
 }
 
+func truncateString(s string, maxRunes int) string {
+	runes := []rune(s)
+	if len(runes) > maxRunes {
+		return string(runes[:maxRunes])
+	}
+	return s
+}
+
 // resolveReleaseOrderSummaryFields 解析上下文数据，得到后续流程需要的结果。
 func resolveReleaseOrderSummaryFields(params []CreateReleaseOrderParamInput) releaseOrderSummaryFields {
 	result := releaseOrderSummaryFields{}
@@ -1602,7 +1688,6 @@ func (uc *ReleaseOrderManager) createRecoveryOrder(
 		BindingID:             primaryExecution.BindingID,
 		PipelineID:            primaryExecution.PipelineID,
 		EnvCode:               sourceOrder.EnvCode,
-		SonService:            sourceOrder.SonService,
 		GitRef:                sourceOrder.GitRef,
 		ImageTag:              sourceOrder.ImageTag,
 		TriggerType:           domain.TriggerTypeManual,
@@ -1735,7 +1820,6 @@ func (uc *ReleaseOrderManager) buildRecoveryParamsInput(
 	appendParam("env", sourceOrder.EnvCode, domain.ValueSourceEnvironment, "")
 	appendParam("env_code", sourceOrder.EnvCode, domain.ValueSourceEnvironment, "")
 	appendParam("release_name", sourceOrder.ReleaseName, domain.ValueSourceBuiltin, "")
-	appendParam("project_name", sourceOrder.SonService, domain.ValueSourceReleaseInput, "")
 	appendParam("branch", sourceOrder.GitRef, domain.ValueSourceReleaseInput, "")
 	appendParam("git_ref", sourceOrder.GitRef, domain.ValueSourceReleaseInput, "")
 	appendParam("image_version", sourceOrder.ImageTag, domain.ValueSourceReleaseInput, "")
@@ -1907,10 +1991,8 @@ func (uc *ReleaseOrderManager) List(ctx context.Context, input ListReleaseOrderI
 	if err != nil {
 		return nil, 0, err
 	}
-	items, err = uc.reconcileOrderSnapshots(ctx, items)
-	if err != nil {
-		return nil, 0, err
-	}
+	// 列表查询必须保持只读。订单状态只能由显式调度动作或后台 tracker 推进，
+	// 否则一次普通页面刷新可能在发布后 Hook 尚未完成时提前把整单写成成功。
 	return items, total, nil
 }
 
@@ -2016,7 +2098,8 @@ func (uc *ReleaseOrderManager) GetByID(ctx context.Context, id string) (domain.R
 	if err != nil {
 		return domain.ReleaseOrder{}, err
 	}
-	return uc.reconcileOrderSnapshot(ctx, order)
+	// 详情查询必须保持只读，状态收敛由 TrackReleaseExecution 统一负责。
+	return order, nil
 }
 
 // ListDeploySnapshotsByOrderID 查询并返回指定资源数据。
@@ -2031,128 +2114,14 @@ func (uc *ReleaseOrderManager) ListDeploySnapshotsByOrderID(ctx context.Context,
 	return uc.repo.ListDeploySnapshotsByOrderID(ctx, releaseOrderID)
 }
 
-// reconcileOrderSnapshots 封装当前模块的业务处理逻辑。
-func (uc *ReleaseOrderManager) reconcileOrderSnapshots(
-	ctx context.Context,
-	items []domain.ReleaseOrder,
-) ([]domain.ReleaseOrder, error) {
-	if len(items) == 0 {
-		return items, nil
-	}
-	result := make([]domain.ReleaseOrder, len(items))
-	for idx := range items {
-		order, err := uc.reconcileOrderSnapshot(ctx, items[idx])
-		if err != nil {
-			return nil, err
-		}
-		result[idx] = order
-	}
-	return result, nil
-}
-
-// reconcileOrderSnapshot 封装当前模块的业务处理逻辑。
-func (uc *ReleaseOrderManager) reconcileOrderSnapshot(
-	ctx context.Context,
-	order domain.ReleaseOrder,
-) (domain.ReleaseOrder, error) {
-	if uc == nil || uc.repo == nil {
-		return order, nil
-	}
-	if order.ID == "" || order.Status.IsTerminal() {
-		return order, nil
-	}
-
-	executions, err := uc.repo.ListExecutions(ctx, order.ID)
-	if err != nil {
-		return domain.ReleaseOrder{}, err
-	}
-	if len(executions) == 0 {
-		return order, nil
-	}
-
-	executions, err = uc.reconcileExecutionStates(ctx, order, executions)
-	if err != nil {
-		return domain.ReleaseOrder{}, err
-	}
-
-	nextStatus, finishedAt, shouldFinalize := uc.deriveTerminalOrderState(order, executions)
-	if !shouldFinalize {
-		return order, nil
-	}
-
-	updated := false
-	if order.Status != nextStatus || order.FinishedAt == nil {
-		startedAt := firstNonNilTime(order.StartedAt, ptrTime(uc.now()))
-		order, err = uc.repo.UpdateStatus(ctx, order.ID, nextStatus, startedAt, finishedAt, uc.now())
-		if err != nil {
-			return domain.ReleaseOrder{}, err
-		}
-		updated = true
-	}
-
-	steps, err := uc.repo.ListSteps(ctx, order.ID)
-	if err != nil {
-		return domain.ReleaseOrder{}, err
-	}
-	if _, err := uc.reconcileTerminalSteps(ctx, order, steps); err != nil {
-		return domain.ReleaseOrder{}, err
-	}
-	if order.Status == domain.OrderStatusSuccess || order.Status == domain.OrderStatusDeploySuccess {
-		if stateErr := uc.RecordAppReleaseState(ctx, order.ID); stateErr != nil {
-			logx.Error("release_order", "reconcile_order_snapshot_record_state_failed", stateErr,
-				logx.F("order_id", order.ID),
-				logx.F("order_no", order.OrderNo),
-				logx.F("status", order.Status),
-			)
-		}
-	}
-
-	if updated {
-		logx.Info("release_order", "reconcile_order_snapshot_success",
-			logx.F("order_id", order.ID),
-			logx.F("order_no", order.OrderNo),
-			logx.F("status", order.Status),
-		)
-	}
-	return uc.repo.GetByID(ctx, order.ID)
-}
-
-// deriveTerminalOrderState 封装当前模块的业务处理逻辑。
-func (uc *ReleaseOrderManager) deriveTerminalOrderState(
-	order domain.ReleaseOrder,
-	executions []domain.ReleaseOrderExecution,
-) (domain.OrderStatus, *time.Time, bool) {
-	if len(executions) == 0 {
-		return "", nil, false
-	}
-
-	nextStatus := domain.OrderStatusSuccess
-	finishedAt := order.FinishedAt
-	for _, item := range executions {
-		switch item.Status {
-		case domain.ExecutionStatusPending, domain.ExecutionStatusRunning:
-			return "", nil, false
-		case domain.ExecutionStatusFailed:
-			nextStatus = domain.OrderStatusFailed
-		case domain.ExecutionStatusCancelled:
-			if nextStatus != domain.OrderStatusFailed {
-				nextStatus = domain.OrderStatusCancelled
-			}
-		}
-		finishedAt = firstNonNilTime(finishedAt, item.FinishedAt)
-	}
-	if finishedAt == nil {
-		finishedAt = ptrTime(uc.now())
-	}
-	return nextStatus, finishedAt, true
-}
-
 // Cancel 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) Cancel(ctx context.Context, id string) (domain.ReleaseOrder, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return domain.ReleaseOrder{}, ErrInvalidID
 	}
+	unlock := uc.lockOrderOperation(id)
+	defer unlock()
 	logx.Info("release_order", "cancel_start", logx.F("order_id", id))
 
 	order, err := uc.repo.GetByID(ctx, id)
@@ -2347,6 +2316,8 @@ func (uc *ReleaseOrderManager) dispatchOrder(
 	if id == "" {
 		return domain.ReleaseOrder{}, ErrInvalidID
 	}
+	unlock := uc.lockOrderOperation(id)
+	defer unlock()
 	logx.Info("release_order", "execute_start",
 		logx.F("order_id", id),
 		logx.F("action", action),
@@ -2417,8 +2388,44 @@ func (uc *ReleaseOrderManager) dispatchOrder(
 		)
 		return domain.ReleaseOrder{}, err
 	}
+	if err := uc.ensureApprovalFlowDispatchAllowedForExecutions(ctx, order.ID, action, executions); err != nil {
+		if errors.Is(err, ErrApprovalFlowPending) {
+			now := uc.now()
+			updatedOrder, updateErr := uc.repo.UpdateApprovalStatus(
+				ctx,
+				order.ID,
+				domain.OrderStatusPendingApproval,
+				nil,
+				"",
+				nil,
+				"",
+				"",
+				now,
+			)
+			if updateErr != nil {
+				return domain.ReleaseOrder{}, updateErr
+			}
+			if strings.TrimSpace(operatorUserID) != "" || strings.TrimSpace(operatorName) != "" {
+				updatedOrder, updateErr = uc.repo.UpdateExecutor(ctx, order.ID, strings.TrimSpace(operatorUserID), strings.TrimSpace(operatorName), now)
+				if updateErr != nil {
+					return domain.ReleaseOrder{}, updateErr
+				}
+			}
+			logx.Info("release_order", "approval_flow_started",
+				logx.F("order_id", order.ID),
+				logx.F("order_no", order.OrderNo),
+				logx.F("action", action),
+			)
+			return updatedOrder, nil
+		}
+		return domain.ReleaseOrder{}, err
+	}
 
-	pendingExecution, dispatchStatus, err := resolveDispatchExecution(order, executions, action)
+	stageFullRelease, err := uc.shouldStageGraphFullRelease(ctx, order.ID, action, executions)
+	if err != nil {
+		return domain.ReleaseOrder{}, err
+	}
+	pendingExecution, dispatchStatus, err := resolveDispatchExecution(order, executions, action, stageFullRelease)
 	if err != nil {
 		logx.Warn("release_order", "execute_failed",
 			logx.F("order_id", order.ID),
@@ -2448,9 +2455,8 @@ func (uc *ReleaseOrderManager) dispatchOrder(
 			dispatchStartedAt = firstNonNilTime(order.StartedAt, &startedAt)
 		} else {
 			dispatchStartedAt = order.StartedAt
-			if action != ReleaseOrderDispatchActionBuild {
-				dispatchStatus = domain.OrderStatusQueued
-			}
+			// 未取得锁时统一使用明确的 queued 状态。tracker 真正领取 CI 后会切回 building。
+			dispatchStatus = domain.OrderStatusQueued
 		}
 	}
 	updatedAt := uc.now()
@@ -2506,6 +2512,9 @@ func (uc *ReleaseOrderManager) dispatchOrder(
 			order = updatedOrder
 		}
 	}
+	if err := uc.markApprovalFlowDispatched(ctx, order.ID, action); err != nil {
+		return domain.ReleaseOrder{}, err
+	}
 
 	_ = uc.markStepRunning(ctx, order.ID, "global:param_resolve", "开始解析发布参数")
 	paramResolveMessage := currentDispatchResolveMessage(action, len(orderParams))
@@ -2542,6 +2551,7 @@ func resolveDispatchExecution(
 	order domain.ReleaseOrder,
 	executions []domain.ReleaseOrderExecution,
 	action ReleaseOrderDispatchAction,
+	stageFullRelease bool,
 ) (*domain.ReleaseOrderExecution, domain.OrderStatus, error) {
 	switch action {
 	case ReleaseOrderDispatchActionBuild:
@@ -2572,6 +2582,9 @@ func resolveDispatchExecution(
 		target := findExecutionByStatus(executions, domain.ExecutionStatusPending)
 		if target == nil {
 			return nil, "", fmt.Errorf("%w: release order has no pending executions to dispatch", ErrInvalidInput)
+		}
+		if stageFullRelease && target.PipelineScope == domain.PipelineScopeCI && hasExecutionForScope(executions, domain.PipelineScopeCD) {
+			return target, domain.OrderStatusBuilding, nil
 		}
 		return target, domain.OrderStatusDeploying, nil
 	}
@@ -2619,107 +2632,11 @@ func (uc *ReleaseOrderManager) ListExecutions(ctx context.Context, orderID strin
 	if orderID == "" {
 		return nil, ErrInvalidID
 	}
-	order, err := uc.repo.GetByID(ctx, orderID)
-	if err != nil {
+	if _, err := uc.repo.GetByID(ctx, orderID); err != nil {
 		return nil, err
 	}
-	items, err := uc.repo.ListExecutions(ctx, orderID)
-	if err != nil {
-		return nil, err
-	}
-	return uc.reconcileExecutionStates(ctx, order, items)
-}
-
-// reconcileExecutionStates 封装当前模块的业务处理逻辑。
-func (uc *ReleaseOrderManager) reconcileExecutionStates(
-	ctx context.Context,
-	order domain.ReleaseOrder,
-	items []domain.ReleaseOrderExecution,
-) ([]domain.ReleaseOrderExecution, error) {
-	if len(items) == 0 {
-		return items, nil
-	}
-
-	steps, err := uc.repo.ListSteps(ctx, order.ID)
-	if err != nil {
-		return nil, err
-	}
-	stages, err := uc.repo.ListPipelineStages(ctx, order.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	changed := false
-	for idx := range items {
-		nextStatus, finishedAt, ok := uc.deriveExecutionTerminalState(order, items[idx], steps, stages)
-		if !ok || nextStatus == items[idx].Status {
-			continue
-		}
-		updated, updateErr := uc.repo.UpdateExecutionByScope(ctx, order.ID, items[idx].PipelineScope, domain.ExecutionUpdateInput{
-			Status:        nextStatus,
-			QueueURL:      items[idx].QueueURL,
-			BuildURL:      items[idx].BuildURL,
-			ExternalRunID: items[idx].ExternalRunID,
-			StartedAt:     items[idx].StartedAt,
-			FinishedAt:    finishedAt,
-			UpdatedAt:     uc.now(),
-		})
-		if updateErr != nil {
-			return nil, updateErr
-		}
-		items[idx] = updated
-		changed = true
-	}
-
-	if !changed {
-		return items, nil
-	}
-	return uc.repo.ListExecutions(ctx, order.ID)
-}
-
-// deriveExecutionTerminalState 封装当前模块的业务处理逻辑。
-func (uc *ReleaseOrderManager) deriveExecutionTerminalState(
-	order domain.ReleaseOrder,
-	execution domain.ReleaseOrderExecution,
-	steps []domain.ReleaseOrderStep,
-	stages []domain.ReleaseOrderPipelineStage,
-) (domain.ExecutionStatus, *time.Time, bool) {
-	if execution.Status != domain.ExecutionStatusPending && execution.Status != domain.ExecutionStatusRunning {
-		return "", nil, false
-	}
-
-	healthStep := findStepByCode(steps, scopeStepCode(execution.PipelineScope, "health_check"))
-	switch {
-	case healthStep != nil && healthStep.Status == domain.StepStatusSuccess:
-		return domain.ExecutionStatusSuccess, firstNonNilTime(healthStep.FinishedAt, order.FinishedAt, ptrTime(uc.now())), true
-	case healthStep != nil && healthStep.Status == domain.StepStatusFailed:
-		return domain.ExecutionStatusFailed, firstNonNilTime(healthStep.FinishedAt, order.FinishedAt, ptrTime(uc.now())), true
-	}
-
-	healthStage := findPipelineStageByScopeAndKey(stages, execution.PipelineScope, "health_check")
-	switch {
-	case healthStage != nil && healthStage.Status == domain.PipelineStageStatusSuccess:
-		return domain.ExecutionStatusSuccess, firstNonNilTime(healthStage.FinishedAt, order.FinishedAt, ptrTime(uc.now())), true
-	case healthStage != nil && healthStage.Status == domain.PipelineStageStatusFailed:
-		return domain.ExecutionStatusFailed, firstNonNilTime(healthStage.FinishedAt, order.FinishedAt, ptrTime(uc.now())), true
-	}
-
-	return "", nil, false
-}
-
-// findPipelineStageByScopeAndKey 封装当前模块的业务处理逻辑。
-func findPipelineStageByScopeAndKey(
-	stages []domain.ReleaseOrderPipelineStage,
-	scope domain.PipelineScope,
-	stageKey string,
-) *domain.ReleaseOrderPipelineStage {
-	for idx := range stages {
-		if strings.EqualFold(strings.TrimSpace(stages[idx].PipelineScope), string(scope)) &&
-			strings.EqualFold(strings.TrimSpace(stages[idx].StageKey), strings.TrimSpace(stageKey)) {
-			return &stages[idx]
-		}
-	}
-	return nil
+	// 执行单元读取不再根据步骤或阶段反向写库；tracker 会在持有订单锁时收敛状态。
+	return uc.repo.ListExecutions(ctx, orderID)
 }
 
 // ptrTime 封装当前模块的业务处理逻辑。
@@ -2822,7 +2739,7 @@ func (uc *ReleaseOrderManager) startNextPendingExecution(
 			return nil
 		}
 		execution = claimedExecution
-		runningStatus := nextRunningOrderStatus(order.Status)
+		runningStatus := nextRunningOrderStatus(order.Status, execution, executions)
 		if order.Status != runningStatus {
 			startedAt := order.StartedAt
 			now := claimTime
@@ -3248,7 +3165,6 @@ func (uc *ReleaseOrderManager) resolveStandardFieldValue(
 		return firstNonEmpty(
 			findReleaseParamValue(orderParams, domain.PipelineScopeCD, "project_name"),
 			findReleaseParamValue(orderParams, domain.PipelineScopeCI, "project_name"),
-			strings.TrimSpace(order.SonService),
 		)
 	case "release_name":
 		return firstNonEmpty(
@@ -3488,32 +3404,35 @@ func (uc *ReleaseOrderManager) syncPipelineStageFromStep(
 		if !strings.EqualFold(strings.TrimSpace(stages[idx].StageKey), suffix) {
 			continue
 		}
+		itemChanged := false
 		nextStatus := pipelineStageStatusFromStepStatus(status)
 		if stages[idx].Status != nextStatus {
 			stages[idx].Status = nextStatus
-			changed = true
+			itemChanged = true
 		}
 		if strings.TrimSpace(message) != strings.TrimSpace(stages[idx].RawStatus) {
 			stages[idx].RawStatus = strings.TrimSpace(message)
-			changed = true
+			itemChanged = true
 		}
 		if startedAt != nil && (stages[idx].StartedAt == nil || !stages[idx].StartedAt.Equal(*startedAt)) {
 			value := startedAt.UTC()
 			stages[idx].StartedAt = &value
-			changed = true
+			itemChanged = true
 		}
 		if finishedAt != nil && (stages[idx].FinishedAt == nil || !stages[idx].FinishedAt.Equal(*finishedAt)) {
 			value := finishedAt.UTC()
 			stages[idx].FinishedAt = &value
-			changed = true
+			itemChanged = true
 		}
 		duration := computePipelineStageDurationFromTimes(stages[idx].StartedAt, stages[idx].FinishedAt, status, now)
 		if stages[idx].DurationMillis != duration {
 			stages[idx].DurationMillis = duration
+			itemChanged = true
+		}
+		if itemChanged {
+			stages[idx].UpdatedAt = now
 			changed = true
 		}
-		stages[idx].UpdatedAt = now
-		changed = true
 	}
 	if !changed {
 		return nil
@@ -3567,133 +3486,15 @@ func (uc *ReleaseOrderManager) ListSteps(ctx context.Context, orderID string) ([
 	if orderID == "" {
 		return nil, ErrInvalidID
 	}
-	order, err := uc.repo.GetByID(ctx, orderID)
-	if err != nil {
+	if _, err := uc.repo.GetByID(ctx, orderID); err != nil {
 		return nil, err
 	}
 	items, err := uc.repo.ListSteps(ctx, orderID)
 	if err != nil {
 		return nil, err
 	}
-	items, err = uc.reconcileTerminalSteps(ctx, order, items)
-	if err != nil {
-		return nil, err
-	}
+	// 步骤读取只做展示增强，不再触发终态协调写入。
 	return uc.enrichAgentTaskStepDetails(ctx, items), nil
-}
-
-// reconcileTerminalSteps 封装当前模块的业务处理逻辑。
-func (uc *ReleaseOrderManager) reconcileTerminalSteps(
-	ctx context.Context,
-	order domain.ReleaseOrder,
-	steps []domain.ReleaseOrderStep,
-) ([]domain.ReleaseOrderStep, error) {
-	if len(steps) == 0 {
-		return steps, nil
-	}
-
-	executions, err := uc.ListExecutions(ctx, order.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	changed := false
-	now := uc.now()
-	for _, execution := range executions {
-		if !isArgoCDExecution(execution) || !execution.Status.IsTerminal() {
-			continue
-		}
-		healthCode := scopeStepCode(execution.PipelineScope, "health_check")
-		current := findStepByCode(steps, healthCode)
-		if current == nil {
-			continue
-		}
-
-		nextStatus := domain.StepStatusFailed
-		nextMessage := strings.TrimSpace(current.Message)
-		if execution.Status == domain.ExecutionStatusSuccess {
-			nextStatus = domain.StepStatusSuccess
-			if nextMessage == "" || isWaitingArgoCDHealthCheckMessage(nextMessage) {
-				nextMessage = "ArgoCD 部署完成"
-			}
-		} else if nextMessage == "" || isWaitingArgoCDHealthCheckMessage(nextMessage) {
-			nextMessage = "ArgoCD 部署失败"
-		}
-		if current.Status == nextStatus && strings.TrimSpace(current.Message) == nextMessage {
-			continue
-		}
-
-		startedAt := current.StartedAt
-		if startedAt == nil {
-			startedAt = firstNonNilTime(execution.StartedAt, order.StartedAt, ptrTime(now))
-		}
-		finishedAt := firstNonNilTime(execution.FinishedAt, order.FinishedAt, ptrTime(now))
-		if _, updateErr := uc.repo.UpdateStep(ctx, order.ID, healthCode, domain.StepUpdateInput{
-			Status:     nextStatus,
-			Message:    nextMessage,
-			StartedAt:  startedAt,
-			FinishedAt: finishedAt,
-		}); updateErr != nil {
-			if errors.Is(updateErr, domain.ErrStepNotFound) {
-				logx.Warn("release_order", "reconcile_terminal_health_step_missing",
-					logx.F("order_id", order.ID),
-					logx.F("order_no", order.OrderNo),
-					logx.F("step_code", healthCode),
-					logx.F("pipeline_scope", execution.PipelineScope),
-				)
-				changed = true
-				continue
-			}
-			return nil, updateErr
-		}
-		changed = true
-	}
-
-	globalStep := findStepByCode(steps, "global:release_finish")
-	if globalStep != nil && order.Status.IsTerminal() {
-		globalStatus := domain.StepStatusSuccess
-		globalMessage := "发布完成"
-		if order.Status != domain.OrderStatusSuccess {
-			globalStatus = domain.StepStatusFailed
-			globalMessage = "发布结束"
-		}
-		if globalStep.Status != globalStatus || strings.TrimSpace(globalStep.Message) != globalMessage {
-			startedAt := globalStep.StartedAt
-			if startedAt == nil {
-				startedAt = firstNonNilTime(order.StartedAt, ptrTime(now))
-			}
-			finishedAt := firstNonNilTime(order.FinishedAt, ptrTime(now))
-			if _, updateErr := uc.repo.UpdateStep(ctx, order.ID, "global:release_finish", domain.StepUpdateInput{
-				Status:     globalStatus,
-				Message:    globalMessage,
-				StartedAt:  startedAt,
-				FinishedAt: finishedAt,
-			}); updateErr != nil {
-				if errors.Is(updateErr, domain.ErrStepNotFound) {
-					logx.Warn("release_order", "reconcile_terminal_finish_step_missing",
-						logx.F("order_id", order.ID),
-						logx.F("order_no", order.OrderNo),
-						logx.F("step_code", "global:release_finish"),
-					)
-					changed = true
-				} else {
-					return nil, updateErr
-				}
-			} else {
-				changed = true
-			}
-		}
-	}
-	if !changed {
-		return steps, nil
-	}
-	return uc.repo.ListSteps(ctx, order.ID)
-}
-
-// isWaitingArgoCDHealthCheckMessage 检查业务状态并返回校验结果。
-func isWaitingArgoCDHealthCheckMessage(message string) bool {
-	text := strings.TrimSpace(message)
-	return strings.Contains(text, "等待健康检查回传")
 }
 
 // StartStep 封装当前模块的业务处理逻辑。
@@ -4233,15 +4034,17 @@ func isEditableOrderStatus(status domain.OrderStatus) bool {
 
 // nextQueuedOrderStatus 封装当前模块的业务处理逻辑。
 func nextQueuedOrderStatus(current domain.OrderStatus) domain.OrderStatus {
-	if current == domain.OrderStatusBuilding {
-		return domain.OrderStatusBuilding
-	}
 	return domain.OrderStatusQueued
 }
 
 // nextRunningOrderStatus 封装当前模块的业务处理逻辑。
-func nextRunningOrderStatus(current domain.OrderStatus) domain.OrderStatus {
-	if current == domain.OrderStatusBuilding {
+func nextRunningOrderStatus(
+	current domain.OrderStatus,
+	execution domain.ReleaseOrderExecution,
+	executions []domain.ReleaseOrderExecution,
+) domain.OrderStatus {
+	if current == domain.OrderStatusBuilding ||
+		(execution.PipelineScope == domain.PipelineScopeCI && hasExecutionForScope(executions, domain.PipelineScopeCD)) {
 		return domain.OrderStatusBuilding
 	}
 	return domain.OrderStatusDeploying

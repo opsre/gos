@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,6 +42,47 @@ func TestCountActiveOrdersByApplicationEnv_IncludesQueuedAndRunning(t *testing.T
 	}
 	if count != 2 {
 		t.Fatalf("CountActiveOrdersByApplicationEnv = %d, want 2", count)
+	}
+}
+
+func TestListTrackableOrdersScansReleaseOrders(t *testing.T) {
+	t.Parallel()
+
+	repo := newTestReleaseRepository(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	order := newTestReleaseOrder("ro-trackable", "RO-TRACKABLE", "app-1", "prod", domain.OrderStatusRunning, now)
+	if err := repo.Create(ctx, order, nil, nil, nil); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	items, total, err := repo.ListTrackableOrders(ctx, 1, 20)
+	if err != nil {
+		t.Fatalf("ListTrackableOrders failed: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("total = %d, want 1", total)
+	}
+	if len(items) != 1 {
+		t.Fatalf("len(items) = %d, want 1", len(items))
+	}
+	if items[0].ID != order.ID {
+		t.Fatalf("items[0].ID = %q, want %q", items[0].ID, order.ID)
+	}
+}
+
+func TestReleaseRepositorySchemaDoesNotCreateDeprecatedSonService(t *testing.T) {
+	for _, file := range []string{
+		"release_repository.go",
+		"../../../../script_sql/deploy_platform.sql",
+	} {
+		source, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("ReadFile(%s) failed: %v", file, err)
+		}
+		if strings.Contains(string(source), "son_service") || strings.Contains(string(source), "SonService") {
+			t.Fatalf("%s should not create or reference deprecated son_service", file)
+		}
 	}
 }
 
@@ -389,6 +432,135 @@ func TestFindActiveOrderByApplicationEnv_PrioritizesDeployingBeforeQueued(t *tes
 	}
 	if item.ID != deploying.ID {
 		t.Fatalf("FindActiveOrderByApplicationEnv returned %s, want %s", item.ID, deploying.ID)
+	}
+}
+
+func TestActiveOrderQueueUsesConcurrentBatchFIFO(t *testing.T) {
+	t.Parallel()
+
+	repo := newTestReleaseRepository(t)
+	ctx := context.Background()
+	now := time.Date(2026, 7, 17, 14, 0, 0, 0, time.UTC)
+	orders := []domain.ReleaseOrder{
+		newTestReleaseOrder("ro-fifo-1", "RO-FIFO-1", "app-1", "prod", domain.OrderStatusQueued, now),
+		newTestReleaseOrder("ro-fifo-2", "RO-FIFO-2", "app-1", "prod", domain.OrderStatusQueued, now.Add(time.Second)),
+		newTestReleaseOrder("ro-fifo-3", "RO-FIFO-3", "app-1", "prod", domain.OrderStatusQueued, now.Add(2*time.Second)),
+	}
+	for index := range orders {
+		orders[index].IsConcurrent = true
+		orders[index].ConcurrentBatchNo = "CB-FIFO"
+		orders[index].ConcurrentBatchName = "FIFO"
+		orders[index].ConcurrentBatchSeq = index + 1
+		if err := repo.Create(ctx, orders[index], nil, nil, nil); err != nil {
+			t.Fatalf("Create(%s) failed: %v", orders[index].ID, err)
+		}
+	}
+
+	if _, err := repo.FindActiveOrderByApplicationEnv(ctx, "app-1", "prod", orders[0].ID); !errors.Is(err, domain.ErrOrderNotFound) {
+		t.Fatalf("first queue item blocker error=%v, want ErrOrderNotFound", err)
+	}
+	blocker, err := repo.FindActiveOrderByApplicationEnv(ctx, "app-1", "prod", orders[1].ID)
+	if err != nil {
+		t.Fatalf("FindActiveOrderByApplicationEnv failed: %v", err)
+	}
+	if blocker.ID != orders[0].ID {
+		t.Fatalf("second queue blocker=%s, want %s", blocker.ID, orders[0].ID)
+	}
+	count, err := repo.CountActiveOrdersByApplicationEnv(ctx, "app-1", "prod", orders[2].ID)
+	if err != nil {
+		t.Fatalf("CountActiveOrdersByApplicationEnv failed: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("third queue ahead count=%d, want 2", count)
+	}
+}
+
+func TestQueuedFollowerDoesNotBlockExecutingConcurrentBatchOwner(t *testing.T) {
+	t.Parallel()
+
+	repo := newTestReleaseRepository(t)
+	ctx := context.Background()
+	now := time.Date(2026, 7, 18, 15, 30, 0, 0, time.UTC)
+	owner := newTestReleaseOrder("ro-executing-owner", "RO-EXECUTING-OWNER", "app-1", "prod", domain.OrderStatusDeploying, now)
+	owner.IsConcurrent = true
+	owner.ConcurrentBatchNo = "CB-EXECUTING-OWNER"
+	owner.ConcurrentBatchName = "并发发布"
+	owner.ConcurrentBatchSeq = 1
+	follower := newTestReleaseOrder("ro-queued-follower", "RO-QUEUED-FOLLOWER", "app-1", "prod", domain.OrderStatusQueued, now.Add(time.Second))
+	follower.IsConcurrent = true
+	follower.ConcurrentBatchNo = owner.ConcurrentBatchNo
+	follower.ConcurrentBatchName = owner.ConcurrentBatchName
+	follower.ConcurrentBatchSeq = 2
+	for _, order := range []domain.ReleaseOrder{owner, follower} {
+		if err := repo.Create(ctx, order, nil, nil, nil); err != nil {
+			t.Fatalf("Create(%s) failed: %v", order.ID, err)
+		}
+	}
+
+	if _, err := repo.FindActiveOrderByApplicationEnv(ctx, owner.ApplicationID, owner.EnvCode, owner.ID); !errors.Is(err, domain.ErrOrderNotFound) {
+		t.Fatalf("queued follower blocker error=%v, want ErrOrderNotFound", err)
+	}
+	count, err := repo.CountActiveOrdersByApplicationEnv(ctx, owner.ApplicationID, owner.EnvCode, owner.ID)
+	if err != nil {
+		t.Fatalf("CountActiveOrdersByApplicationEnv failed: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("queued follower ahead count=%d, want 0 for executing owner", count)
+	}
+}
+
+func TestFailedOrderDoesNotBlockApplicationEnvironment(t *testing.T) {
+	t.Parallel()
+
+	repo := newTestReleaseRepository(t)
+	ctx := context.Background()
+	now := time.Date(2026, 7, 17, 14, 30, 0, 0, time.UTC)
+	failed := newTestReleaseOrder("ro-failed-before-next", "RO-FAILED-BEFORE-NEXT", "app-1", "prod", domain.OrderStatusFailed, now)
+	current := newTestReleaseOrder("ro-after-failed", "RO-AFTER-FAILED", "app-1", "prod", domain.OrderStatusPending, now.Add(time.Second))
+	for _, item := range []domain.ReleaseOrder{failed, current} {
+		if err := repo.Create(ctx, item, nil, nil, nil); err != nil {
+			t.Fatalf("Create(%s) failed: %v", item.ID, err)
+		}
+	}
+
+	if _, err := repo.FindActiveOrderByApplicationEnv(ctx, "app-1", "prod", current.ID); !errors.Is(err, domain.ErrOrderNotFound) {
+		t.Fatalf("failed order blocker error=%v, want ErrOrderNotFound", err)
+	}
+	count, err := repo.CountActiveOrdersByApplicationEnv(ctx, "app-1", "prod", current.ID)
+	if err != nil {
+		t.Fatalf("CountActiveOrdersByApplicationEnv failed: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("ahead count=%d, want 0 after failed order", count)
+	}
+}
+
+func TestListTrackableOrdersIncludesPrematureSuccessWithFailedHook(t *testing.T) {
+	t.Parallel()
+
+	repo := newTestReleaseRepository(t)
+	ctx := context.Background()
+	now := time.Date(2026, 7, 17, 15, 0, 0, 0, time.UTC)
+	order := newTestReleaseOrder("ro-success-failed-hook", "RO-SUCCESS-FAILED-HOOK", "app-1", "prod", domain.OrderStatusSuccess, now)
+	hook := domain.ReleaseOrderStep{
+		ID:             "step-failed-hook",
+		ReleaseOrderID: order.ID,
+		StepScope:      domain.StepScopeGlobal,
+		StepCode:       "hook:post_release:agent_task:1",
+		StepName:       "Agent Hook",
+		Status:         domain.StepStatusFailed,
+		SortNo:         1,
+		CreatedAt:      now,
+	}
+	if err := repo.Create(ctx, order, nil, nil, []domain.ReleaseOrderStep{hook}); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	items, total, err := repo.ListTrackableOrders(ctx, 1, 20)
+	if err != nil {
+		t.Fatalf("ListTrackableOrders failed: %v", err)
+	}
+	if total != 1 || len(items) != 1 || items[0].ID != order.ID {
+		t.Fatalf("total=%d items=%#v, want premature success order", total, items)
 	}
 }
 

@@ -268,8 +268,11 @@ func main() {
 		gitopsServiceFactory,
 		nil,
 	)
+	handler.SetWorkbenchQuery(usecase.NewApplicationWorkbench(repo, releaseRepo))
+	handler.SetApprovalFlowManager(releaseOrderManager)
 	releaseTemplateManager := usecase.NewReleaseTemplateManager(releaseRepo, repo, pipelineRepo, executorParamRepo, platformParamRepo, argocdAppRepo, agentRepo, notificationRepo, gitopsInstanceManager)
 	releaseOrderManager.SetArtifactRepository(artifactRepositoryRepo)
+	releaseOrderManager.SetApprovalManagerResolver(userRepo)
 	releaseOrderManager.SetPipelineScanRepository(pipelineScanRepo)
 	releaseOrderManager.SetAIModelRepository(aiModelConfigRepo)
 	releaseOrderManager.SetStageDiagnosisRepository(stageDiagnosisRepo)
@@ -292,6 +295,7 @@ func main() {
 		releaseOrderManager,
 		jenkinsClient,
 	)
+	releaseOrderHandler.SetRealtimeSynchronizer(releaseTracker)
 
 	syncTask := bootstrap.StartJenkinsAutoSyncTask(cfg.Jenkins, func(ctx context.Context) error {
 		var (

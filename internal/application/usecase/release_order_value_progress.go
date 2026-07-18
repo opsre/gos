@@ -638,15 +638,7 @@ func deriveReleaseProgressValue(
 				UpdatedAt: timePointer(order.UpdatedAt),
 			}, true
 		}
-	case "project_name":
-		if value := strings.TrimSpace(order.SonService); value != "" {
-			return derivedProgressValue{
-				Value:     value,
-				Source:    "release_order_summary",
-				Message:   "已从发布单摘要字段取值",
-				UpdatedAt: timePointer(order.UpdatedAt),
-			}, true
-		}
+
 	case "release_name":
 		if value := strings.TrimSpace(order.ReleaseName); value != "" {
 			return derivedProgressValue{

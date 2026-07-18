@@ -17,6 +17,7 @@ export interface UserOption {
   id: string
   username: string
   display_name: string
+  role: UserRole
 }
 
 export interface UserPermission {
@@ -70,6 +71,21 @@ export interface UserDataResponse {
 
 export interface UserOptionListResponse {
   data: UserOption[]
+}
+
+export interface UserManagerResponse {
+  data: {
+    user_id: string
+    manager_user_id: string
+  }
+}
+
+export interface UserOrganizationNode extends UserProfile {
+  manager_user_id: string
+}
+
+export interface UserOrganizationResponse {
+  data: UserOrganizationNode[]
 }
 
 export interface UserPermissionListResponse {

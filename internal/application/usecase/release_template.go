@@ -219,20 +219,8 @@ func (uc *ReleaseTemplateManager) Create(
 		)
 		return releasedomain.ReleaseTemplate{}, nil, nil, nil, nil, ErrInvalidStatus
 	}
-	approvalConfig, err := normalizeTemplateApprovalConfig(
-		input.ApprovalEnabled,
-		input.ApprovalMode,
-		input.ApprovalApproverIDs,
-		input.ApprovalApproverNames,
-	)
-	if err != nil {
-		logx.Error("release_template", "create_failed", err,
-			logx.F("name", name),
-			logx.F("application_id", applicationID),
-			logx.F("reason", "invalid_approval_config"),
-		)
-		return releasedomain.ReleaseTemplate{}, nil, nil, nil, nil, err
-	}
+	// 审批策略已迁移至应用级发布流程；模板不再承载审批配置。
+	approvalConfig := normalizedTemplateApprovalConfig{}
 
 	templateBindings, params, gitopsRules, hooks, appName, err := uc.buildTemplatePayload(
 		ctx,
@@ -421,19 +409,8 @@ func (uc *ReleaseTemplateManager) Update(
 		)
 		return releasedomain.ReleaseTemplate{}, nil, nil, nil, nil, ErrInvalidStatus
 	}
-	approvalConfig, err := normalizeTemplateApprovalConfig(
-		input.ApprovalEnabled,
-		input.ApprovalMode,
-		input.ApprovalApproverIDs,
-		input.ApprovalApproverNames,
-	)
-	if err != nil {
-		logx.Error("release_template", "update_failed", err,
-			logx.F("template_id", id),
-			logx.F("reason", "invalid_approval_config"),
-		)
-		return releasedomain.ReleaseTemplate{}, nil, nil, nil, nil, err
-	}
+	// 审批策略已迁移至应用级发布流程；模板不再承载审批配置。
+	approvalConfig := normalizedTemplateApprovalConfig{}
 
 	templateBindings, params, gitopsRules, hooks, appName, err := uc.buildTemplatePayload(
 		ctx,

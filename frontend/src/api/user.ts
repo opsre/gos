@@ -3,7 +3,9 @@ import type {
   PermissionListResponse,
   UserDataResponse,
   UserListResponse,
+  UserManagerResponse,
   UserOptionListResponse,
+  UserOrganizationResponse,
   UserParamPermissionListResponse,
   UserPermissionListResponse,
   UserRole,
@@ -70,6 +72,21 @@ export async function deleteUser(id: string): Promise<void> {
 
 export async function listUserOptions(): Promise<UserOptionListResponse> {
   const response = await http.get<UserOptionListResponse>('/users/options')
+  return response.data
+}
+
+export async function getUserManager(userID: string): Promise<UserManagerResponse> {
+  const response = await http.get<UserManagerResponse>(`/users/${userID}/manager`)
+  return response.data
+}
+
+export async function updateUserManager(userID: string, managerUserID: string): Promise<UserManagerResponse> {
+  const response = await http.put<UserManagerResponse>(`/users/${userID}/manager`, { manager_user_id: managerUserID })
+  return response.data
+}
+
+export async function listUserOrganization(): Promise<UserOrganizationResponse> {
+  const response = await http.get<UserOrganizationResponse>('/users/organization')
   return response.data
 }
 

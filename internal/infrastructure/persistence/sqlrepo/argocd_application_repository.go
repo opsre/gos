@@ -166,7 +166,11 @@ func (r *ArgoCDApplicationRepository) InitSchema(ctx context.Context) error {
 			return err
 		}
 	}
-	return r.migrateSchema(ctx)
+	return runSchemaMigrations(ctx, r.db, r.dbDriver, schemaMigration{
+		Version:     "deploy_platform_v1_2_argocd_multi_instance",
+		Description: "upgrade ArgoCD applications and environment bindings for multiple instances",
+		Up:          r.migrateSchema,
+	})
 }
 
 // migrateSchema 封装当前模块的业务处理逻辑。
@@ -277,9 +281,7 @@ func (r *ArgoCDApplicationRepository) ensureSQLiteEnvBindingMultiInstance(ctx co
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-
-	needsRebuild := false
+	uniqueIndexes := make([]string, 0)
 	for rows.Next() {
 		var (
 			seq     int
@@ -294,6 +296,18 @@ func (r *ArgoCDApplicationRepository) ensureSQLiteEnvBindingMultiInstance(ctx co
 		if unique == 0 {
 			continue
 		}
+		uniqueIndexes = append(uniqueIndexes, name)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+
+	needsRebuild := false
+	for _, name := range uniqueIndexes {
 		infoRows, err := r.db.QueryContext(ctx, fmt.Sprintf("PRAGMA index_info(%q);", name))
 		if err != nil {
 			return err
@@ -318,9 +332,6 @@ func (r *ArgoCDApplicationRepository) ensureSQLiteEnvBindingMultiInstance(ctx co
 			needsRebuild = true
 			break
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
 	}
 	if !needsRebuild {
 		return nil

@@ -425,7 +425,7 @@ test('release detail content groups use non-nested redesigned surfaces', () => {
 test('release detail inner tables follow management table style', () => {
   assert.equal(
     countMatches(/class="[^"]*\bdetail-data-table\b/g),
-    1,
+    2,
     'detail page should only keep the actual data table for param snapshots',
   )
 

@@ -47,7 +47,7 @@ interface TaskSearchOption {
 }
 
 const authStore = useAuthStore()
-const AUTO_REFRESH_INTERVAL = 15000
+const AUTO_REFRESH_INTERVAL = 3000
 
 const loadingAgents = ref(false)
 const refreshingTasks = ref(false)
@@ -71,6 +71,7 @@ const taskSearchDialogVisible = ref(false)
 const taskSearchInputRef = ref<HTMLInputElement | null>(null)
 const modalViewportInset = ref(0)
 let autoRefreshTimer: number | null = null
+let autoRefreshInFlight = false
 let modalViewportObserver: ResizeObserver | null = null
 const historyFilters = reactive({
   keyword: '',
@@ -321,6 +322,27 @@ function taskStatusText(status: AgentTask['status']) {
     default:
       return status
   }
+}
+
+function taskStatusColor(status: AgentTask['status']) {
+  switch (status) {
+    case 'success':
+      return 'success'
+    case 'failed':
+      return 'error'
+    case 'running':
+    case 'claimed':
+      return 'processing'
+    case 'queued':
+    case 'pending':
+      return 'warning'
+    default:
+      return 'default'
+  }
+}
+
+function getTaskSelectPopupContainer(triggerNode: HTMLElement) {
+  return (triggerNode.closest('.ant-modal-content') as HTMLElement | null) || triggerNode.parentElement || document.body
 }
 
 function normalizeSearchValue(value: unknown) {
@@ -1096,11 +1118,26 @@ watch(
 )
 
 async function runAutoRefresh() {
-  if (document.hidden || !canViewAgent.value) {
+  if (document.hidden || !canViewAgent.value || autoRefreshInFlight) {
     return
   }
-  await loadAgents({ silent: true })
-  await loadTaskViews({ silent: true })
+  autoRefreshInFlight = true
+  try {
+    await loadAgents({ silent: true })
+    await loadTaskViews({ silent: true })
+  } finally {
+    autoRefreshInFlight = false
+  }
+}
+
+function handlePageVisibilityChange() {
+  if (!document.hidden) {
+    void runAutoRefresh()
+  }
+}
+
+function handleWindowFocus() {
+  void runAutoRefresh()
 }
 
 function startAutoRefresh() {
@@ -1123,14 +1160,18 @@ onMounted(async () => {
   resetTaskForm()
   syncModalViewportInset()
   observeModalViewportInset()
-  await Promise.all([loadAgents(), loadPlatformParamOptions(), loadScriptOptions()])
-  await loadTaskViews()
-  startAutoRefresh()
+	await Promise.all([loadAgents(), loadPlatformParamOptions(), loadScriptOptions()])
+	await loadTaskViews()
+  document.addEventListener('visibilitychange', handlePageVisibilityChange)
+  window.addEventListener('focus', handleWindowFocus)
+	startAutoRefresh()
 })
 
 onBeforeUnmount(() => {
-  stopAutoRefresh()
-  stopObservingModalViewportInset()
+	stopAutoRefresh()
+  document.removeEventListener('visibilitychange', handlePageVisibilityChange)
+  window.removeEventListener('focus', handleWindowFocus)
+	stopObservingModalViewportInset()
 })
 </script>
 
@@ -1233,6 +1274,7 @@ onBeforeUnmount(() => {
                 placeholder="请选择要下发任务的 Agent"
                 :options="taskTargetOptions"
                 :filter-option="(input: string, option: any) => String(option?.label || '').toLowerCase().includes(input.toLowerCase())"
+                :get-popup-container="getTaskSelectPopupContainer"
               />
               <div v-if="selectedAgentNames.length" class="task-agent-selection">
                 <a-tag v-for="name in selectedAgentNames" :key="name">{{ name }}</a-tag>
@@ -1405,6 +1447,7 @@ onBeforeUnmount(() => {
               placeholder="请选择要下发任务的 Agent"
               :options="taskTargetOptions"
               :filter-option="(input: string, option: any) => String(option?.label || '').toLowerCase().includes(input.toLowerCase())"
+              :get-popup-container="getTaskSelectPopupContainer"
             />
           </div>
         </a-form-item>
@@ -1619,6 +1662,7 @@ onBeforeUnmount(() => {
                       <div class="task-name">{{ item.name }}</div>
                       <a-tag>{{ taskModeText(item.task_mode) }}</a-tag>
                       <a-tag>{{ taskTypeText(item.task_type) }}</a-tag>
+                      <a-tag :color="taskStatusColor(item.status)">{{ taskStatusText(item.status) }}</a-tag>
                     </div>
                     <div class="muted-text">
                       <a v-if="item.target_agent_ids && item.target_agent_ids.length" class="agent-link" @click="showBoundAgentsModal(item)">
@@ -1946,7 +1990,7 @@ onBeforeUnmount(() => {
 
 .task-form-modal-wrap :deep(.ant-modal-content) {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   isolation: isolate;
   border-radius: 24px;
   border: 1px solid rgba(255, 255, 255, 0.68);
@@ -1958,8 +2002,6 @@ onBeforeUnmount(() => {
     0 32px 90px rgba(15, 23, 42, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.96),
     inset 0 -1px 0 rgba(255, 255, 255, 0.28);
-  backdrop-filter: blur(18px) saturate(180%);
-  -webkit-backdrop-filter: blur(18px) saturate(180%);
 }
 
 .task-form-modal-wrap :deep(.ant-modal-content)::before {
@@ -2152,6 +2194,8 @@ onBeforeUnmount(() => {
 
 .task-agent-selector,
 .task-script-summary {
+  position: relative;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   gap: 10px;

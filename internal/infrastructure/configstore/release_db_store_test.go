@@ -46,6 +46,13 @@ func TestDatabaseReleaseStoreFallbackAndPersistence(t *testing.T) {
 	if err := store.SaveEnvOptions(ctx, []string{"dev", "prod", "prod"}); err != nil {
 		t.Fatalf("SaveEnvOptions failed: %v", err)
 	}
+	if err := store.SaveEnvConfigs(ctx, []usecase.ReleaseEnvironmentConfig{
+		{Code: "dev", Description: "日常联调环境"},
+		{Code: "prod", Description: "生产环境"},
+		{Code: "prod", Description: "重复项应被忽略"},
+	}); err != nil {
+		t.Fatalf("SaveEnvConfigs failed: %v", err)
+	}
 	if err := store.SaveConcurrencySettings(ctx, usecase.ReleaseConcurrencySettingsInput{
 		Enabled:          true,
 		LockScope:        usecase.ReleaseConcurrencyLockScopeGitOpsRepoBranch,
@@ -61,6 +68,13 @@ func TestDatabaseReleaseStoreFallbackAndPersistence(t *testing.T) {
 	}
 	if len(reloadedOptions) != 2 || reloadedOptions[0] != "dev" || reloadedOptions[1] != "prod" {
 		t.Fatalf("persisted env options = %#v, want [dev prod]", reloadedOptions)
+	}
+	reloadedConfigs, err := store.LoadEnvConfigs(ctx)
+	if err != nil {
+		t.Fatalf("LoadEnvConfigs persisted failed: %v", err)
+	}
+	if len(reloadedConfigs) != 2 || reloadedConfigs[0].Description != "日常联调环境" || reloadedConfigs[1].Description != "生产环境" {
+		t.Fatalf("persisted env configs = %#v, want descriptions kept", reloadedConfigs)
 	}
 	if err := store.SaveEnvOptions(ctx, nil); err != nil {
 		t.Fatalf("SaveEnvOptions empty failed: %v", err)
@@ -97,8 +111,28 @@ func (s releaseDBStoreStub) SaveEnvOptions(context.Context, []string) error {
 	return nil
 }
 
+func (s releaseDBStoreStub) LoadEnvConfigs(context.Context) ([]usecase.ReleaseEnvironmentConfig, error) {
+	result := make([]usecase.ReleaseEnvironmentConfig, 0, len(s.envOptions))
+	for _, item := range s.envOptions {
+		result = append(result, usecase.ReleaseEnvironmentConfig{Code: item})
+	}
+	return result, nil
+}
+
+func (s releaseDBStoreStub) SaveEnvConfigs(context.Context, []usecase.ReleaseEnvironmentConfig) error {
+	return nil
+}
+
 // LoadConcurrencySettings 封装当前模块的业务处理逻辑。
-func (s releaseDBStoreStub) LoadConcurrencySettings(context.Context) (usecase.ReleaseConcurrencySettingsOutput, error) {
+func (s releaseDBStoreStub) LoadDefaultEnvCode(ctx context.Context) (string, error) {
+	return "dev", nil
+}
+
+func (s releaseDBStoreStub) SaveDefaultEnvCode(ctx context.Context, value string) error {
+	return nil
+}
+
+func (s releaseDBStoreStub) LoadConcurrencySettings(ctx context.Context) (usecase.ReleaseConcurrencySettingsOutput, error) {
 	return s.concurrency, nil
 }
 

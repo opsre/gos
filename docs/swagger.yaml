@@ -238,8 +238,6 @@ definitions:
         type: string
       remark:
         type: string
-      son_service:
-        type: string
       steps:
         items:
           $ref: '#/definitions/internal_interfaces_http.CreateReleaseOrderStepRequest'
@@ -714,8 +712,6 @@ definitions:
       rejected_reason:
         type: string
       remark:
-        type: string
-      son_service:
         type: string
       source_order_id:
         type: string

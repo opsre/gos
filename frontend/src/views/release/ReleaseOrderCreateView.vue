@@ -3,8 +3,10 @@ import {
   ArrowLeftOutlined,
   BranchesOutlined,
   CheckCircleOutlined,
+  DeleteOutlined,
   ExclamationCircleOutlined,
   FullscreenOutlined,
+  PlusOutlined,
   ProfileOutlined,
   RocketOutlined,
   ThunderboltFilled,
@@ -14,15 +16,18 @@ import type { FormInstance } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getApplicationByID, listApplications } from '../../api/application'
+import { getApplicationApprovalFlowBinding, getApplicationByID, listApplications } from '../../api/application'
 import { getExecutorParamDefByID, listApplicationExecutorParamDefs } from '../../api/pipeline'
-import { createReleaseOrder, buildReleaseOrder, getReleaseOrderByID, getReleaseTemplateByID, listAllReleaseTemplates, listReleaseOrderParams, updateReleaseOrder, syncTemplateExecutorParamDefs } from '../../api/release'
+import { batchCreateReleaseOrders, createReleaseOrder, buildReleaseOrder, getReleaseOrderByID, getReleaseTemplateByID, listAllReleaseTemplates, listApprovalFlows, listReleaseOrderParams, updateReleaseOrder, syncTemplateExecutorParamDefs } from '../../api/release'
 import { getReleaseSettings } from '../../api/system'
 import { useAuthStore } from '../../stores/auth'
 import type { Application } from '../../types/application'
 import type { ExecutorParamDef } from '../../types/pipeline'
+import type { ReleaseEnvironmentConfig } from '../../types/system'
 import type {
   CreateReleaseOrderParamPayload,
+  CreateReleaseOrderPayload,
+  ApprovalFlowDefinition,
   ReleaseOrder,
   ReleaseOrderParam,
   ReleasePipelineScope,
@@ -35,6 +40,7 @@ import { extractHTTPErrorMessage } from '../../utils/http-error'
 interface SelectOption {
   label: string
   value: string
+  description?: string
   disabled?: boolean
 }
 
@@ -59,6 +65,16 @@ interface ScopeRuntimeState {
   param_defs: ExecutorParamDef[]
 }
 
+interface BatchReleaseOrderDraft {
+  id: string
+  payload: CreateReleaseOrderPayload
+  applicationName: string
+  templateName: string
+  envName: string
+  displayName: string
+  error: string
+}
+
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
@@ -70,13 +86,19 @@ const loadingTemplates = ref(false)
 const loadingTemplateDetail = ref(false)
 const loadingEditOrder = ref(false)
 const submitting = ref(false)
-const submittingMode = ref<'standard' | 'fast' | 'build' | ''>('')
+const submittingMode = ref<'standard' | 'fast' | 'build' | 'batch' | ''>('')
+const batchDrafts = ref<BatchReleaseOrderDraft[]>([])
 const syncingTemplateParams = ref(false)
 const templateWarning = ref('')
+const loadingApprovalFlow = ref(false)
+const approvalFlowError = ref('')
+const applicationApprovalFlowID = ref('')
+const approvalFlowDefinitions = ref<ApprovalFlowDefinition[]>([])
 
 const allApplicationOptions = ref<SelectOption[]>([])
 const applicationRecords = ref<Application[]>([])
 const envOptions = ref<SelectOption[]>([])
+const defaultEnvCode = ref('')
 const templateOptions = ref<SelectOption[]>([])
 const templateList = ref<ReleaseTemplate[]>([])
 const selectedTemplate = ref<ReleaseTemplate | null>(null)
@@ -111,6 +133,7 @@ const preferredBindingID = ref('')
 const currentUserID = computed(() => String(authStore.profile?.id || '').trim())
 const editingOrderID = computed(() => String(route.params.id || '').trim())
 const isEditMode = computed(() => Boolean(editingOrderID.value))
+const isBatchMode = computed(() => !isEditMode.value && String(route.query.batch || '').trim() === '1')
 
 const formState = reactive<CreateFormState>({
   application_id: '',
@@ -173,6 +196,10 @@ const releaseEnvNotice = computed(() => {
   return ''
 })
 
+const selectedEnvOption = computed(() =>
+  authorizedEnvOptions.value.find((item) => item.value === formState.env_code.trim()) || null,
+)
+
 const currentUserDisplayName = computed(() => {
   const profile = authStore.profile
   if (!profile) {
@@ -218,7 +245,6 @@ const effectiveEnvCode = computed(() => {
 const rules = computed<Record<string, Rule[]>>(() => ({
   application_id: [{ required: true, message: '请选择应用', trigger: 'change' }],
   template_id: [{ required: true, message: '请选择发布模板', trigger: 'change' }],
-  release_name: [{ required: true, message: '请输入发布名称', trigger: 'blur' }],
   ...(showEnvironmentField.value
     ? { env_code: [{ required: true, message: '请选择环境', trigger: 'change' }] }
     : {}),
@@ -229,6 +255,10 @@ const bindingMapByScope = computed<Record<ReleasePipelineScope, ReleaseTemplateB
   cd: templateBindings.value.find((item) => item.pipeline_scope === 'cd' && item.enabled) || null,
 }))
 const hasStagedBuildBindings = computed(() => Boolean(bindingMapByScope.value.ci && bindingMapByScope.value.cd))
+
+const selectedApprovalFlow = computed(() =>
+  approvalFlowDefinitions.value.find((item) => item.id === applicationApprovalFlowID.value) || null,
+)
 
 const templateParamMetaByScope = computed<Record<ReleasePipelineScope, Record<string, ReleaseTemplateParam>>>(() => {
   const map: Record<ReleasePipelineScope, Record<string, ReleaseTemplateParam>> = {
@@ -274,16 +304,19 @@ const scopeCardList = computed(() =>
 
 const hasScopeErrors = computed(() => visibleScopes.value.some((scope) => Boolean(scopeStates[scope].error)))
 const isParamLoading = computed(() => loadingTemplateDetail.value || visibleScopes.value.some((scope) => scopeStates[scope].loading))
-const canSubmitRelease = computed(() => Boolean(formState.application_id && formState.template_id && formState.release_name.trim() && selectedTemplate.value && effectiveEnvCode.value) && !hasScopeErrors.value && !isParamLoading.value && !loadingEditOrder.value)
+const isPageLoading = computed(() => {
+  if (isEditMode.value) {
+    return loadingEditOrder.value
+  }
+  return loadingApplications.value || loadingEnvOptions.value
+})
+const canSubmitRelease = computed(() => Boolean(formState.application_id && formState.template_id && selectedTemplate.value && effectiveEnvCode.value) && !hasScopeErrors.value && !isParamLoading.value && !loadingEditOrder.value)
 const submitDisabledReason = computed(() => {
   if (!formState.application_id.trim()) {
     return '请先选择应用'
   }
   if (!formState.template_id.trim()) {
     return '请先选择发布模板'
-  }
-  if (!formState.release_name.trim()) {
-    return '请先填写发布名称'
   }
   if (loadingTemplateDetail.value || loadingEditOrder.value) {
     return '当前页面数据仍在加载，请稍后再试'
@@ -340,8 +373,31 @@ const canBuildOnlySubmitRelease = computed(() => canSubmitRelease.value && hasSt
 const standardSubmitting = computed(() => submitting.value && submittingMode.value === 'standard')
 const fastSubmitting = computed(() => submitting.value && submittingMode.value === 'fast')
 const buildOnlySubmitting = computed(() => submitting.value && submittingMode.value === 'build')
-const pageTitle = computed(() => (isEditMode.value ? '编辑发布单' : '新建发布单'))
-const primaryActionText = computed(() => (isEditMode.value ? '保存修改' : '创建发布单'))
+const batchSubmitting = computed(() => submitting.value && submittingMode.value === 'batch')
+const pageTitle = computed(() => {
+  if (isEditMode.value) {
+    return '编辑发布单'
+  }
+  return isBatchMode.value ? '批量新建发布单' : '新建发布单'
+})
+const primaryActionText = computed(() => {
+  if (isEditMode.value) {
+    return '保存修改'
+  }
+  return isBatchMode.value ? '加入创建清单' : '创建发布单'
+})
+
+const autoGeneratedReleaseName = computed(() => {
+  const appName = selectedApplicationRecord.value?.name || ''
+  const templateName = selectedTemplate.value?.name || ''
+  if (!appName || !templateName) {
+    return '若不填写则在发布时自动生成'
+  }
+  const now = new Date()
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+  return `${appName}-${templateName}-${timestamp}发布`
+})
 
 function resetParamValues() {
   Object.keys(paramValues).forEach((key) => {
@@ -365,6 +421,12 @@ function resetTemplateState() {
   scopeStates.cd.param_defs = []
   scopeStates.cd.loading = false
   resetParamValues()
+}
+
+function resetApplicationApprovalFlowState() {
+  applicationApprovalFlowID.value = ''
+  approvalFlowDefinitions.value = []
+  approvalFlowError.value = ''
 }
 
 function formatTemplateOptionLabel(item: ReleaseTemplate) {
@@ -436,6 +498,27 @@ function isEditableReleaseOrder(orderItem: ReleaseOrder) {
   return isPending && isOriginalDeploy && canOperate
 }
 
+function envConfigsFromSettings(configs: ReleaseEnvironmentConfig[], fallbackOptions: string[]): SelectOption[] {
+  const result: SelectOption[] = []
+  const seen = new Set<string>()
+  const source = configs.length > 0
+    ? configs
+    : fallbackOptions.map((item) => ({ code: item, description: '' }))
+  source.forEach((item) => {
+    const code = String(item?.code || '').trim()
+    if (!code || seen.has(code)) {
+      return
+    }
+    seen.add(code)
+    result.push({
+      label: code,
+      value: code,
+      description: String(item?.description || '').trim(),
+    })
+  })
+  return result
+}
+
 async function ensureEditingApplicationOption() {
   const applicationID = String(editingOrder.value?.application_id || '').trim()
   if (!applicationID) {
@@ -498,10 +581,8 @@ async function loadEnvOptions() {
   loadingEnvOptions.value = true
   try {
     const response = await getReleaseSettings()
-    envOptions.value = (response.data.env_options || []).map((item) => ({
-      label: item,
-      value: item,
-    }))
+    envOptions.value = envConfigsFromSettings(response.data.env_configs || [], response.data.env_options || [])
+    defaultEnvCode.value = response.data.default_env_code || ''
     syncSelectedEnvCode()
   } catch (error) {
     message.error(extractHTTPErrorMessage(error, '环境选项加载失败'))
@@ -514,6 +595,9 @@ function syncSelectedEnvCode() {
   const availableEnvCodes = authorizedEnvOptions.value.map((item) => item.value)
   if (formState.env_code && !availableEnvCodes.includes(formState.env_code)) {
     formState.env_code = ''
+  }
+  if (!formState.env_code && defaultEnvCode.value && availableEnvCodes.includes(defaultEnvCode.value)) {
+    formState.env_code = defaultEnvCode.value
   }
 }
 
@@ -530,6 +614,7 @@ function resetSelectionIfUnauthorized() {
   formState.application_id = ''
   formState.env_code = ''
   resetTemplateState()
+  resetApplicationApprovalFlowState()
 }
 
 async function findTemplateByBinding(templates: ReleaseTemplate[], bindingID: string) {
@@ -549,6 +634,37 @@ async function findTemplateByBinding(templates: ReleaseTemplate[], bindingID: st
     }
   }
   return ''
+}
+
+async function loadApplicationApprovalFlow() {
+  const applicationID = formState.application_id.trim()
+  resetApplicationApprovalFlowState()
+  if (!applicationID) {
+    return
+  }
+  loadingApprovalFlow.value = true
+  try {
+    const [bindingResponse, flowResponse] = await Promise.all([
+      getApplicationApprovalFlowBinding(applicationID),
+      listApprovalFlows(),
+    ])
+    if (formState.application_id.trim() !== applicationID) {
+      return
+    }
+    applicationApprovalFlowID.value = String(bindingResponse.data.approval_flow_id || '').trim()
+    approvalFlowDefinitions.value = flowResponse.data || []
+    if (applicationApprovalFlowID.value && !selectedApprovalFlow.value) {
+      approvalFlowError.value = '应用绑定的审批流已停用或不存在，请联系管理员检查审批流配置'
+    }
+  } catch (error) {
+    if (formState.application_id.trim() === applicationID) {
+      approvalFlowError.value = extractHTTPErrorMessage(error, '应用审批流加载失败')
+    }
+  } finally {
+    if (formState.application_id.trim() === applicationID) {
+      loadingApprovalFlow.value = false
+    }
+  }
 }
 
 async function loadTemplateOptions() {
@@ -774,7 +890,7 @@ async function handleApplicationChange(value: string | undefined) {
   if (releaseBranchOptions.value.length === 1 && releaseBranchOptions.value[0]) {
     formState.git_ref = releaseBranchOptions.value[0].value
   }
-  await loadTemplateOptions()
+  await Promise.all([loadTemplateOptions(), loadApplicationApprovalFlow()])
 }
 
 async function handleTemplateChange(value: string | undefined) {
@@ -1273,16 +1389,16 @@ function buildParamsPayload(): CreateReleaseOrderParamPayload[] {
   return payload
 }
 
-async function submitRelease(options?: { fast?: boolean; buildOnly?: boolean }) {
+async function buildReleasePayload(): Promise<CreateReleaseOrderPayload | null> {
   try {
     await formRef.value?.validate()
   } catch {
-    return
+    return null
   }
 
   if (!canSubmitRelease.value || !selectedTemplate.value) {
     message.warning('请先选择可用发布模板，并等待参数加载完成')
-    return
+    return null
   }
 
   const requiresBuiltinBranch = templateParams.value.some((item) => {
@@ -1292,7 +1408,7 @@ async function submitRelease(options?: { fast?: boolean; buildOnly?: boolean }) 
   })
   if (requiresBuiltinBranch && !formState.git_ref.trim()) {
     message.error('当前模板已使用发布基础字段中的分支，请先选择发布分支')
-    return
+    return null
   }
 
   let paramsPayload: CreateReleaseOrderParamPayload[]
@@ -1300,6 +1416,33 @@ async function submitRelease(options?: { fast?: boolean; buildOnly?: boolean }) 
     paramsPayload = buildParamsPayload()
   } catch (error) {
     message.error(error instanceof Error ? error.message : '发布参数校验失败')
+    return null
+  }
+
+  return {
+    application_id: formState.application_id.trim(),
+    template_id: formState.template_id.trim(),
+    release_name: formState.release_name.trim(),
+    env_code: effectiveEnvCode.value,
+    git_ref: showReleaseBranchField.value ? (formState.git_ref.trim() || undefined) : undefined,
+    trigger_type: 'manual',
+    triggered_by: currentUserDisplayName.value !== '-' ? currentUserDisplayName.value : undefined,
+    remark: formState.remark.trim() || undefined,
+    params: paramsPayload.length > 0 ? paramsPayload : undefined,
+  }
+}
+
+function cloneReleasePayload(payload: CreateReleaseOrderPayload): CreateReleaseOrderPayload {
+  return {
+    ...payload,
+    params: payload.params?.map((item) => ({ ...item })),
+    steps: payload.steps?.map((item) => ({ ...item })),
+  }
+}
+
+async function submitRelease(options?: { fast?: boolean; buildOnly?: boolean }) {
+  const payload = await buildReleasePayload()
+  if (!payload) {
     return
   }
 
@@ -1308,24 +1451,17 @@ async function submitRelease(options?: { fast?: boolean; buildOnly?: boolean }) 
   submitting.value = true
   submittingMode.value = buildOnly ? 'build' : fast ? 'fast' : 'standard'
   try {
-    const payload = {
-      application_id: formState.application_id.trim(),
-      template_id: formState.template_id.trim(),
-      release_name: formState.release_name.trim(),
-      env_code: effectiveEnvCode.value,
-      git_ref: showReleaseBranchField.value ? (formState.git_ref.trim() || undefined) : undefined,
-      trigger_type: 'manual',
-      triggered_by: currentUserDisplayName.value !== '-' ? currentUserDisplayName.value : undefined,
-      remark: formState.remark.trim() || undefined,
-      params: paramsPayload.length > 0 ? paramsPayload : undefined,
-    }
     const response = isEditMode.value
       ? await updateReleaseOrder(editingOrderID.value, payload)
       : await createReleaseOrder(payload)
     if (buildOnly) {
       try {
-        await buildReleaseOrder(response.data.id)
-        message.success('发布单创建成功，已提交仅构建任务')
+        const buildResponse = await buildReleaseOrder(response.data.id)
+        if (['pending_approval', 'approving'].includes(buildResponse.data.business_status || buildResponse.data.status)) {
+          message.success('发布单创建成功，审批流程已发起')
+        } else {
+          message.success('发布单创建成功，已提交仅构建任务')
+        }
       } catch (error) {
         message.error(extractHTTPErrorMessage(error, '发布单已创建，但仅构建提交失败'))
       }
@@ -1352,11 +1488,109 @@ async function submitRelease(options?: { fast?: boolean; buildOnly?: boolean }) 
   }
 }
 
+async function handleAddBatchDraft() {
+  if (submitting.value) {
+    return
+  }
+  if (batchDrafts.value.length >= 50) {
+    message.warning('一次最多创建 50 张发布单')
+    return
+  }
+  const payload = await buildReleasePayload()
+  if (!payload) {
+    return
+  }
+  batchDrafts.value.push({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    payload: cloneReleasePayload(payload),
+    applicationName: selectedApplicationRecord.value?.name || payload.application_id,
+    templateName: selectedTemplate.value?.name || payload.template_id,
+    envName: selectedEnvOption.value?.label || payload.env_code || '-',
+    displayName: payload.release_name || '自动生成发布名称',
+    error: '',
+  })
+  formState.release_name = ''
+  message.success(`已加入创建清单，共 ${batchDrafts.value.length} 张`)
+}
+
+function removeBatchDraft(id: string) {
+  batchDrafts.value = batchDrafts.value.filter((item) => item.id !== id)
+}
+
+async function loadBatchDraftForEdit(draft: BatchReleaseOrderDraft) {
+  const payload = draft.payload
+  await handleApplicationChange(payload.application_id)
+  await handleTemplateChange(payload.template_id)
+  formState.release_name = payload.release_name || ''
+  formState.env_code = payload.env_code || ''
+  formState.git_ref = payload.git_ref || ''
+  formState.remark = payload.remark || ''
+
+  for (const scope of visibleScopes.value) {
+    for (const param of visibleAdvancedScopeParams(scope)) {
+      const matched = payload.params?.find((item) => (
+        item.pipeline_scope === scope && (
+          String(item.executor_param_name || '').trim().toLowerCase() === String(param.executor_param_name || '').trim().toLowerCase()
+          || String(item.param_key || '').trim().toLowerCase() === String(param.param_key || '').trim().toLowerCase()
+        )
+      ))
+      if (matched) {
+        paramValues[param.id] = matched.param_value
+      }
+    }
+  }
+  removeBatchDraft(draft.id)
+  message.info('已载入表单，修改后请重新加入创建清单')
+}
+
+async function handleBatchCreate() {
+  if (submitting.value) {
+    return
+  }
+  if (batchDrafts.value.length === 0) {
+    message.warning('请先把至少一张发布单加入创建清单')
+    return
+  }
+
+  const submittedDrafts = [...batchDrafts.value]
+  submitting.value = true
+  submittingMode.value = 'batch'
+  try {
+    const response = await batchCreateReleaseOrders({
+      orders: submittedDrafts.map((item) => cloneReleasePayload(item.payload)),
+    })
+    const createdCount = response.data.orders.length
+    const failures = response.data.failures || []
+    if (failures.length === 0) {
+      message.success(`已成功创建 ${createdCount} 张发布单`)
+      void router.push('/releases')
+      return
+    }
+
+    batchDrafts.value = failures
+      .map((failure) => {
+        const draft = submittedDrafts[failure.index]
+        return draft ? { ...draft, error: failure.error || '创建失败' } : null
+      })
+      .filter((item): item is BatchReleaseOrderDraft => Boolean(item))
+    message.warning(`成功创建 ${createdCount} 张，失败 ${failures.length} 张；失败项已保留，可载入修改后重试`)
+  } catch (error) {
+    message.error(extractHTTPErrorMessage(error, '批量创建发布单失败'))
+  } finally {
+    submitting.value = false
+    submittingMode.value = ''
+  }
+}
+
 async function handleSubmit() {
   if (!canSubmitRelease.value) {
     if (submitDisabledReason.value) {
       message.warning(submitDisabledReason.value)
     }
+    return
+  }
+  if (isBatchMode.value) {
+    await handleAddBatchDraft()
     return
   }
   await submitRelease()
@@ -1391,7 +1625,7 @@ onMounted(async () => {
   await ensureEditingApplicationOption()
   resetSelectionIfUnauthorized()
   if (formState.application_id) {
-    await loadTemplateOptions()
+    await Promise.all([loadTemplateOptions(), loadApplicationApprovalFlow()])
   }
 })
 </script>
@@ -1413,12 +1647,24 @@ onMounted(async () => {
           @click="handleSubmit"
         >
           <template #icon>
-            <RocketOutlined />
+            <PlusOutlined v-if="isBatchMode" />
+            <RocketOutlined v-else />
           </template>
           {{ primaryActionText }}
         </a-button>
         <a-button
-          v-if="!isEditMode"
+          v-if="isBatchMode"
+          class="application-toolbar-action-btn release-build-toolbar-btn"
+          disabled
+          :loading="batchSubmitting"
+        >
+          <template #icon>
+            <RocketOutlined />
+          </template>
+          批量创建（{{ batchDrafts.length }}）
+        </a-button>
+        <a-button
+          v-if="!isEditMode && !isBatchMode"
           class="application-toolbar-action-btn release-build-toolbar-btn"
           :class="{ 'release-build-toolbar-btn-disabled': !canBuildOnlySubmitRelease }"
           :loading="buildOnlySubmitting"
@@ -1456,11 +1702,30 @@ onMounted(async () => {
               <h3 class="form-section-heading-title">发布基础</h3>
             </div>
 
-        <a-row :gutter="12" class="form-row-compact">
+            <a-skeleton :loading="isPageLoading" active :title="false" :paragraph="{ rows: 6 }">
+              <a-row :gutter="12" class="form-row-compact">
           <a-col :xs="24" :md="12">
             <a-form-item class="form-item-compact" name="application_id">
               <template #label>
-                <span class="field-label-with-hint">应用 <span class="field-required-hint">必填</span></span>
+                <span class="field-label-with-hint application-field-label">
+                  应用
+                  <span class="field-required-hint">必填</span>
+                  <a-tag v-if="loadingApprovalFlow" class="application-approval-flow-tag application-approval-flow-tag-loading">
+                    审批流加载中
+                  </a-tag>
+                  <a-tooltip v-else-if="approvalFlowError" :title="approvalFlowError">
+                    <a-tag class="application-approval-flow-tag application-approval-flow-tag-error">审批流异常</a-tag>
+                  </a-tooltip>
+                  <a-tooltip v-else-if="selectedApprovalFlow" :title="selectedApprovalFlow.name">
+                    <a-tag class="application-approval-flow-tag">{{ selectedApprovalFlow.name }}</a-tag>
+                  </a-tooltip>
+                  <a-tag
+                    v-else-if="formState.application_id"
+                    class="application-approval-flow-tag application-approval-flow-tag-empty"
+                  >
+                    无审批流
+                  </a-tag>
+                </span>
               </template>
               <a-select
                 v-model:value="formState.application_id"
@@ -1471,6 +1736,7 @@ onMounted(async () => {
                 :placeholder="isEditMode ? '编辑模式下应用已锁定' : '请选择应用'"
                 :loading="loadingApplications"
                 :options="applicationOptions"
+                style="width: 100%"
                 @change="handleApplicationChange"
               />
             </a-form-item>
@@ -1488,6 +1754,7 @@ onMounted(async () => {
                 placeholder="请选择发布模板"
                 :loading="loadingTemplates || loadingTemplateDetail"
                 :options="templateOptions"
+                style="width: 100%"
                 @change="handleTemplateChange"
               />
             </a-form-item>
@@ -1506,13 +1773,12 @@ onMounted(async () => {
           <a-col :span="24">
             <a-form-item class="form-item-compact" name="release_name">
               <template #label>
-                <span class="field-label-with-hint">发布名称 <span class="field-required-hint">必填</span></span>
+                <span class="field-label-with-hint">发布名称</span>
               </template>
               <a-input
                 v-model:value="formState.release_name"
-                maxlength="128"
-                show-count
-                placeholder="例如：生产环境订单服务发布"
+                :maxlength="128"
+                :placeholder="autoGeneratedReleaseName"
                 allow-clear
               />
             </a-form-item>
@@ -1520,21 +1786,7 @@ onMounted(async () => {
         </a-row>
 
         <a-row :gutter="12" class="form-row-compact">
-          <a-col v-if="showEnvironmentField" :xs="24" :md="8">
-            <a-form-item class="form-item-compact release-env-form-item" name="env_code">
-              <template #label>
-                <span class="field-label-with-hint">环境 <span class="field-required-hint">必填</span></span>
-              </template>
-              <a-select
-                v-model:value="formState.env_code"
-                :options="authorizedEnvOptions"
-                :loading="loadingEnvOptions"
-                placeholder="请选择环境"
-                allow-clear
-              />
-            </a-form-item>
-          </a-col>
-          <a-col v-if="showReleaseBranchField" :xs="24" :md="showEnvironmentField ? 16 : 24">
+          <a-col v-if="showReleaseBranchField" :xs="24" :md="12">
             <a-form-item class="form-item-compact">
               <template #label>
                 <span class="field-label-with-hint">发布分支</span>
@@ -1547,6 +1799,7 @@ onMounted(async () => {
                 allow-clear
                 option-filter-prop="label"
                 placeholder="请选择发布分支"
+                style="width: 100%"
               />
               <a-input
                 v-else
@@ -1556,18 +1809,7 @@ onMounted(async () => {
               />
             </a-form-item>
           </a-col>
-          <a-col v-else :xs="24" :md="showEnvironmentField ? 16 : 24">
-            <a-form-item class="form-item-compact" name="remark">
-              <template #label>
-                <span class="field-label-with-hint">备注</span>
-              </template>
-              <a-input v-model:value="formState.remark" placeholder="本次发布说明" allow-clear />
-            </a-form-item>
-          </a-col>
-        </a-row>
-
-        <a-row v-if="showReleaseBranchField" :gutter="12" class="form-row-compact">
-          <a-col :span="24">
+          <a-col :xs="24" :md="showReleaseBranchField ? 12 : 24">
             <a-form-item class="form-item-compact" name="remark">
               <template #label>
                 <span class="field-label-with-hint">备注</span>
@@ -1592,9 +1834,10 @@ onMounted(async () => {
           show-icon
           :message="releaseEnvNotice"
         />
+            </a-skeleton>
           </section>
 
-      <section v-if="scopeCardList.length > 0" class="form-section form-section-divided release-param-section">
+      <section v-if="isParamLoading || scopeCardList.length > 0" class="form-section form-section-divided release-param-section">
         <div class="form-section-heading release-param-heading">
           <div class="release-param-heading-main">
             <span class="form-section-bar"></span>
@@ -1637,6 +1880,8 @@ onMounted(async () => {
         </div>
 
         <div class="scope-card-body advanced-param-body">
+          <a-skeleton v-if="isParamLoading && scopeCardList.length === 0" active :paragraph="{ rows: 6 }" />
+
           <div
             v-for="item in scopeCardList"
             :key="`${formState.template_id}-${item.scope}-${item.binding?.binding_id || item.binding?.provider || 'none'}`"
@@ -1644,7 +1889,7 @@ onMounted(async () => {
           >
             <a-alert v-if="item.error" class="scope-alert scope-alert-error" type="error" show-icon :message="item.error" />
 
-            <a-spin :spinning="item.loading && item.params.length === 0" tip="正在加载高级参数...">
+            <a-skeleton :loading="item.loading && item.params.length === 0" active :paragraph="{ rows: 4 }">
               <a-empty
                 v-if="!item.loading && item.params.length === 0"
                 :description="item.binding?.provider === 'jenkins'
@@ -1734,7 +1979,7 @@ onMounted(async () => {
                   </a-col>
                 </a-row>
               </div>
-            </a-spin>
+            </a-skeleton>
           </div>
         </div>
       </section>
@@ -1742,11 +1987,54 @@ onMounted(async () => {
         </div>
 
         <aside class="create-sidebar">
+          <section v-if="isBatchMode" class="create-side-card batch-draft-card">
+            <div class="batch-draft-header">
+              <div>
+                <span class="create-side-card-kicker">创建清单</span>
+                <h3 class="create-side-card-title">待创建 {{ batchDrafts.length }} / 50</h3>
+              </div>
+              <a-button
+                size="small"
+                type="primary"
+                :disabled="batchDrafts.length === 0"
+                :loading="batchSubmitting"
+                @click="handleBatchCreate"
+              >
+                创建全部
+              </a-button>
+            </div>
+            <a-empty v-if="batchDrafts.length === 0" description="填写左侧表单后加入清单" />
+            <div v-else class="batch-draft-list">
+              <article
+                v-for="(draft, index) in batchDrafts"
+                :key="draft.id"
+                class="batch-draft-item"
+                :class="{ 'batch-draft-item-error': draft.error }"
+              >
+                <div class="batch-draft-item-head">
+                  <span class="batch-draft-index">{{ index + 1 }}</span>
+                  <strong :title="draft.displayName">{{ draft.displayName }}</strong>
+                </div>
+                <div class="batch-draft-meta">{{ draft.applicationName }} · {{ draft.envName }}</div>
+                <div class="batch-draft-meta" :title="draft.templateName">{{ draft.templateName }}</div>
+                <div v-if="draft.error" class="batch-draft-error">{{ draft.error }}</div>
+                <div class="batch-draft-actions">
+                  <a-button size="small" type="link" @click="loadBatchDraftForEdit(draft)">载入修改</a-button>
+                  <a-button size="small" type="link" danger @click="removeBatchDraft(draft.id)">
+                    <template #icon><DeleteOutlined /></template>
+                    移除
+                  </a-button>
+                </div>
+              </article>
+            </div>
+          </section>
+
           <section class="create-side-card create-side-process">
             <div class="create-side-card-header">
               <span class="create-side-card-kicker">发布创建流程</span>
             </div>
-            <ol class="create-process-list">
+            <a-skeleton :loading="isPageLoading" active :title="false" :paragraph="{ rows: 6 }">
+              <ol class="create-process-list">
               <li class="create-process-item">
                 <span class="create-process-index">
                   <ProfileOutlined />
@@ -1779,39 +2067,57 @@ onMounted(async () => {
                   <RocketOutlined />
                 </span>
                 <div class="create-process-copy">
-                  <strong>创建发布单</strong>
-                  <span>提交后进入详情页执行或审批</span>
+                  <strong>{{ isBatchMode ? '加入清单并统一创建' : '创建发布单' }}</strong>
+                  <span>{{ isBatchMode ? '只生成独立发布单，不会自动发起审批或执行' : '提交后进入详情页执行或审批' }}</span>
                 </div>
               </li>
             </ol>
+            </a-skeleton>
           </section>
 
-              <section class="create-side-card create-side-tips">
-                <div class="create-side-card-header">
-                  <span class="create-side-card-kicker">发布前检查</span>
-                  <h3 class="create-side-card-title">先确认模板配置</h3>
-                </div>
-                <ul class="create-tips-list">
-                  <li>应用会决定当前账号是否有创建权限</li>
-                  <li>模板启用审批人后只能创建发布单，不能极速发布</li>
-                  <li>只有模板映射到发布基础字段时，才会展示对应填写项</li>
-                </ul>
-              </section>
-
-              <a-button
-                v-if="!isEditMode"
-                type="primary"
-                block
-                class="create-side-fast-btn"
-                :loading="fastSubmitting"
-                :disabled="!canFastSubmitRelease"
-                @click="handleFastSubmit"
+          <section v-if="showEnvironmentField" class="create-side-env">
+            <div class="create-side-env-header">
+              <h3 class="create-side-env-title">选择发布环境</h3>
+            </div>
+            <a-form-item class="form-item-compact release-env-form-item" name="env_code" style="margin-bottom: 0;">
+              <a-radio-group
+                v-model:value="formState.env_code"
+                class="release-env-target-list"
+                :disabled="loadingEnvOptions || authorizedEnvOptions.length === 0"
               >
-                <template #icon>
-                  <ThunderboltFilled />
-                </template>
-                极速发布
-              </a-button>
+                <a-radio
+                  v-for="option in authorizedEnvOptions"
+                  :key="option.value"
+                  class="release-env-target-option"
+                  :value="option.value"
+                >
+                  <span class="release-env-target-content">
+                    <span class="release-env-target-main">
+                      <strong>{{ option.label }}</strong>
+                      <span v-if="option.description" class="release-env-target-desc">{{ option.description }}</span>
+                    </span>
+                    <span v-if="formState.env_code === option.value" class="release-env-target-badge">已选</span>
+                  </span>
+                </a-radio>
+              </a-radio-group>
+              <div v-if="releaseEnvNotice" class="release-env-target-notice">{{ releaseEnvNotice }}</div>
+            </a-form-item>
+          </section>
+
+            <a-button
+              v-if="!isEditMode && !isBatchMode"
+              type="primary"
+              block
+              class="create-side-fast-btn"
+              :loading="isPageLoading || fastSubmitting"
+              :disabled="isPageLoading || !canFastSubmitRelease"
+              @click="handleFastSubmit"
+            >
+              <template #icon v-if="!isPageLoading">
+                <ThunderboltFilled />
+              </template>
+              {{ isPageLoading ? '加载中...' : '极速发布' }}
+            </a-button>
         </aside>
       </div>
     </a-form>
@@ -1984,6 +2290,101 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+.batch-draft-card {
+  max-height: min(620px, calc(100vh - 180px));
+  overflow: hidden;
+}
+
+.batch-draft-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.batch-draft-header > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.batch-draft-list {
+  display: flex;
+  max-height: 500px;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 3px;
+}
+
+.batch-draft-item {
+  padding: 12px;
+  border: 1px solid rgba(191, 219, 254, 0.78);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.batch-draft-item-error {
+  border-color: rgba(248, 113, 113, 0.48);
+  background: rgba(254, 242, 242, 0.76);
+}
+
+.batch-draft-item-head {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.batch-draft-item-head strong {
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 13px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-draft-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.12);
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.batch-draft-meta {
+  margin-top: 7px;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-draft-error {
+  margin-top: 8px;
+  color: #dc2626;
+  font-size: 12px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.batch-draft-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 6px;
 }
 
 .application-form-plain {
@@ -2163,6 +2564,45 @@ onMounted(async () => {
   color: #2563eb;
 }
 
+.application-field-label {
+  max-width: 100%;
+}
+
+.application-approval-flow-tag {
+  display: inline-block;
+  max-width: 180px;
+  height: 20px;
+  margin: 0;
+  overflow: hidden;
+  border-color: rgba(96, 165, 250, 0.28);
+  border-radius: 999px;
+  background: rgba(239, 246, 255, 0.92);
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.application-approval-flow-tag-loading {
+  color: #3b82f6;
+  opacity: 0.72;
+}
+
+.application-approval-flow-tag-empty {
+  border-color: rgba(148, 163, 184, 0.24);
+  background: rgba(248, 250, 252, 0.9);
+  color: #64748b;
+}
+
+.application-approval-flow-tag-error {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: rgba(255, 251, 235, 0.92);
+  color: #b45309;
+}
+
 .field-readonly-hint {
   background: rgba(148, 163, 184, 0.12);
   color: #64748b;
@@ -2188,8 +2628,78 @@ onMounted(async () => {
   letter-spacing: 0.01em;
 }
 
-.release-env-form-item :deep(.ant-form-item-control) {
-  padding-top: 4px;
+.release-env-exclusive-section {
+  padding-bottom: 2px;
+}
+
+.release-env-exclusive-section .form-section-heading {
+  margin-bottom: 12px;
+}
+
+.release-env-exclusive-body .release-env-form-item {
+  margin-bottom: 0 !important;
+}
+
+.release-env-inline-options {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  width: 100%;
+  min-height: 44px;
+  gap: 24px;
+  padding: 0 2px;
+}
+
+.release-env-inline-options :deep(.ant-radio-wrapper) {
+  position: relative;
+  margin-inline-end: 0;
+  padding: 0 0 8px;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 36px;
+  transition: color 0.2s ease;
+}
+
+.release-env-inline-options :deep(.ant-radio-wrapper)::after {
+  position: absolute;
+  right: 0;
+  bottom: 6px;
+  left: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: #2563eb;
+  content: '';
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.2s ease;
+}
+
+.release-env-inline-options :deep(.ant-radio-wrapper:hover),
+.release-env-inline-options :deep(.ant-radio-wrapper:focus-within),
+.release-env-inline-options :deep(.ant-radio-wrapper-checked) {
+  color: #1d4ed8;
+}
+
+.release-env-inline-options :deep(.ant-radio-wrapper:focus-within)::after,
+.release-env-inline-options :deep(.ant-radio-wrapper-checked)::after {
+  transform: scaleX(1);
+}
+
+.release-env-inline-options :deep(.ant-radio) {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.release-env-inline-options :deep(.ant-radio + span) {
+  padding-inline: 0;
+}
+
+.release-env-inline-options :deep(.ant-radio-wrapper-disabled) {
+  color: #94a3b8;
+  cursor: not-allowed;
 }
 
 .application-form-plain :deep(.ant-form-item-explain),
@@ -2252,16 +2762,149 @@ onMounted(async () => {
 }
 
 .application-form-plain :deep(.ant-input:hover),
-.application-form-plain :deep(.ant-input:focus),
-.application-form-plain :deep(.ant-input-affix-wrapper:hover),
-.application-form-plain :deep(.ant-input-affix-wrapper-focused),
-.application-form-plain :deep(.ant-select:hover .ant-select-selector),
-.application-form-plain :deep(.ant-select-focused .ant-select-selector) {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(241, 245, 249, 0.66)) !important;
-  border-color: rgba(147, 197, 253, 0.48) !important;
+    .application-form-plain :deep(.ant-input:focus),
+    .application-form-plain :deep(.ant-input-affix-wrapper:hover),
+    .application-form-plain :deep(.ant-input-affix-wrapper-focused),
+    .application-form-plain :deep(.ant-select:hover .ant-select-selector),
+    .application-form-plain :deep(.ant-select-focused .ant-select-selector) {
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(241, 245, 249, 0.66)) !important;
+      border-color: rgba(147, 197, 253, 0.48) !important;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.96),
+        0 12px 24px rgba(59, 130, 246, 0.06) !important;
+    }
+
+.release-env-target-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.release-env-target-option {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin-inline-end: 0;
+  padding: 8px 10px;
+  overflow: hidden;
+  border: 1px solid rgba(203, 213, 225, 0.74);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(248, 250, 252, 0.72));
   box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 6px 14px rgba(15, 23, 42, 0.035);
+  backdrop-filter: blur(14px) saturate(140%);
+  color: #334155;
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.release-env-target-option:hover,
+.release-env-target-option:focus-within {
+  border-color: rgba(96, 165, 250, 0.52);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(241, 245, 249, 0.76));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.94),
+    0 8px 18px rgba(37, 99, 235, 0.055);
+}
+
+.release-env-target-option.ant-radio-wrapper-checked {
+  border-color: #3b82f6;
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.96), rgba(219, 234, 254, 0.54));
+  box-shadow:
+    inset 0 0 0 1px rgba(59, 130, 246, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.96),
-    0 12px 24px rgba(59, 130, 246, 0.06) !important;
+    0 8px 18px rgba(37, 99, 235, 0.07);
+}
+
+.release-env-target-option :deep(.ant-radio) {
+  flex: none;
+  margin-inline-end: 8px;
+  opacity: 0.72;
+}
+
+.release-env-target-option :deep(.ant-radio-inner) {
+  width: 13px;
+  height: 13px;
+  border-color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.release-env-target-option :deep(.ant-radio-checked .ant-radio-inner) {
+  border-color: #2563eb;
+  background: #2563eb;
+}
+
+.release-env-target-option :deep(.ant-radio-checked .ant-radio-inner::after) {
+  background: #fff;
+}
+
+.release-env-target-option :deep(.ant-radio + span) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding-inline: 0;
+}
+
+.release-env-target-content,
+.release-env-target-main {
+  display: flex;
+  min-width: 0;
+}
+
+.release-env-target-content {
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.release-env-target-main {
+  flex-direction: column;
+  gap: 2px;
+}
+
+.release-env-target-main strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.release-env-target-desc {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.release-env-target-notice {
+  margin-top: 10px;
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.release-env-target-badge {
+  display: none;
+}
+
+.release-env-target-option.ant-radio-wrapper-disabled {
+  cursor: not-allowed;
+  filter: saturate(0.72);
+  opacity: 0.56;
 }
 
 .scope-card-body {
@@ -2470,14 +3113,14 @@ onMounted(async () => {
 }
 
 .create-side-card {
-  padding: 24px 22px;
-  border: 1px solid rgba(191, 219, 254, 0.72);
-  border-radius: 24px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(243, 247, 255, 0.86));
-  box-shadow: 0 14px 28px rgba(148, 163, 184, 0.1);
-}
+      padding: 24px 22px;
+      border: 1px solid rgba(191, 219, 254, 0.72);
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(243, 247, 255, 0.86));
+      box-shadow: 0 14px 28px rgba(148, 163, 184, 0.1);
+    }
 
-.create-side-card-header {
+    .create-side-card-header {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2499,7 +3142,28 @@ onMounted(async () => {
   line-height: 1.35;
 }
 
-.create-process-list {
+.create-side-env {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 2px 0 0;
+}
+
+.create-side-env-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.create-side-env-title {
+  margin: 0;
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+    .create-process-list {
   position: relative;
   margin: 0;
   padding: 0;

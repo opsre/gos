@@ -802,7 +802,6 @@ func buildGitOpsCommitMessageFields(
 		findReleaseParamValue(params, domain.PipelineScopeCD, "project_name"),
 		findReleaseParamValue(params, domain.PipelineScopeCI, "project_name"),
 		findReleaseParamValue(params, "", "project_name"),
-		strings.TrimSpace(order.SonService),
 	)
 	fields := map[string]string{
 		"order_no":      strings.TrimSpace(order.OrderNo),

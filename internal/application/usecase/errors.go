@@ -16,5 +16,6 @@ var (
 	ErrBuiltinProtected         = errors.New("builtin record cannot be deleted")
 	ErrReferencedConflict       = errors.New("record is referenced and cannot be changed")
 	ErrConcurrentReleaseBlocked = errors.New("concurrent release blocked")
+	ErrApprovalFlowPending      = errors.New("approval flow pending")
 	ErrArtifactConnectionFailed = errors.New("artifact repository connection failed")
 )

@@ -361,6 +361,32 @@ func hookFailureBlocksRelease(hook domain.ReleaseTemplateHook) bool {
 	}
 }
 
+func (uc *ReleaseOrderManager) hasBlockingFailedPostReleaseHook(
+	ctx context.Context,
+	order domain.ReleaseOrder,
+	steps []domain.ReleaseOrderStep,
+) (bool, error) {
+	templateHooks, err := uc.loadTemplateHooksForOrder(ctx, order)
+	if err != nil {
+		return false, err
+	}
+	hookBySort := make(map[int]domain.ReleaseTemplateHook, len(templateHooks))
+	for _, item := range templateHooks {
+		hookBySort[item.SortNo] = item
+	}
+	for _, step := range steps {
+		if step.Status != domain.StepStatusFailed ||
+			parseHookExecuteStage(step.StepCode) != domain.TemplateHookExecuteStagePostRelease {
+			continue
+		}
+		hook, ok := hookBySort[parseHookSortNo(step.StepCode)]
+		if !ok || hookFailureBlocksRelease(hook) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // loadTemplateHooksForOrder 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) loadTemplateHooksForOrder(ctx context.Context, order domain.ReleaseOrder) ([]domain.ReleaseTemplateHook, error) {
 	templateID := strings.TrimSpace(order.TemplateID)

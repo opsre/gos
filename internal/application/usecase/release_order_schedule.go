@@ -662,14 +662,17 @@ func (uc *ReleaseOrderManager) dispatchDueScheduleStage(
 		return "", err
 	}
 
-	var dispatchErr error
+	var (
+		dispatchedOrder domain.ReleaseOrder
+		dispatchErr     error
+	)
 	switch stage {
 	case dueScheduleStageBuild:
-		_, dispatchErr = uc.Build(ctx, schedule.ReleaseOrderID, schedule.CreatorUserID, schedule.CreatorName)
+		dispatchedOrder, dispatchErr = uc.Build(ctx, schedule.ReleaseOrderID, schedule.CreatorUserID, schedule.CreatorName)
 	case dueScheduleStageDeploy:
-		_, dispatchErr = uc.Deploy(ctx, schedule.ReleaseOrderID, schedule.CreatorUserID, schedule.CreatorName)
+		dispatchedOrder, dispatchErr = uc.Deploy(ctx, schedule.ReleaseOrderID, schedule.CreatorUserID, schedule.CreatorName)
 	case dueScheduleStageExecute:
-		_, dispatchErr = uc.Execute(ctx, schedule.ReleaseOrderID, schedule.CreatorUserID, schedule.CreatorName)
+		dispatchedOrder, dispatchErr = uc.Execute(ctx, schedule.ReleaseOrderID, schedule.CreatorUserID, schedule.CreatorName)
 	default:
 		dispatchErr = fmt.Errorf("%w: invalid due schedule stage", ErrInvalidInput)
 	}
@@ -694,6 +697,14 @@ func (uc *ReleaseOrderManager) dispatchDueScheduleStage(
 			return "", err
 		}
 		return domain.ScheduleStatusFailed, nil
+	}
+	if dispatchedOrder.Status == domain.OrderStatusPendingApproval || dispatchedOrder.Status == domain.OrderStatusApproving {
+		current.Status = domain.ScheduleStatusBlocked
+		current.LastError = "定时任务已发起审批流程，等待审批通过后继续执行"
+		if err := uc.repo.UpdateSchedule(ctx, current); err != nil {
+			return "", err
+		}
+		return domain.ScheduleStatusBlocked, nil
 	}
 
 	switch stage {

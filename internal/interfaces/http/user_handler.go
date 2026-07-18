@@ -29,10 +29,13 @@ func NewUserHandler(users *usecase.UserManagement, authz RequestAuthorizer) *Use
 func (h *UserHandler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/users", h.ListUsers)
 	router.GET("/users/options", h.ListUserOptions)
+	router.GET("/users/organization", h.ListUserOrganization)
 	router.GET("/users/:id", h.GetUserByID)
 	router.POST("/users", h.CreateUser)
 	router.PUT("/users/:id", h.UpdateUser)
 	router.DELETE("/users/:id", h.DeleteUser)
+	router.GET("/users/:id/manager", h.GetUserManager)
+	router.PUT("/users/:id/manager", h.SetUserManager)
 
 	router.GET("/permissions", h.ListPermissions)
 	router.GET("/users/:id/permissions", h.ListUserPermissions)
@@ -72,6 +75,7 @@ type UserOptionResponse struct {
 	ID          string `json:"id"`
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
+	Role        string `json:"role"`
 }
 
 type UserOptionListResponse struct {
@@ -95,6 +99,20 @@ type UpdateUserRequest struct {
 	Role        string `json:"role"`
 	Status      string `json:"status"`
 	Password    string `json:"password"`
+}
+
+type UserManagerRequest struct {
+	ManagerUserID string `json:"manager_user_id"`
+}
+
+type UserManagerResponse struct {
+	UserID        string `json:"user_id"`
+	ManagerUserID string `json:"manager_user_id"`
+}
+
+type UserOrganizationNodeResponse struct {
+	UserResponse
+	ManagerUserID string `json:"manager_user_id"`
 }
 
 type UserPermissionRequest struct {
@@ -248,6 +266,26 @@ func (h *UserHandler) ListUserOptions(c *gin.Context) {
 			ID:          item.ID,
 			Username:    item.Username,
 			DisplayName: item.DisplayName,
+			Role:        string(item.Role),
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"data": resp})
+}
+
+func (h *UserHandler) ListUserOrganization(c *gin.Context) {
+	if !ensurePermission(c, h.authz, "system.user.manage", "", "") {
+		return
+	}
+	items, err := h.users.ListUserOrganization(c.Request.Context())
+	if err != nil {
+		writeUserHTTPError(c, err)
+		return
+	}
+	resp := make([]UserOrganizationNodeResponse, 0, len(items))
+	for _, item := range items {
+		resp = append(resp, UserOrganizationNodeResponse{
+			UserResponse:  toUserResponse(item.User),
+			ManagerUserID: item.ManagerUserID,
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"data": resp})
@@ -276,6 +314,34 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": toUserResponse(item)})
+}
+
+func (h *UserHandler) GetUserManager(c *gin.Context) {
+	if !ensurePermission(c, h.authz, "system.user.manage", "", "") {
+		return
+	}
+	managerUserID, err := h.users.GetUserManagerID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		writeUserHTTPError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": UserManagerResponse{UserID: strings.TrimSpace(c.Param("id")), ManagerUserID: managerUserID}})
+}
+
+func (h *UserHandler) SetUserManager(c *gin.Context) {
+	if !ensurePermission(c, h.authz, "system.user.manage", "", "") {
+		return
+	}
+	var req UserManagerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	if err := h.users.SetUserManagerID(c.Request.Context(), c.Param("id"), req.ManagerUserID); err != nil {
+		writeUserHTTPError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": UserManagerResponse{UserID: strings.TrimSpace(c.Param("id")), ManagerUserID: strings.TrimSpace(req.ManagerUserID)}})
 }
 
 // CreateUser 创建User。
@@ -674,6 +740,8 @@ func writeUserHTTPError(c *gin.Context, err error) {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, userdomain.ErrUsernameDuplicated):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, userdomain.ErrUserManagerCycle):
+		c.JSON(http.StatusConflict, gin.H{"error": "直属主管关系形成循环"})
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 	}

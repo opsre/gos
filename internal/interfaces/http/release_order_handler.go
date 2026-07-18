@@ -19,6 +19,7 @@ import (
 	pipelinedomain "gos/internal/domain/pipeline"
 	domain "gos/internal/domain/release"
 	userdomain "gos/internal/domain/user"
+	"gos/internal/support/logx"
 )
 
 type ReleaseOrderHandler struct {
@@ -26,6 +27,7 @@ type ReleaseOrderHandler struct {
 	logStreamer ReleaseOrderLogStreamer
 	authz       RequestAuthorizer
 	access      ReleaseParamAccessResolver
+	realtime    *releaseOrderRealtimeCoordinator
 }
 
 type ReleaseParamAccessResolver interface {
@@ -52,12 +54,14 @@ func NewReleaseOrderHandler(
 	authz RequestAuthorizer,
 	access ReleaseParamAccessResolver,
 ) *ReleaseOrderHandler {
-	return &ReleaseOrderHandler{
+	handler := &ReleaseOrderHandler{
 		manager:     manager,
 		logStreamer: logStreamer,
 		authz:       authz,
 		access:      access,
 	}
+	handler.realtime = newReleaseOrderRealtimeCoordinator(handler.loadReleaseOrderRealtimeSnapshot, nil)
+	return handler
 }
 
 // RegisterRoutes 封装当前模块的业务处理逻辑。
@@ -68,6 +72,7 @@ func (h *ReleaseOrderHandler) RegisterRoutes(router gin.IRouter) {
 	router.POST("/applications/:id/rollback-orders", h.CreateApplicationRollbackOrder)
 	router.GET("/app-release-states/summaries", h.ListAppReleaseStateSummaries)
 	router.POST("/release-orders", h.Create)
+	router.POST("/release-orders/batch-create", h.BatchCreate)
 	router.PUT("/release-orders/:id", h.Update)
 	router.DELETE("/release-orders/:id", h.Delete)
 	router.POST("/release-orders/batch-execute", h.BatchExecute)
@@ -77,6 +82,10 @@ func (h *ReleaseOrderHandler) RegisterRoutes(router gin.IRouter) {
 	router.POST("/release-orders/:id/replay", h.CreateReplayByOrder)
 	router.GET("/release-orders", h.List)
 	router.GET("/release-orders/stats", h.Stats)
+	router.GET("/release-approval-flows", h.ListApprovalFlows)
+	router.POST("/release-approval-flows", h.CreateApprovalFlow)
+	router.PUT("/release-approval-flows/:id", h.UpdateApprovalFlow)
+	router.GET("/release-approval-tasks", h.ListApprovalWorkbench)
 	router.GET("/release-approval-records", h.ListApprovalRecordSummaries)
 	router.GET("/release-order-schedules", h.ListSchedules)
 	router.GET("/release-order-schedules/schedulable-release-orders", h.ListSchedulableScheduleOrders)
@@ -88,10 +97,15 @@ func (h *ReleaseOrderHandler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/release-order-schedules/:schedule_id/approval-records", h.ListScheduleApprovalRecords)
 	router.POST("/release-orders/:id/schedule", h.CreateSchedule)
 	router.GET("/release-orders/:id/schedule", h.GetActiveSchedule)
+	router.GET("/release-orders/:id/realtime-snapshot", h.GetRealtimeSnapshot)
+	router.GET("/release-orders/:id/events", h.StreamRealtimeEvents)
 	router.GET("/release-orders/:id", h.GetByID)
 	router.GET("/release-orders/:id/precheck", h.GetPrecheck)
 	router.GET("/release-orders/:id/concurrent-batch-progress", h.GetConcurrentBatchProgress)
 	router.GET("/release-orders/:id/approval-records", h.ListApprovalRecords)
+	router.GET("/release-orders/:id/approval-flow", h.GetApprovalFlow)
+	router.POST("/release-orders/:id/approval-flow/tasks/:task_id/approve", h.ApproveApprovalFlowTask)
+	router.POST("/release-orders/:id/approval-flow/tasks/:task_id/reject", h.RejectApprovalFlowTask)
 	router.POST("/release-orders/:id/submit-approval", h.SubmitApproval)
 	router.POST("/release-orders/:id/approve", h.Approve)
 	router.POST("/release-orders/:id/reject", h.Reject)
@@ -125,7 +139,6 @@ type CreateReleaseOrderRequest struct {
 	ReleaseName   string                           `json:"release_name"`
 	EnvCode       string                           `json:"env_code"`
 	ProjectName   string                           `json:"project_name"`
-	SonService    string                           `json:"son_service"`
 	GitRef        string                           `json:"git_ref"`
 	ImageTag      string                           `json:"image_tag"`
 	TriggerType   string                           `json:"trigger_type"`
@@ -133,6 +146,10 @@ type CreateReleaseOrderRequest struct {
 	TriggeredBy   string                           `json:"triggered_by"`
 	Params        []CreateReleaseOrderParamRequest `json:"params"`
 	Steps         []CreateReleaseOrderStepRequest  `json:"steps"`
+}
+
+type BatchCreateReleaseOrdersRequest struct {
+	Orders []CreateReleaseOrderRequest `json:"orders"`
 }
 
 type CreateReleaseOrderParamRequest struct {
@@ -214,7 +231,6 @@ type ReleaseOrderResponse struct {
 	PipelineID            string                               `json:"pipeline_id"`
 	EnvCode               string                               `json:"env_code"`
 	ProjectName           string                               `json:"project_name"`
-	SonService            string                               `json:"son_service"`
 	GitRef                string                               `json:"git_ref"`
 	ImageTag              string                               `json:"image_tag"`
 	TriggerType           string                               `json:"trigger_type"`
@@ -296,6 +312,19 @@ type ReleaseOrderStepResponse struct {
 
 type ReleaseOrderDataResponse struct {
 	Data ReleaseOrderResponse `json:"data"`
+}
+
+type BatchCreateReleaseOrderFailureResponse struct {
+	Index       int    `json:"index"`
+	ReleaseName string `json:"release_name"`
+	Error       string `json:"error"`
+}
+
+type ReleaseOrderBatchCreateResponse struct {
+	Data struct {
+		Orders   []ReleaseOrderResponse                   `json:"orders"`
+		Failures []BatchCreateReleaseOrderFailureResponse `json:"failures"`
+	} `json:"data"`
 }
 
 type ReleaseOrderListResponse struct {
@@ -708,6 +737,75 @@ func (h *ReleaseOrderHandler) Create(c *gin.Context) {
 	order = h.enrichReleaseOrderResponseMeta(c.Request.Context(), order)
 
 	c.JSON(http.StatusCreated, gin.H{"data": toReleaseOrderResponse(order)})
+}
+
+// BatchCreate godoc
+// @Summary      Batch create independent release orders
+// @Description  Creates multiple independent release orders without starting approval or execution
+// @Tags         release-orders
+// @Accept       json
+// @Produce      json
+// @Param        request  body      BatchCreateReleaseOrdersRequest  true  "Batch create release orders request"
+// @Success      201      {object}  ReleaseOrderBatchCreateResponse
+// @Success      200      {object}  ReleaseOrderBatchCreateResponse
+// @Failure      400      {object}  ErrorResponse
+// @Failure      401      {object}  ErrorResponse
+// @Failure      403      {object}  ErrorResponse
+// @Failure      500      {object}  ErrorResponse
+// @Router       /release-orders/batch-create [post]
+func (h *ReleaseOrderHandler) BatchCreate(c *gin.Context) {
+	const maxBatchSize = 50
+
+	var req BatchCreateReleaseOrdersRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	if len(req.Orders) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "orders is required"})
+		return
+	}
+	if len(req.Orders) > maxBatchSize {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("a batch can create at most %d release orders", maxBatchSize)})
+		return
+	}
+
+	currentUser, ok := getCurrentUser(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	// Complete permission checks before creating anything so an authorization
+	// failure never leaves behind a partially-created batch.
+	for _, item := range req.Orders {
+		if !ensureReleaseApplicationPermission(c, h.authz, "release.create", item.ApplicationID, item.EnvCode) {
+			return
+		}
+	}
+
+	resp := ReleaseOrderBatchCreateResponse{}
+	resp.Data.Orders = make([]ReleaseOrderResponse, 0, len(req.Orders))
+	resp.Data.Failures = make([]BatchCreateReleaseOrderFailureResponse, 0)
+	for index, item := range req.Orders {
+		order, err := h.manager.Create(c.Request.Context(), buildReleaseOrderInput(item, currentUser))
+		if err != nil {
+			resp.Data.Failures = append(resp.Data.Failures, BatchCreateReleaseOrderFailureResponse{
+				Index:       index,
+				ReleaseName: strings.TrimSpace(item.ReleaseName),
+				Error:       normalizeReleaseOrderErrorMessage(err),
+			})
+			continue
+		}
+		order = h.enrichReleaseOrderResponseMeta(c.Request.Context(), order)
+		resp.Data.Orders = append(resp.Data.Orders, toReleaseOrderResponse(order))
+	}
+
+	status := http.StatusCreated
+	if len(resp.Data.Failures) > 0 {
+		status = http.StatusOK
+	}
+	c.JSON(status, resp)
 }
 
 // Update godoc
@@ -2722,8 +2820,7 @@ func toReleaseOrderResponse(item domain.ReleaseOrder, states ...*domain.AppRelea
 		BindingID:             item.BindingID,
 		PipelineID:            item.PipelineID,
 		EnvCode:               item.EnvCode,
-		ProjectName:           item.SonService,
-		SonService:            item.SonService,
+		ProjectName:           "",
 		GitRef:                item.GitRef,
 		ImageTag:              item.ImageTag,
 		TriggerType:           string(item.TriggerType),
@@ -3347,7 +3444,8 @@ func writeReleaseOrderHTTPError(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 
 	default:
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		logx.Error("release_order_handler", "unhandled_internal_error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error: " + err.Error()})
 	}
 }
 
@@ -3604,7 +3702,6 @@ func buildReleaseOrderInput(req CreateReleaseOrderRequest, currentUser userdomai
 		TemplateID:    req.TemplateID,
 		ReleaseName:   req.ReleaseName,
 		EnvCode:       req.EnvCode,
-		SonService:    "",
 		GitRef:        req.GitRef,
 		ImageTag:      req.ImageTag,
 		TriggerType:   domain.TriggerType(strings.TrimSpace(req.TriggerType)),

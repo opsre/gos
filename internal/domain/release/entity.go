@@ -274,7 +274,6 @@ type ReleaseOrder struct {
 	BindingID             string
 	PipelineID            string
 	EnvCode               string
-	SonService            string
 	GitRef                string
 	ImageTag              string
 	TriggerType           TriggerType
@@ -1057,4 +1056,242 @@ type ReleaseOrderApprovalRecordSummary struct {
 	EnvCode         string
 	OperationType   OperationType
 	TriggeredBy     string
+}
+
+// ApprovalFlowStatus 表示可配置发布审批流程的启停状态。
+type ApprovalFlowStatus string
+
+const (
+	ApprovalFlowStatusActive   ApprovalFlowStatus = "active"
+	ApprovalFlowStatusDisabled ApprovalFlowStatus = "disabled"
+)
+
+func (s ApprovalFlowStatus) Valid() bool {
+	return s == ApprovalFlowStatusActive || s == ApprovalFlowStatusDisabled
+}
+
+// ApprovalFlowGate 将审批节点绑定到发布单的真实调度动作，而非绑定模板。
+type ApprovalFlowGate string
+
+const (
+	ApprovalFlowGateBeforeExecute ApprovalFlowGate = "before_execute"
+	ApprovalFlowGateBeforeCI      ApprovalFlowGate = "before_ci"
+	ApprovalFlowGateBeforeCD      ApprovalFlowGate = "before_cd"
+)
+
+func (s ApprovalFlowGate) Valid() bool {
+	switch s {
+	case ApprovalFlowGateBeforeExecute, ApprovalFlowGateBeforeCI, ApprovalFlowGateBeforeCD:
+		return true
+	default:
+		return false
+	}
+}
+
+type ApprovalFlowTaskStatus string
+
+const (
+	ApprovalFlowTaskStatusPending  ApprovalFlowTaskStatus = "pending"
+	ApprovalFlowTaskStatusRunning  ApprovalFlowTaskStatus = "running"
+	ApprovalFlowTaskStatusApproved ApprovalFlowTaskStatus = "approved"
+	ApprovalFlowTaskStatusRejected ApprovalFlowTaskStatus = "rejected"
+	ApprovalFlowTaskStatusFailed   ApprovalFlowTaskStatus = "failed"
+)
+
+type ApprovalFlowInstanceStatus string
+
+const (
+	ApprovalFlowInstanceStatusPendingApproval  ApprovalFlowInstanceStatus = "pending_approval"
+	ApprovalFlowInstanceStatusWaitingCI        ApprovalFlowInstanceStatus = "waiting_ci"
+	ApprovalFlowInstanceStatusWaitingCD        ApprovalFlowInstanceStatus = "waiting_cd"
+	ApprovalFlowInstanceStatusRunning          ApprovalFlowInstanceStatus = "running"
+	ApprovalFlowInstanceStatusRunningAgentTask ApprovalFlowInstanceStatus = "running_agent_task"
+	ApprovalFlowInstanceStatusAgentTaskFailed  ApprovalFlowInstanceStatus = "agent_task_failed"
+	ApprovalFlowInstanceStatusRejected         ApprovalFlowInstanceStatus = "rejected"
+	ApprovalFlowInstanceStatusCompleted        ApprovalFlowInstanceStatus = "completed"
+)
+
+type ApprovalFlowNodeType string
+
+const (
+	ApprovalFlowNodeTypeApproval  ApprovalFlowNodeType = "approval"
+	ApprovalFlowNodeTypeAgentTask ApprovalFlowNodeType = "agent_task"
+)
+
+func (s ApprovalFlowNodeType) Valid() bool {
+	return s == ApprovalFlowNodeTypeApproval || s == ApprovalFlowNodeTypeAgentTask
+}
+
+// ApprovalFlowNode 是审批流中的人工审批或 Agent 任务节点。
+type ApprovalFlowNode struct {
+	Code               string
+	Name               string
+	Gate               ApprovalFlowGate
+	NodeType           ApprovalFlowNodeType
+	ApplicableEnvCodes []string
+	ApprovalMode       TemplateApprovalMode
+	ApproverSource     ApprovalFlowApproverSource
+	ManagerLevel       int
+	ApproverIDs        []string
+	ApproverNames      []string
+	AgentTaskID        string
+	AgentTaskName      string
+	PositionX          float64
+	PositionY          float64
+	SortNo             int
+}
+
+type ApprovalFlowApproverSource string
+
+const (
+	ApprovalFlowApproverSourceUsers   ApprovalFlowApproverSource = "users"
+	ApprovalFlowApproverSourceManager ApprovalFlowApproverSource = "manager"
+)
+
+func (s ApprovalFlowApproverSource) Valid() bool {
+	switch s {
+	case ApprovalFlowApproverSourceUsers, ApprovalFlowApproverSourceManager:
+		return true
+	default:
+		return false
+	}
+}
+
+type ApprovalFlowExecutionScope string
+
+const (
+	ApprovalFlowExecutionScopeBuildOnly   ApprovalFlowExecutionScope = "build_only"
+	ApprovalFlowExecutionScopeDeployOnly  ApprovalFlowExecutionScope = "deploy_only"
+	ApprovalFlowExecutionScopeFullRelease ApprovalFlowExecutionScope = "full_release"
+)
+
+func (s ApprovalFlowExecutionScope) Valid() bool {
+	switch s {
+	case ApprovalFlowExecutionScopeBuildOnly, ApprovalFlowExecutionScopeDeployOnly, ApprovalFlowExecutionScopeFullRelease:
+		return true
+	default:
+		return false
+	}
+}
+
+// ApprovalFlowLink 是审批图中的一条有向边。start / end 为系统保留端点，
+// execution_scopes 为空时表示所有发布范围均可走此边。
+type ApprovalFlowLink struct {
+	FromCode        string   `json:"from_code"`
+	ToCode          string   `json:"to_code"`
+	ExecutionScopes []string `json:"execution_scopes"`
+	Priority        int      `json:"priority"`
+}
+
+type ApprovalFlowDefinition struct {
+	ID        string
+	Name      string
+	Status    ApprovalFlowStatus
+	Nodes     []ApprovalFlowNode
+	Links     []ApprovalFlowLink
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// ReleaseOrderApprovalFlowInstance 是发布单的审批流快照；审批启动前跟随应用绑定，启动后冻结。
+type ReleaseOrderApprovalFlowInstance struct {
+	ID               string
+	ReleaseOrderID   string
+	FlowDefinitionID string
+	FlowName         string
+	Nodes            []ApprovalFlowNode
+	Links            []ApprovalFlowLink
+	Status           ApprovalFlowInstanceStatus
+	CurrentGate      ApprovalFlowGate
+	CurrentScope     ApprovalFlowExecutionScope
+	CurrentNodeCode  string
+	CurrentTaskID    string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+type ReleaseOrderApprovalFlowTask struct {
+	ID             string
+	InstanceID     string
+	ReleaseOrderID string
+	NodeCode       string
+	NodeName       string
+	Gate           ApprovalFlowGate
+	NodeType       ApprovalFlowNodeType
+	ApprovalMode   TemplateApprovalMode
+	ApproverIDs    []string
+	ApproverNames  []string
+	AgentTaskID    string
+	AgentTaskName  string
+	AgentBatchID   string
+	Message        string
+	Status         ApprovalFlowTaskStatus
+	Records        []ReleaseOrderApprovalFlowTaskRecord
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type ReleaseOrderApprovalFlowTaskRecord struct {
+	ID             string
+	TaskID         string
+	Action         ReleaseOrderApprovalAction
+	OperatorUserID string
+	OperatorName   string
+	Comment        string
+	CreatedAt      time.Time
+}
+
+// ApprovalWorkbenchSource 区分应用级审批流任务与历史发布模板审批。
+type ApprovalWorkbenchSource string
+
+const (
+	ApprovalWorkbenchSourceFlow   ApprovalWorkbenchSource = "flow"
+	ApprovalWorkbenchSourceLegacy ApprovalWorkbenchSource = "legacy"
+)
+
+// ReleaseApprovalWorkbenchTask 是审批待办使用的任务级聚合数据。
+type ReleaseApprovalWorkbenchTask struct {
+	Source             ApprovalWorkbenchSource
+	TaskID             string
+	ReleaseOrderID     string
+	OrderNo            string
+	ApplicationID      string
+	ApplicationName    string
+	EnvCode            string
+	OperationType      OperationType
+	TriggeredBy        string
+	FlowName           string
+	NodeName           string
+	Gate               ApprovalFlowGate
+	ExecutionScope     ApprovalFlowExecutionScope
+	ApprovalMode       TemplateApprovalMode
+	ApproverIDs        []string
+	ApproverNames      []string
+	ReleaseOrderStatus OrderStatus
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
+// ReleaseApprovalWorkbenchRecord 是当前用户已经处理过的任务级审批记录。
+type ReleaseApprovalWorkbenchRecord struct {
+	ID                 string
+	Source             ApprovalWorkbenchSource
+	TaskID             string
+	ReleaseOrderID     string
+	OrderNo            string
+	ApplicationID      string
+	ApplicationName    string
+	EnvCode            string
+	OperationType      OperationType
+	TriggeredBy        string
+	FlowName           string
+	NodeName           string
+	Gate               ApprovalFlowGate
+	ExecutionScope     ApprovalFlowExecutionScope
+	Action             ReleaseOrderApprovalAction
+	OperatorUserID     string
+	OperatorName       string
+	Comment            string
+	ReleaseOrderStatus OrderStatus
+	CreatedAt          time.Time
 }

@@ -19,6 +19,23 @@ type UserManagement struct {
 	now  func() time.Time
 }
 
+type userManagerRepository interface {
+	GetUserManagerID(ctx context.Context, userID string) (string, error)
+	SetUserManagerID(ctx context.Context, userID string, managerUserID string, updatedAt time.Time) error
+}
+
+type userOrganizationRepository interface {
+	ListUserOrganization(ctx context.Context) ([]userdomain.OrganizationNode, error)
+}
+
+func (uc *UserManagement) managerRepository() (userManagerRepository, error) {
+	repo, ok := uc.repo.(userManagerRepository)
+	if !ok {
+		return nil, fmt.Errorf("user manager repository is not configured")
+	}
+	return repo, nil
+}
+
 type AuthSessionManager struct {
 	repo            userdomain.Repository
 	releaseSettings ReleaseSettingsStore
@@ -154,6 +171,81 @@ func (uc *UserManagement) GetUserByID(ctx context.Context, id string) (userdomai
 	return uc.repo.GetUserByID(ctx, id)
 }
 
+func (uc *UserManagement) GetUserManagerID(ctx context.Context, userID string) (string, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return "", ErrInvalidID
+	}
+	if _, err := uc.repo.GetUserByID(ctx, userID); err != nil {
+		return "", err
+	}
+	repo, err := uc.managerRepository()
+	if err != nil {
+		return "", err
+	}
+	managerID, err := repo.GetUserManagerID(ctx, userID)
+	if err == userdomain.ErrUserManagerNotFound {
+		return "", nil
+	}
+	return managerID, err
+}
+
+func (uc *UserManagement) SetUserManagerID(ctx context.Context, userID, managerUserID string) error {
+	userID, managerUserID = strings.TrimSpace(userID), strings.TrimSpace(managerUserID)
+	if userID == "" {
+		return ErrInvalidID
+	}
+	repo, err := uc.managerRepository()
+	if err != nil {
+		return err
+	}
+	user, err := uc.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if managerUserID == "" {
+		return repo.SetUserManagerID(ctx, userID, "", uc.now())
+	}
+	if user.Role == userdomain.RoleAdmin {
+		return fmt.Errorf("%w: administrator is outside the organization hierarchy", ErrInvalidInput)
+	}
+	if userID == managerUserID {
+		return fmt.Errorf("%w: user cannot be their own manager", ErrInvalidInput)
+	}
+	manager, err := uc.repo.GetUserByID(ctx, managerUserID)
+	if err != nil {
+		return err
+	}
+	if manager.Role == userdomain.RoleAdmin {
+		return fmt.Errorf("%w: administrator cannot be an organization manager", ErrInvalidInput)
+	}
+	current := managerUserID
+	visited := map[string]struct{}{userID: {}}
+	for current != "" {
+		if _, exists := visited[current]; exists {
+			return userdomain.ErrUserManagerCycle
+		}
+		visited[current] = struct{}{}
+		next, err := repo.GetUserManagerID(ctx, current)
+		if err == userdomain.ErrUserManagerNotFound {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		current = strings.TrimSpace(next)
+	}
+	return repo.SetUserManagerID(ctx, userID, managerUserID, uc.now())
+}
+
+func (uc *UserManagement) ListUserOrganization(ctx context.Context) ([]userdomain.OrganizationNode, error) {
+	repo, ok := uc.repo.(userOrganizationRepository)
+	if !ok {
+		return nil, fmt.Errorf("user organization repository is not configured")
+	}
+	return repo.ListUserOrganization(ctx)
+}
+
 // CreateUser 创建业务资源并返回处理结果。
 func (uc *UserManagement) CreateUser(ctx context.Context, input CreateUserInput) (userdomain.User, error) {
 	username := strings.TrimSpace(input.Username)
@@ -241,7 +333,7 @@ func (uc *UserManagement) UpdateUser(ctx context.Context, id string, input Updat
 		displayName = current.DisplayName
 	}
 
-	return uc.repo.UpdateUser(ctx, id, userdomain.UserUpdateInput{
+	updated, err := uc.repo.UpdateUser(ctx, id, userdomain.UserUpdateInput{
 		DisplayName:  displayName,
 		Email:        strings.TrimSpace(input.Email),
 		Phone:        strings.TrimSpace(input.Phone),
@@ -249,6 +341,19 @@ func (uc *UserManagement) UpdateUser(ctx context.Context, id string, input Updat
 		Status:       status,
 		PasswordHash: passwordHash,
 	}, uc.now())
+	if err != nil {
+		return userdomain.User{}, err
+	}
+	if role == userdomain.RoleAdmin {
+		managerRepo, managerErr := uc.managerRepository()
+		if managerErr != nil {
+			return userdomain.User{}, managerErr
+		}
+		if managerErr = managerRepo.SetUserManagerID(ctx, id, "", uc.now()); managerErr != nil {
+			return userdomain.User{}, managerErr
+		}
+	}
+	return updated, nil
 }
 
 // DeleteUser 删除业务资源并返回处理结果。

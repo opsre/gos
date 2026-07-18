@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ExclamationCircleOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import {
   createAIModelConfig,
   deleteAIModelConfig,
@@ -13,7 +13,7 @@ import {
   updateAIModelConfig,
   updateReleaseSettings,
 } from '../../api/system'
-import type { AIModelConfig } from '../../types/system'
+import type { AIModelConfig, ReleaseEnvironmentConfig } from '../../types/system'
 import { extractHTTPErrorMessage } from '../../utils/http-error'
 import AnnouncementManage from './AnnouncementManage.vue'
 
@@ -28,7 +28,10 @@ const editingAIModel = ref<AIModelConfig | null>(null)
 const testingAIModelID = ref('')
 const settingDiagnosisModelID = ref('')
 const aiModelConfigs = ref<AIModelConfig[]>([])
-const envOptions = ref<string[]>([])
+const envConfigs = ref<ReleaseEnvironmentConfig[]>([])
+const defaultEnvCode = ref('')
+const envConfigModalVisible = ref(false)
+const editingEnvCode = ref('')
 const concurrency = reactive({
   enabled: false,
   lock_scope: 'application_env',
@@ -39,6 +42,13 @@ const concurrency = reactive({
 const gitopsConfig = reactive({
   helm_scan_path: 'apps/helm',
   kustomize_scan_path: 'apps/{app_key}/overlays/{env}',
+})
+
+const envOptions = computed(() => envConfigs.value.map((item) => item.code))
+
+const envConfigForm = reactive({
+  code: '',
+  description: '',
 })
 
 const aiModelForm = reactive({
@@ -53,25 +63,39 @@ const aiModelForm = reactive({
   enabled: true,
 })
 
-function normalizeEnvOptions(values: string[]) {
-  const result: string[] = []
+function normalizeEnvConfigs(configs: ReleaseEnvironmentConfig[] = [], fallbackOptions: string[] = []) {
+  const result: ReleaseEnvironmentConfig[] = []
   const seen = new Set<string>()
-  values.forEach((item) => {
-    const value = String(item || '').trim()
-    if (!value || seen.has(value)) {
+  const source = configs.length > 0
+    ? configs
+    : fallbackOptions.map((item) => ({ code: item, description: '' }))
+  source.forEach((item) => {
+    const code = String(item?.code || '').trim()
+    if (!code || seen.has(code)) {
       return
     }
-    seen.add(value)
-    result.push(value)
+    seen.add(code)
+    result.push({
+      code,
+      description: String(item?.description || '').trim(),
+    })
   })
   return result
+}
+
+function syncDefaultEnvCode() {
+  if (defaultEnvCode.value && !envOptions.value.includes(defaultEnvCode.value)) {
+    defaultEnvCode.value = ''
+  }
 }
 
 async function loadSettings() {
   loading.value = true
   try {
     const response = await getReleaseSettings()
-    envOptions.value = normalizeEnvOptions(response.data.env_options || [])
+    envConfigs.value = normalizeEnvConfigs(response.data.env_configs || [], response.data.env_options || [])
+    defaultEnvCode.value = response.data.default_env_code || ''
+    syncDefaultEnvCode()
     concurrency.enabled = Boolean(response.data.concurrency?.enabled)
     concurrency.lock_scope = response.data.concurrency?.lock_scope || 'application_env'
     concurrency.conflict_strategy = response.data.concurrency?.conflict_strategy || 'reject'
@@ -86,15 +110,18 @@ async function loadSettings() {
 }
 
 async function saveSettings() {
-  const normalized = normalizeEnvOptions(envOptions.value)
+  const normalized = normalizeEnvConfigs(envConfigs.value)
   if (false && normalized.length === 0) {
     message.warning('请至少保留一个发布环境选项')
     return
   }
+  syncDefaultEnvCode()
   saving.value = true
   try {
     const response = await updateReleaseSettings({
-      env_options: normalized,
+      env_options: normalized.map((item) => item.code),
+      env_configs: normalized,
+      default_env_code: defaultEnvCode.value,
       concurrency: {
         enabled: concurrency.enabled,
         lock_scope: concurrency.lock_scope as 'application' | 'application_env' | 'gitops_repo_branch',
@@ -106,7 +133,9 @@ async function saveSettings() {
         kustomize_scan_path: gitopsConfig.kustomize_scan_path.trim() || 'apps/{app_key}/overlays/{env}',
       },
     })
-    envOptions.value = normalizeEnvOptions(response.data.env_options || [])
+    envConfigs.value = normalizeEnvConfigs(response.data.env_configs || [], response.data.env_options || [])
+    defaultEnvCode.value = response.data.default_env_code || ''
+    syncDefaultEnvCode()
     concurrency.enabled = Boolean(response.data.concurrency?.enabled)
     concurrency.lock_scope = response.data.concurrency?.lock_scope || 'application_env'
     concurrency.conflict_strategy = response.data.concurrency?.conflict_strategy || 'reject'
@@ -118,6 +147,68 @@ async function saveSettings() {
     message.error(extractHTTPErrorMessage(error, '系统设置保存失败'))
   } finally {
     saving.value = false
+  }
+}
+
+function resetEnvConfigForm() {
+  editingEnvCode.value = ''
+  envConfigForm.code = ''
+  envConfigForm.description = ''
+}
+
+function openEnvCreateModal() {
+  resetEnvConfigForm()
+  envConfigModalVisible.value = true
+}
+
+function openEnvEditModal(item: ReleaseEnvironmentConfig) {
+  editingEnvCode.value = item.code
+  envConfigForm.code = item.code
+  envConfigForm.description = item.description || ''
+  envConfigModalVisible.value = true
+}
+
+function closeEnvConfigModal() {
+  envConfigModalVisible.value = false
+  resetEnvConfigForm()
+}
+
+function saveEnvConfig() {
+  const code = envConfigForm.code.trim()
+  const description = envConfigForm.description.trim()
+  if (!code) {
+    message.warning('请填写环境编码')
+    return
+  }
+  if (!description) {
+    message.warning('请填写描述文字')
+    return
+  }
+  const duplicated = envConfigs.value.some((item) => item.code === code && item.code !== editingEnvCode.value)
+  if (duplicated) {
+    message.warning('环境编码已存在')
+    return
+  }
+  if (editingEnvCode.value) {
+    envConfigs.value = normalizeEnvConfigs(envConfigs.value.map((item) => (
+      item.code === editingEnvCode.value ? { code, description } : item
+    )))
+    if (defaultEnvCode.value === editingEnvCode.value) {
+      defaultEnvCode.value = code
+    }
+  } else {
+    envConfigs.value = normalizeEnvConfigs([...envConfigs.value, { code, description }])
+  }
+  closeEnvConfigModal()
+}
+
+function removeEnvConfig(item: ReleaseEnvironmentConfig) {
+  if (!window.confirm(`确认删除发布环境「${item.code}」？`)) {
+    return
+  }
+  envConfigs.value = envConfigs.value.filter((env) => env.code !== item.code)
+  if (defaultEnvCode.value === item.code) {
+    defaultEnvCode.value = ''
   }
 }
 
@@ -323,13 +414,43 @@ onMounted(() => {
       </template>
       <a-form layout="vertical">
         <a-form-item label="环境选项">
+          <div class="release-env-config-toolbar">
+            <div class="release-env-config-copy">
+              <strong>发布环境配置</strong>
+              <span>新增环境时需要填写编码和描述文字，发布单环境卡片会优先使用这里的描述</span>
+            </div>
+            <a-button type="primary" ghost @click="openEnvCreateModal">
+              <template #icon><PlusOutlined /></template>
+              新增环境
+            </a-button>
+          </div>
+          <div v-if="envConfigs.length > 0" class="release-env-config-list">
+            <div v-for="item in envConfigs" :key="item.code" class="release-env-config-row">
+              <div class="release-env-config-main">
+                <span class="release-env-config-code">{{ item.code }}</span>
+                <span class="release-env-config-desc">{{ item.description || '未填写描述文字' }}</span>
+              </div>
+              <a-space class="release-env-config-actions" wrap>
+                <a-button size="small" @click="openEnvEditModal(item)">编辑环境</a-button>
+                <a-button size="small" danger @click="removeEnvConfig(item)">删除</a-button>
+              </a-space>
+            </div>
+          </div>
+          <a-empty v-else description="暂无发布环境">
+            <template #description>
+              <span>暂无发布环境，请先新增环境并填写描述文字</span>
+            </template>
+          </a-empty>
+        </a-form-item>
+        <a-form-item label="默认环境">
           <a-select
-            v-model:value="envOptions"
-            mode="tags"
-            :token-separators="[',', '，', ' ']"
-            placeholder="输入环境并回车，例如 dev / test / prod"
+            v-model:value="defaultEnvCode"
+            placeholder="请选择默认环境"
+            allow-clear
             style="width: 100%"
-          />
+          >
+            <a-select-option v-for="env in envOptions" :key="env" :value="env">{{ env }}</a-select-option>
+          </a-select>
         </a-form-item>
       </a-form>
     </a-card>
@@ -413,8 +534,8 @@ onMounted(() => {
         </a-form-item>
         <a-form-item label="Kustomize 模式（扫描 Overlay 目录）">
           <a-input
-            v-model:value="gitopsConfig.kustomize_scan_path"
-            placeholder="apps/{app_key}/overlays/{env}"
+            disabled
+            value="正在开发中"
             style="max-width: 480px"
           />
         </a-form-item>
@@ -496,6 +617,28 @@ onMounted(() => {
           </a-card>
         </a-tab-pane>
       </a-tabs>
+
+    <a-modal
+      :open="envConfigModalVisible"
+      :title="editingEnvCode ? '编辑环境' : '新增环境'"
+      ok-text="保存"
+      cancel-text="取消"
+      @ok="saveEnvConfig"
+      @cancel="closeEnvConfigModal"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="环境编码">
+          <a-input v-model:value="envConfigForm.code" placeholder="例如：dev / test / prod" />
+        </a-form-item>
+        <a-form-item label="描述文字">
+          <a-textarea
+            v-model:value="envConfigForm.description"
+            :rows="3"
+            placeholder="例如：可直接发布，适合日常联调"
+          />
+        </a-form-item>
+      </a-form>
+    </a-modal>
 
     <a-modal
       :open="aiModelModalVisible"
@@ -648,6 +791,70 @@ onMounted(() => {
   max-width: 480px;
 }
 
+.release-env-config-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 760px;
+  margin-bottom: 14px;
+}
+
+.release-env-config-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.release-env-config-copy strong {
+  color: var(--color-text-main);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.release-env-config-copy span,
+.release-env-config-desc {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.release-env-config-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 760px;
+}
+
+.release-env-config-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.72);
+}
+
+.release-env-config-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.release-env-config-code {
+  color: var(--color-text-main);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.release-env-config-actions {
+  flex-shrink: 0;
+}
+
 .ai-model-list {
   display: flex;
   flex-direction: column;
@@ -717,6 +924,16 @@ onMounted(() => {
   .settings-card :deep(.ant-select),
   .settings-card :deep(.ant-input-number) {
     max-width: 100%;
+  }
+
+  .release-env-config-toolbar,
+  .release-env-config-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .release-env-config-actions {
+    width: 100%;
   }
 }
 </style>

@@ -13,8 +13,15 @@ export interface ReleaseGitOpsConfig {
   kustomize_scan_path: string
 }
 
+export interface ReleaseEnvironmentConfig {
+  code: string
+  description: string
+}
+
 export interface ReleaseSettings {
   env_options: string[]
+  env_configs: ReleaseEnvironmentConfig[]
+  default_env_code: string
   concurrency: ReleaseConcurrencySettings
   gitops_config: ReleaseGitOpsConfig
 }
@@ -25,6 +32,8 @@ export interface ReleaseSettingsDataResponse {
 
 export interface UpdateReleaseSettingsPayload {
   env_options: string[]
+  env_configs: ReleaseEnvironmentConfig[]
+  default_env_code: string
   concurrency: ReleaseConcurrencySettings
   gitops_config: ReleaseGitOpsConfig
 }

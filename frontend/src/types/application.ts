@@ -69,6 +69,18 @@ export interface ApplicationListResponse {
   total: number
 }
 
+export interface ApplicationWorkbenchOverview {
+  application_ids: string[]
+  release_orders: import('./release').ReleaseOrder[]
+}
+
+export interface ApplicationWorkbenchResponse extends ApplicationListResponse {
+  template_names_by_application: Record<string, string[]>
+  recent_release_orders: import('./release').ReleaseOrder[]
+  release_state_summaries: import('./release').AppReleaseStateSummary[]
+  overview: ApplicationWorkbenchOverview
+}
+
 export interface ApplicationOption {
   id: string
   name: string

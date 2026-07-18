@@ -3,7 +3,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const editViewURL = new URL('../src/views/application/ApplicationEditView.vue', import.meta.url)
+const formURL = new URL('../src/views/application/ApplicationForm.vue', import.meta.url)
 const editSource = readFileSync(editViewURL, 'utf8')
+const formSource = readFileSync(formURL, 'utf8')
 
 function extractStyleRule(source, selector) {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -54,5 +56,23 @@ test('application edit page returns to the list after detail page removal', () =
     editSource,
     /router\.push\(`\/applications\/\$\{applicationId\.value\}`\)/,
     'application edit page should not navigate to the removed detail page',
+  )
+})
+
+test('application edit page keeps application key readonly', () => {
+  assert.match(
+    formSource,
+    /keyReadonly\?: boolean/,
+    'shared application form should expose a key readonly switch',
+  )
+  assert.match(
+    formSource,
+    /<a-input[\s\S]*v-model:value="model\.key"[\s\S]*:readonly="keyReadonly"/,
+    'application key input should support readonly mode while keeping the value in the payload',
+  )
+  assert.match(
+    editSource,
+    /<ApplicationForm[\s\S]*key-readonly/,
+    'application edit page should render the shared form with application key readonly',
   )
 })

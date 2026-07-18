@@ -84,7 +84,7 @@ func (uc *TrackReleaseExecution) Execute(ctx context.Context) (TrackReleaseExecu
 			logx.F("order_no", order.OrderNo),
 			logx.F("status", order.Status),
 		)
-		updated, skipped, runErr := uc.syncOrder(ctx, order)
+		updated, skipped, runErr := uc.syncOrderSerialized(ctx, order.ID)
 		if runErr != nil {
 			logx.Error("release_tracker", "sync_order_failed", runErr,
 				logx.F("order_id", order.ID),
@@ -117,6 +117,108 @@ func (uc *TrackReleaseExecution) Execute(ctx context.Context) (TrackReleaseExecu
 	)
 
 	return output, nil
+}
+
+// SyncOrder 主动同步单张发布单。它与后台全量追踪共用同一把 order 级锁，
+// 因此详情页快速追踪不会和后台任务并发更新同一张发布单。
+func (uc *TrackReleaseExecution) SyncOrder(ctx context.Context, orderID string) error {
+	if uc == nil || uc.manager == nil {
+		return nil
+	}
+	if uc.jenkins == nil && (uc.manager.argocdRepo == nil || uc.manager.argocdFactory == nil) {
+		return nil
+	}
+	orderID = strings.TrimSpace(orderID)
+	if orderID == "" {
+		return ErrInvalidID
+	}
+	_, _, err := uc.syncRealtimeOrderSerialized(ctx, orderID)
+	return err
+}
+
+func (uc *TrackReleaseExecution) syncRealtimeOrderSerialized(
+	ctx context.Context,
+	orderID string,
+) (bool, bool, error) {
+	unlock := uc.manager.lockOrderOperation(orderID)
+	defer unlock()
+
+	order, err := uc.manager.repo.GetByID(ctx, strings.TrimSpace(orderID))
+	if err != nil {
+		return false, false, err
+	}
+	trackable, err := uc.isRealtimeTrackableOrder(ctx, order)
+	if err != nil || !trackable {
+		return false, !trackable, err
+	}
+	return uc.syncOrder(ctx, order)
+}
+
+func (uc *TrackReleaseExecution) isRealtimeTrackableOrder(
+	ctx context.Context,
+	order domain.ReleaseOrder,
+) (bool, error) {
+	switch order.Status {
+	case domain.OrderStatusBuilding,
+		domain.OrderStatusRunning,
+		domain.OrderStatusQueued,
+		domain.OrderStatusDeploying:
+		return true, nil
+	case domain.OrderStatusSuccess,
+		domain.OrderStatusDeploySuccess:
+		steps, err := uc.manager.repo.ListSteps(ctx, order.ID)
+		if err != nil {
+			return false, err
+		}
+		hasFailedHook := false
+		for _, step := range steps {
+			if !strings.HasPrefix(strings.TrimSpace(step.StepCode), "hook:") {
+				continue
+			}
+			if step.Status == domain.StepStatusPending || step.Status == domain.StepStatusRunning {
+				return true, nil
+			}
+			hasFailedHook = hasFailedHook || step.Status == domain.StepStatusFailed
+		}
+		if hasFailedHook {
+			// 历史上可能被只读详情提前写成 success；只有阻塞型 Hook 失败才纠正整单，
+			// warn_only 失败仍应保持成功，避免每轮 tracker 重复收敛。
+			return uc.manager.hasBlockingFailedPostReleaseHook(ctx, order, steps)
+		}
+	case domain.OrderStatusFailed,
+		domain.OrderStatusDeployFailed,
+		domain.OrderStatusCancelled:
+		steps, err := uc.manager.repo.ListSteps(ctx, order.ID)
+		if err != nil {
+			return false, err
+		}
+		for _, step := range steps {
+			if !strings.HasPrefix(strings.TrimSpace(step.StepCode), "hook:") {
+				continue
+			}
+			if step.Status == domain.StepStatusPending || step.Status == domain.StepStatusRunning {
+				return true, nil
+			}
+		}
+	}
+	// draft / approval / approved / built_waiting_deploy 等状态必须等待显式用户动作，
+	// 详情页订阅只能读取，绝不能借由快速追踪提前启动 pending execution。
+	return false, nil
+}
+
+func (uc *TrackReleaseExecution) syncOrderSerialized(
+	ctx context.Context,
+	orderID string,
+) (bool, bool, error) {
+	unlock := uc.manager.lockOrderOperation(orderID)
+	defer unlock()
+
+	// 等待同一发布单的另一次同步结束后重新读取，避免使用后台扫描得到的旧快照。
+	order, err := uc.manager.repo.GetByID(ctx, strings.TrimSpace(orderID))
+	if err != nil {
+		return false, false, err
+	}
+	return uc.syncOrder(ctx, order)
 }
 
 // listRunningOrders 查询并返回列表数据。
@@ -752,6 +854,8 @@ func (uc *TrackReleaseExecution) syncNextStepAfterExecution(ctx context.Context,
 	if err != nil {
 		return false, err
 	}
+	// 构建完成阶段的 Agent Hook 是 CD 审核节点的自动检查部分：
+	// 全部结束后才激活人工 CD 审批，阻断失败时不允许进入 CD。
 	buildHookUpdated, buildHookFinished, buildHookBlocked, err := uc.manager.syncHooksAfterBuild(ctx, order, executions)
 	if err != nil {
 		return false, err
@@ -782,6 +886,9 @@ func (uc *TrackReleaseExecution) syncNextStepAfterExecution(ctx context.Context,
 			if err := uc.manager.releaseExecutionLocks(ctx, order.ID, domain.ExecutionLockStatusReleased); err != nil {
 				return false, err
 			}
+			if err := uc.manager.activateApprovalFlowGate(ctx, order.ID, domain.ApprovalFlowGateBeforeCD); err != nil {
+				return false, err
+			}
 			if err := uc.manager.markStep(
 				ctx,
 				order.ID,
@@ -794,6 +901,11 @@ func (uc *TrackReleaseExecution) syncNextStepAfterExecution(ctx context.Context,
 				return false, err
 			}
 			return true, nil
+		}
+		if !hasExecutionForScope(executions, domain.PipelineScopeCD) {
+			if err := uc.manager.completeApprovalFlowWithoutDeployment(ctx, order.ID); err != nil {
+				return false, err
+			}
 		}
 	}
 	if findExecutionByStatus(executions, domain.ExecutionStatusPending) != nil {
@@ -1051,30 +1163,16 @@ func (uc *TrackReleaseExecution) finishStep(
 			return true, nil
 		}
 		return false, nil
-	case domain.StepStatusPending:
-		_, _, err := uc.manager.StartStep(ctx, orderID, stepCode, "")
-		if err != nil && !errors.Is(err, ErrInvalidInput) {
-			return false, err
-		}
 	}
 
-	steps, err = uc.manager.ListSteps(ctx, orderID)
-	if err != nil {
-		return false, err
+	now := uc.now()
+	startedAt := current.StartedAt
+	if startedAt == nil {
+		startedAt = &now
 	}
-	current = findStepByCode(steps, stepCode)
-	if current == nil || current.Status != domain.StepStatusRunning {
-		return false, nil
-	}
-
-	_, _, err = uc.manager.FinishStep(ctx, orderID, stepCode, FinishReleaseOrderStepInput{
-		Status:  status,
-		Message: message,
-	})
-	if err != nil {
-		if errors.Is(err, ErrInvalidInput) {
-			return false, nil
-		}
+	// tracker 是状态推进器，允许在订单已进入终态后清理遗留的 pending/running 步骤。
+	// 这里直接写步骤，避免复用面向用户操作的 StartStep/FinishStep 终态校验。
+	if err := uc.manager.markStep(ctx, orderID, stepCode, status, strings.TrimSpace(message), startedAt, &now); err != nil {
 		return false, err
 	}
 	return true, nil

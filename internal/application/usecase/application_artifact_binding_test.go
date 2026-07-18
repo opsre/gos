@@ -79,6 +79,32 @@ func TestUpdateApplicationRejectsPartialArtifactBinding(t *testing.T) {
 	}
 }
 
+func TestUpdateApplicationRejectsKeyChange(t *testing.T) {
+	repo := newApplicationUsecaseRepoFake()
+	updater := NewUpdateApplication(repo, newApplicationProjectRepoFake())
+
+	_, err := updater.Execute(context.Background(), "app-1", appdomain.UpdateInput{
+		Name:         "支付中心",
+		Key:          "pay-center-renamed",
+		ProjectID:    "project-1",
+		OwnerUserID:  "user-1",
+		Status:       appdomain.StatusActive,
+		ArtifactType: "jar",
+		Language:     "java",
+	})
+	if !errors.Is(err, ErrReferencedConflict) {
+		t.Fatalf("Execute err = %v, want ErrReferencedConflict", err)
+	}
+
+	app, getErr := repo.GetByID(context.Background(), "app-1")
+	if getErr != nil {
+		t.Fatalf("GetByID err = %v", getErr)
+	}
+	if app.Key != "pay-center" {
+		t.Fatalf("Key = %q, want original key", app.Key)
+	}
+}
+
 type applicationUsecaseRepoFake struct {
 	items map[string]appdomain.Application
 }

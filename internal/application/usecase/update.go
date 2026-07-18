@@ -32,11 +32,19 @@ func (uc *UpdateApplication) Execute(ctx context.Context, id string, input domai
 	if uc.repo == nil || uc.projectRepo == nil {
 		return domain.Application{}, fmt.Errorf("%w: application repository is not configured", ErrInvalidInput)
 	}
-	if strings.TrimSpace(id) == "" {
+	id = strings.TrimSpace(id)
+	if id == "" {
 		return domain.Application{}, ErrInvalidID
 	}
 	if strings.TrimSpace(input.Name) == "" || strings.TrimSpace(input.Key) == "" {
 		return domain.Application{}, fmt.Errorf("%w: name and key are required", ErrInvalidInput)
+	}
+	current, err := uc.repo.GetByID(ctx, id)
+	if err != nil {
+		return domain.Application{}, err
+	}
+	if strings.TrimSpace(input.Key) != strings.TrimSpace(current.Key) {
+		return domain.Application{}, fmt.Errorf("%w: application key cannot be changed", ErrReferencedConflict)
 	}
 	if strings.TrimSpace(input.ProjectID) == "" {
 		return domain.Application{}, fmt.Errorf("%w: project_id is required", ErrInvalidInput)
@@ -61,7 +69,7 @@ func (uc *UpdateApplication) Execute(ctx context.Context, id string, input domai
 
 	clean := domain.UpdateInput{
 		Name:                 strings.TrimSpace(input.Name),
-		Key:                  strings.TrimSpace(input.Key),
+		Key:                  strings.TrimSpace(current.Key),
 		ProjectID:            project.ID,
 		RepoURL:              strings.TrimSpace(input.RepoURL),
 		Description:          strings.TrimSpace(input.Description),

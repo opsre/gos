@@ -127,6 +127,21 @@ type Repository interface {
 	CreateApprovalRecord(ctx context.Context, item ReleaseOrderApprovalRecord) error
 	ListApprovalRecords(ctx context.Context, releaseOrderID string) ([]ReleaseOrderApprovalRecord, error)
 	ListApprovalRecordSummaries(ctx context.Context, filter ApprovalRecordListFilter) ([]ReleaseOrderApprovalRecordSummary, int64, error)
+	CreateApprovalFlowDefinition(ctx context.Context, item ApprovalFlowDefinition) error
+	UpdateApprovalFlowDefinition(ctx context.Context, item ApprovalFlowDefinition) error
+	GetApprovalFlowDefinitionByID(ctx context.Context, id string) (ApprovalFlowDefinition, error)
+	ListApprovalFlowDefinitions(ctx context.Context, status ApprovalFlowStatus) ([]ApprovalFlowDefinition, error)
+	CreateApprovalFlowInstance(ctx context.Context, item ReleaseOrderApprovalFlowInstance) error
+	GetApprovalFlowInstanceByOrderID(ctx context.Context, releaseOrderID string) (ReleaseOrderApprovalFlowInstance, error)
+	UpdateApprovalFlowInstance(ctx context.Context, item ReleaseOrderApprovalFlowInstance) error
+	CreateApprovalFlowTask(ctx context.Context, item ReleaseOrderApprovalFlowTask) error
+	GetApprovalFlowTaskByID(ctx context.Context, id string) (ReleaseOrderApprovalFlowTask, error)
+	ListApprovalFlowTasks(ctx context.Context, releaseOrderID string) ([]ReleaseOrderApprovalFlowTask, error)
+	UpdateApprovalFlowTask(ctx context.Context, item ReleaseOrderApprovalFlowTask) error
+	CreateApprovalFlowTaskRecord(ctx context.Context, item ReleaseOrderApprovalFlowTaskRecord) error
+	ListApprovalFlowTaskRecords(ctx context.Context, taskID string) ([]ReleaseOrderApprovalFlowTaskRecord, error)
+	GetApplicationApprovalFlowID(ctx context.Context, applicationID string) (string, error)
+	UpsertApplicationApprovalFlowID(ctx context.Context, applicationID string, approvalFlowID string, updatedAt time.Time) error
 	CreateSchedule(ctx context.Context, item ReleaseOrderSchedule) error
 	UpdateSchedule(ctx context.Context, item ReleaseOrderSchedule) error
 	GetScheduleByID(ctx context.Context, id string) (ReleaseOrderSchedule, error)
@@ -222,6 +237,19 @@ type ApprovalRecordListFilter struct {
 	OperatorUserID              string
 	Page                        int
 	PageSize                    int
+}
+
+type ApprovalWorkbenchListFilter struct {
+	UserID   string
+	Page     int
+	PageSize int
+}
+
+// ApprovalWorkbenchRepository 提供审批待办需要的跨发布单任务聚合查询。
+// 独立于 Repository，避免只关注发布执行的轻量测试仓储被迫实现工作台查询。
+type ApprovalWorkbenchRepository interface {
+	ListApprovalWorkbenchTasks(ctx context.Context, filter ApprovalWorkbenchListFilter) ([]ReleaseApprovalWorkbenchTask, int64, error)
+	ListApprovalWorkbenchRecords(ctx context.Context, filter ApprovalWorkbenchListFilter) ([]ReleaseApprovalWorkbenchRecord, int64, error)
 }
 
 type ScheduleListFilter struct {

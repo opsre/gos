@@ -40,3 +40,34 @@ test('release detail keeps polling while Agent hook is unfinished after deploy s
     'detail page should keep auto refresh active until Agent hook leaves pending/running',
   )
 })
+
+test('build-complete Agent tasks are rendered inside the CD approval card', () => {
+  assert.match(
+    viewSource,
+    /const cdApprovalAgentSteps = computed\(\(\) =>[\s\S]*code\.startsWith\("hook:build_complete:"\)[\s\S]*isAgentHookStep\(item\)[\s\S]*!isSkippedHookStep\(item\)/,
+    'only active build-complete Agent hooks should be attached to CD approval',
+  )
+  assert.match(
+    viewSource,
+    /v-if="cdApprovalAgentSteps\.length > 0"[\s\S]*CD 审核 · Agent 自动检查[\s\S]*v-for="step in cdApprovalAgentSteps"/,
+    'the approval card should render the release order Agent tasks and statuses',
+  )
+  assert.match(
+    viewSource,
+    /Agent 自动检查执行中，完成后进入人工 CD 审核[\s\S]*Agent 自动检查已通过，可继续人工 CD 审核/,
+    'runtime copy should preserve Agent-before-human CD approval ordering',
+  )
+})
+
+test('approval summary distinguishes auto-pass and Agent-aware waiting deploy', () => {
+  assert.match(
+    viewSource,
+    /approvalFlow\.value\.status === "completed"[\s\S]*没有需要等待的 CD 环节，待部署节点已自动放行/,
+    'no-CD flows should explain that waiting deploy was bypassed',
+  )
+  assert.match(
+    viewSource,
+    /current_node_code === "waiting_deploy"[\s\S]*cdApprovalAgentSteps\.value\.length > 0[\s\S]*cdApprovalAgentSummary\.value[\s\S]*等待发起 CD 部署/,
+    'waiting deploy should include Agent status when the order has Agent work',
+  )
+})

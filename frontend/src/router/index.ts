@@ -28,6 +28,7 @@ const ReleaseOrderDetailView = () => import('../views/release/ReleaseOrderDetail
 const ReleaseOrderListView = () => import('../views/release/ReleaseOrderListView.vue')
 const ReleaseOrderScheduleView = () => import('../views/release/ReleaseOrderScheduleView.vue')
 const ReleaseApprovalWorkbenchView = () => import('../views/release/ReleaseApprovalWorkbenchView.vue')
+const ApprovalFlowManagementView = () => import('../views/release/ApprovalFlowManagementView.vue')
 const ReleaseTemplateView = () => import('../views/release/ReleaseTemplateView.vue')
 const SystemNotificationView = () => import('../views/system/SystemNotificationView.vue')
 const SystemPermissionView = () => import('../views/system/SystemPermissionView.vue')
@@ -241,7 +242,7 @@ export const router = createRouter({
           path: '/release-approvals',
           name: 'release-approval-workbench',
           component: ReleaseApprovalWorkbenchView,
-          meta: { title: '审批工作台' },
+          meta: { title: '审批待办' },
         },
         {
           path: '/release-schedules',
@@ -272,6 +273,12 @@ export const router = createRouter({
           name: 'release-template-list',
           component: ReleaseTemplateView,
           meta: { title: '发布模板', permission: ['release.template.manage', 'release.create'] },
+        },
+        {
+          path: '/release-approval-flows',
+          name: 'release-approval-flow-management',
+          component: ApprovalFlowManagementView,
+          meta: { title: '审批流管理', permission: 'release.template.manage' },
         },
         {
           path: '/system',

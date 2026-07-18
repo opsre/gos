@@ -30,7 +30,14 @@ func NewReleaseStore(configPath string) *ReleaseStore {
 }
 
 // LoadEnvOptions 封装当前模块的业务处理逻辑。
-func (s *ReleaseStore) LoadEnvOptions(_ context.Context) ([]string, error) {
+func (s *ReleaseStore) LoadEnvOptions(ctx context.Context) ([]string, error) {
+	configs, err := s.LoadEnvConfigs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(configs) > 0 {
+		return releaseEnvOptionsFromConfigs(configs), nil
+	}
 	path := strings.TrimSpace(s.configPath)
 	if path == "" {
 		return cloneStringList(defaultReleaseEnvOptions), nil
@@ -58,6 +65,63 @@ func (s *ReleaseStore) LoadEnvOptions(_ context.Context) ([]string, error) {
 		return cloneStringList(defaultReleaseEnvOptions), nil
 	}
 	return options, nil
+}
+
+// LoadEnvConfigs 封装当前模块的业务处理逻辑。
+func (s *ReleaseStore) LoadEnvConfigs(_ context.Context) ([]usecase.ReleaseEnvironmentConfig, error) {
+	path := strings.TrimSpace(s.configPath)
+	if path == "" {
+		return releaseEnvConfigsFromOptions(defaultReleaseEnvOptions), nil
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return releaseEnvConfigsFromOptions(defaultReleaseEnvOptions), nil
+		}
+		return nil, fmt.Errorf("read config file failed: %w", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(content, &payload); err != nil {
+		return nil, fmt.Errorf("decode config file failed: %w", err)
+	}
+
+	node := readMapNode(payload, "release")
+	if _, ok := node["env_configs"]; ok {
+		return normalizeEnvConfigsFromAny(node["env_configs"]), nil
+	}
+	if _, ok := node["env_options"]; ok {
+		return releaseEnvConfigsFromOptions(normalizeStringListFromAny(node["env_options"])), nil
+	}
+	return releaseEnvConfigsFromOptions(defaultReleaseEnvOptions), nil
+}
+
+// LoadDefaultEnvCode 封装当前模块的业务处理逻辑。
+func (s *ReleaseStore) LoadDefaultEnvCode(_ context.Context) (string, error) {
+	path := strings.TrimSpace(s.configPath)
+	if path == "" {
+		return "", nil
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("read config file failed: %w", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(content, &payload); err != nil {
+		return "", fmt.Errorf("decode config file failed: %w", err)
+	}
+
+	node := readMapNode(payload, "release")
+	if value, ok := node["default_env_code"].(string); ok {
+		return strings.TrimSpace(value), nil
+	}
+	return "", nil
 }
 
 // LoadConcurrencySettings 封装当前模块的业务处理逻辑。
@@ -123,9 +187,85 @@ func (s *ReleaseStore) SaveEnvOptions(_ context.Context, values []string) error 
 	if options == nil {
 		options = []string{}
 	}
+	configs := releaseEnvConfigsFromOptions(options)
 
 	releaseNode := readMapNode(payload, "release")
 	releaseNode["env_options"] = options
+	releaseNode["env_configs"] = configs
+	payload["release"] = releaseNode
+
+	updated, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode config file failed: %w", err)
+	}
+	updated = append(updated, '\n')
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("prepare config directory failed: %w", err)
+	}
+	if err := os.WriteFile(path, updated, 0o644); err != nil {
+		return fmt.Errorf("write config file failed: %w", err)
+	}
+	return nil
+}
+
+// SaveEnvConfigs 封装当前模块的业务处理逻辑。
+func (s *ReleaseStore) SaveEnvConfigs(_ context.Context, values []usecase.ReleaseEnvironmentConfig) error {
+	path := strings.TrimSpace(s.configPath)
+	if path == "" {
+		return fmt.Errorf("config path is required")
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read config file failed: %w", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(content, &payload); err != nil {
+		return fmt.Errorf("decode config file failed: %w", err)
+	}
+
+	configs := normalizeEnvConfigs(values)
+	releaseNode := readMapNode(payload, "release")
+	releaseNode["env_configs"] = configs
+	releaseNode["env_options"] = releaseEnvOptionsFromConfigs(configs)
+	payload["release"] = releaseNode
+
+	updated, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode config file failed: %w", err)
+	}
+	updated = append(updated, '\n')
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("prepare config directory failed: %w", err)
+	}
+	if err := os.WriteFile(path, updated, 0o644); err != nil {
+		return fmt.Errorf("write config file failed: %w", err)
+	}
+	return nil
+}
+
+// SaveDefaultEnvCode 封装当前模块的业务处理逻辑。
+func (s *ReleaseStore) SaveDefaultEnvCode(_ context.Context, value string) error {
+	path := strings.TrimSpace(s.configPath)
+	if path == "" {
+		return fmt.Errorf("config path is required")
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read config file failed: %w", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(content, &payload); err != nil {
+		return fmt.Errorf("decode config file failed: %w", err)
+	}
+
+	releaseNode := readMapNode(payload, "release")
+	releaseNode["default_env_code"] = strings.TrimSpace(value)
 	payload["release"] = releaseNode
 
 	updated, err := json.MarshalIndent(payload, "", "  ")
@@ -322,6 +462,69 @@ func normalizeStringListFromAny(raw interface{}) []string {
 		values = append(values, strings.TrimSpace(fmt.Sprint(item)))
 	}
 	return normalizeStringList(values)
+}
+
+func normalizeEnvConfigsFromAny(raw interface{}) []usecase.ReleaseEnvironmentConfig {
+	items, ok := raw.([]interface{})
+	if !ok {
+		return nil
+	}
+	values := make([]usecase.ReleaseEnvironmentConfig, 0, len(items))
+	for _, item := range items {
+		node, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		values = append(values, usecase.ReleaseEnvironmentConfig{
+			Code:        stringFromAny(node["code"]),
+			Description: stringFromAny(node["description"]),
+		})
+	}
+	return normalizeEnvConfigs(values)
+}
+
+func stringFromAny(raw interface{}) string {
+	if raw == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(raw))
+}
+
+func normalizeEnvConfigs(values []usecase.ReleaseEnvironmentConfig) []usecase.ReleaseEnvironmentConfig {
+	result := make([]usecase.ReleaseEnvironmentConfig, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, item := range values {
+		code := strings.TrimSpace(item.Code)
+		if code == "" {
+			continue
+		}
+		if _, exists := seen[code]; exists {
+			continue
+		}
+		seen[code] = struct{}{}
+		result = append(result, usecase.ReleaseEnvironmentConfig{
+			Code:        code,
+			Description: strings.TrimSpace(item.Description),
+		})
+	}
+	return result
+}
+
+func releaseEnvConfigsFromOptions(values []string) []usecase.ReleaseEnvironmentConfig {
+	options := normalizeStringList(values)
+	result := make([]usecase.ReleaseEnvironmentConfig, 0, len(options))
+	for _, item := range options {
+		result = append(result, usecase.ReleaseEnvironmentConfig{Code: item})
+	}
+	return result
+}
+
+func releaseEnvOptionsFromConfigs(values []usecase.ReleaseEnvironmentConfig) []string {
+	result := make([]string, 0, len(values))
+	for _, item := range normalizeEnvConfigs(values) {
+		result = append(result, item.Code)
+	}
+	return result
 }
 
 // normalizeStringList 标准化输入值，保证后续逻辑使用统一格式。

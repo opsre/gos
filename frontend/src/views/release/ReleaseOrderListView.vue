@@ -35,6 +35,7 @@ import {
   deleteReleaseOrder,
   deployReleaseOrder,
   executeReleaseOrder,
+  getReleaseOrderApprovalFlow,
   getReleaseOrderStats,
   getReleaseOrderByID,
   getReleaseOrderPrecheck,
@@ -52,6 +53,8 @@ import type {
   BatchExecuteReleaseOrdersPayload,
   ReleaseOperationType,
   ReleaseOrder,
+  ReleaseOrderApprovalFlow,
+  ReleaseOrderApprovalFlowTask,
   ReleaseOrderBusinessStatus,
   ReleaseOrderExecution,
   ReleaseOrderPipelineStage,
@@ -70,11 +73,12 @@ interface SelectOption {
   value: string;
 }
 
-interface ApprovalFlowNode {
+interface ApprovalFlowTrackNode {
   key: string;
   title: string;
   caption: string;
   tone: "done" | "active" | "pending" | "rejected";
+  spinning?: boolean;
 }
 
 type ReleaseRealtimeProgressTone = "running" | "success" | "failed" | "pending";
@@ -161,6 +165,10 @@ let overviewChart: ECharts | null = null;
 const realtimeProgressMap = reactive<Record<string, ReleaseRealtimeProgress>>({});
 const realtimeProgressMaxPercent = reactive<Record<string, number>>({});
 const realtimeProgressInflight = new Set<string>();
+const approvalFlowByOrderID = reactive<Record<string, ReleaseOrderApprovalFlow | null>>({});
+const approvalFlowLoadingByOrderID = reactive<Record<string, boolean>>({});
+const approvalFlowLoadedByOrderID = reactive<Record<string, boolean>>({});
+const approvalFlowErrorByOrderID = reactive<Record<string, string>>({});
 let realtimeProgressRequestSeq = 0;
 let realtimeProgressTimer: number | undefined;
 
@@ -1151,35 +1159,148 @@ function operationTypeText(
   }
 }
 
-function approvalFlowNodes(record: ReleaseOrder): ApprovalFlowNode[] {
-  const status = orderBusinessStatus(record);
-  const approverNames = (record.approval_approver_names || []).filter(Boolean).join(" / ") || "待配置审批人";
-  const createdCaption = `${record.triggered_by || "系统"} · ${formatTime(record.created_at)}`;
+function approvalFlowFor(record: ReleaseOrder) {
+  return approvalFlowByOrderID[record.id] ?? null;
+}
 
-  if (!record.approval_required) {
-    return [
-      {
-        key: "create",
-        title: "创建发布单",
-        caption: createdCaption,
-        tone: "done",
-      },
-      {
-        key: "approval_skipped",
-        title: "无需审批",
-        caption: "当前模板未启用审批流，可直接进入发布执行",
-        tone: "done",
-      },
-      {
-        key: "execute_ready",
-        title: "进入执行阶段",
-        caption:
-          status === "pending_execution"
-            ? "当前可直接发起发布"
-            : status === "building"
-              ? "构建阶段执行中"
-              : status === "built_waiting_deploy"
-                ? "构建已完成，等待手动触发部署"
+function isApprovalFlowLoading(record: ReleaseOrder) {
+  return Boolean(approvalFlowLoadingByOrderID[record.id]);
+}
+
+function approvalFlowLoadError(record: ReleaseOrder) {
+  return approvalFlowErrorByOrderID[record.id] || "";
+}
+
+async function loadExpandedApprovalFlow(record: ReleaseOrder, options?: { force?: boolean }) {
+  const orderID = String(record.id || "").trim();
+  if (!orderID || approvalFlowLoadingByOrderID[orderID]) {
+    return;
+  }
+  if (approvalFlowLoadedByOrderID[orderID] && !options?.force) {
+    return;
+  }
+  approvalFlowLoadingByOrderID[orderID] = true;
+  approvalFlowErrorByOrderID[orderID] = "";
+  try {
+    const response = await getReleaseOrderApprovalFlow(orderID);
+    approvalFlowByOrderID[orderID] = response.data;
+    approvalFlowLoadedByOrderID[orderID] = true;
+  } catch (error) {
+    approvalFlowErrorByOrderID[orderID] = extractHTTPErrorMessage(error, "审批流程加载失败");
+  } finally {
+    approvalFlowLoadingByOrderID[orderID] = false;
+  }
+}
+
+function handleApprovalFlowExpand(expanded: boolean, record: ReleaseOrder) {
+  if (expanded) {
+    void loadExpandedApprovalFlow(record, { force: true });
+  }
+}
+
+function approvalGateText(gate: string) {
+  if (gate === "before_ci") return "CI 前";
+  if (gate === "before_cd") return "CD 前";
+  return "整单执行前";
+}
+
+function approvalTaskStatusText(status: ReleaseOrderApprovalFlowTask["status"]) {
+  switch (status) {
+    case "pending":
+      return "等待处理";
+    case "running":
+      return "执行中";
+    case "approved":
+      return "已通过";
+    case "rejected":
+      return "已拒绝";
+    case "failed":
+      return "执行失败";
+    default:
+      return status;
+  }
+}
+
+function latestApprovalTask(flow: ReleaseOrderApprovalFlow, nodeCode: string) {
+  return (flow.tasks || [])
+    .filter((task) => task.node_code === nodeCode)
+    .sort((left, right) => dayjs(right.updated_at).valueOf() - dayjs(left.updated_at).valueOf())[0];
+}
+
+function approvalTaskTone(
+  flow: ReleaseOrderApprovalFlow,
+  task: ReleaseOrderApprovalFlowTask | undefined,
+  nodeCode: string,
+): ApprovalFlowTrackNode["tone"] {
+  if (task?.status === "rejected" || task?.status === "failed") return "rejected";
+  if (task?.status === "approved") return "done";
+  if (task?.status === "pending" || task?.status === "running" || flow.current_node_code === nodeCode) return "active";
+  return "pending";
+}
+
+function approvalTaskCaption(
+  flow: ReleaseOrderApprovalFlow,
+  node: ReleaseOrderApprovalFlow["nodes"][number],
+  task: ReleaseOrderApprovalFlowTask | undefined,
+  envCode: string,
+) {
+  const gate = approvalGateText(node.gate);
+  if (!approvalFlowNodeMatchesEnvironment(node, envCode)) {
+    const environments = (node.applicable_env_codes || []).join(" / ");
+    return `${gate} · 仅适用于 ${environments}，当前 ${envCode || "环境"} 执行时自动跳过`;
+  }
+  if (!task) {
+    return flow.current_scope
+      ? `${gate} · 当前执行分支尚未进入此节点`
+      : `${gate} · 选择执行方式后按分支匹配`;
+  }
+  const taskStatus = approvalTaskStatusText(task.status);
+  const recordSummary = approvalTaskRecordSummary(task);
+  if (task.node_type === "agent_task") {
+    return [gate, task.agent_task_name || node.agent_task_name || "Agent 任务", taskStatus, task.message, recordSummary]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  const approvers = (task.approver_names || node.approver_names || []).filter(Boolean).join(" / ") || "待配置审批人";
+  return [gate, task.approval_mode === "all" ? "会签" : "或签", approvers, taskStatus, recordSummary]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function approvalTaskRecordSummary(task: ReleaseOrderApprovalFlowTask) {
+  const records = (task.records || []).filter((record) => String(record.comment || "").trim());
+  if (records.length === 0) return "";
+  return records
+    .map((record) => {
+      const operator = record.operator_name || record.operator_user_id || "审批人";
+      return `审批备注（${operator} · ${formatTime(record.created_at)}）：${String(record.comment).trim()}`;
+    })
+    .join("；");
+}
+
+function approvalFlowNodeMatchesEnvironment(
+  node: ReleaseOrderApprovalFlow["nodes"][number],
+  envCode: string,
+) {
+  const environments = (node.applicable_env_codes || [])
+    .map((item) => String(item || "").trim().toLowerCase())
+    .filter(Boolean);
+  const normalizedEnvCode = String(envCode || "").trim().toLowerCase();
+  return environments.length === 0 || !normalizedEnvCode || environments.includes(normalizedEnvCode);
+}
+
+function releaseExecutionTrackNode(record: ReleaseOrder): ApprovalFlowTrackNode {
+  const status = orderBusinessStatus(record);
+  return {
+    key: "execute_ready",
+    title: "进入执行阶段",
+    caption:
+      status === "pending_execution"
+        ? "当前可发起构建或发布"
+        : status === "building"
+          ? "构建阶段执行中"
+          : status === "built_waiting_deploy"
+            ? "构建已完成，等待手动触发部署"
             : status === "queued"
               ? record.queued_reason || "已进入等待队列"
               : status === "deploying"
@@ -1190,31 +1311,92 @@ function approvalFlowNodes(record: ReleaseOrder): ApprovalFlowNode[] {
                     ? "主发布流程执行失败"
                     : status === "cancelled"
                       ? "发布单已取消"
-                      : "等待后续处理",
-        tone:
-          status === "deploy_failed"
-            ? "rejected"
-            : status === "pending_execution"
-              ? "active"
-              : ["building", "built_waiting_deploy", "queued", "deploying", "deploy_success", "cancelled"].includes(status)
-                ? "done"
-                : "pending",
-      },
-    ];
-  }
+                      : "等待审批完成后继续执行",
+    tone:
+      status === "deploy_failed"
+        ? "rejected"
+        : ["pending_execution", "approved", "building", "built_waiting_deploy", "queued", "deploying"].includes(status)
+          ? "active"
+          : ["deploy_success", "cancelled"].includes(status)
+            ? "done"
+            : "pending",
+    spinning: status === "building" || status === "deploying",
+  };
+}
 
-  const reviewTone: ApprovalFlowNode["tone"] =
+function approvalFlowTrackNodes(record: ReleaseOrder): ApprovalFlowTrackNode[] {
+  const flow = approvalFlowFor(record);
+  if (!flow) return [];
+  const configuredNodes = (flow.nodes || [])
+    .slice()
+    .sort((left, right) =>
+      left.position_x !== right.position_x
+        ? left.position_x - right.position_x
+        : left.position_y !== right.position_y
+          ? left.position_y - right.position_y
+          : left.sort_no - right.sort_no,
+    )
+    .map((node) => {
+      const task = latestApprovalTask(flow, node.code);
+      return {
+        key: node.code,
+        title: node.name,
+        caption: approvalTaskCaption(flow, node, task, record.env_code),
+        tone: !task && !approvalFlowNodeMatchesEnvironment(node, record.env_code)
+          ? "done"
+          : approvalTaskTone(flow, task, node.code),
+        spinning: task?.status === "running",
+      };
+    });
+  return [
+    {
+      key: "create",
+      title: "创建发布单",
+      caption: `${record.triggered_by || "系统"} · ${formatTime(record.created_at)}`,
+      tone: "done",
+    },
+    ...configuredNodes,
+    releaseExecutionTrackNode(record),
+  ];
+}
+
+function noApprovalFlowNodes(record: ReleaseOrder): ApprovalFlowTrackNode[] {
+  return [
+    {
+      key: "create",
+      title: "创建发布单",
+      caption: `${record.triggered_by || "系统"} · ${formatTime(record.created_at)}`,
+      tone: "done",
+    },
+    {
+      key: "approval_skipped",
+      title: "无需审批",
+      caption: "当前发布单未绑定审批流程，可直接进入发布执行",
+      tone: "done",
+    },
+    releaseExecutionTrackNode(record),
+  ];
+}
+
+function legacyApprovalFlowNodes(record: ReleaseOrder): ApprovalFlowTrackNode[] {
+  const status = orderBusinessStatus(record);
+  const approverNames = (record.approval_approver_names || []).filter(Boolean).join(" / ") || "待配置审批人";
+  const createdCaption = `${record.triggered_by || "系统"} · ${formatTime(record.created_at)}`;
+
+  const reviewTone: ApprovalFlowTrackNode["tone"] =
     ["pending_approval", "approving"].includes(status)
       ? "active"
       : ["approved", "queued", "deploying", "deploy_success", "deploy_failed", "rejected", "cancelled"].includes(status)
         ? "done"
         : "pending";
-  const resultTone: ApprovalFlowNode["tone"] =
+  const resultTone: ApprovalFlowTrackNode["tone"] =
     status === "rejected" ? "rejected" : ["approved", "queued", "deploying", "deploy_success", "deploy_failed", "cancelled"].includes(status) ? "done" : "pending";
-  const executeTone: ApprovalFlowNode["tone"] =
-    status === "approved"
+  const executeTone: ApprovalFlowTrackNode["tone"] =
+    status === "deploy_failed"
+      ? "rejected"
+      : status === "approved" || status === "building" || status === "built_waiting_deploy" || status === "queued" || status === "deploying"
       ? "active"
-      : status === "building" || status === "built_waiting_deploy" || status === "queued" || status === "deploying" || status === "deploy_success" || status === "deploy_failed" || status === "cancelled"
+      : status === "deploy_success" || status === "cancelled"
         ? "done"
         : "pending";
 
@@ -1269,11 +1451,24 @@ function approvalFlowNodes(record: ReleaseOrder): ApprovalFlowNode[] {
                     ? "发布单已取消"
                     : "审批完成后可发起发布",
       tone: executeTone,
+      spinning: status === "building" || status === "deploying",
     },
   ];
 }
 
-function approvalFlowToneClass(tone: ApprovalFlowNode["tone"]) {
+function expandedApprovalFlowNodes(record: ReleaseOrder) {
+  if (approvalFlowFor(record)) return approvalFlowTrackNodes(record);
+  if (record.approval_required) return legacyApprovalFlowNodes(record);
+  return noApprovalFlowNodes(record);
+}
+
+function expandedApprovalFlowTestID(record: ReleaseOrder) {
+  if (approvalFlowFor(record)) return "release-approval-flow-real";
+  if (record.approval_required) return "release-approval-flow-legacy";
+  return "release-approval-flow-empty";
+}
+
+function approvalFlowToneClass(tone: ApprovalFlowTrackNode["tone"]) {
   switch (tone) {
     case "done":
       return "approval-flow-node-done";
@@ -1286,12 +1481,13 @@ function approvalFlowToneClass(tone: ApprovalFlowNode["tone"]) {
   }
 }
 
-function approvalFlowIcon(tone: ApprovalFlowNode["tone"]) {
-  switch (tone) {
+function approvalFlowIcon(node: ApprovalFlowTrackNode) {
+  if (node.spinning) return LoadingOutlined;
+  switch (node.tone) {
     case "done":
       return CheckCircleFilled;
     case "active":
-      return LoadingOutlined;
+      return ClockCircleFilled;
     case "rejected":
       return CloseCircleFilled;
     default:
@@ -1300,8 +1496,28 @@ function approvalFlowIcon(tone: ApprovalFlowNode["tone"]) {
 }
 
 function approvalFlowSummary(record: ReleaseOrder) {
+  const flow = approvalFlowFor(record);
+  if (flow) {
+    const currentTask = (flow.tasks || []).find((task) => task.id === flow.current_task_id);
+    if (flow.status === "rejected") {
+      return currentTask?.message || `流程「${flow.flow_name}」已拒绝，本次发布不会继续执行`;
+    }
+    if (flow.status === "agent_task_failed") {
+      return currentTask?.message || `流程「${flow.flow_name}」的 Agent 任务执行失败`;
+    }
+    if (flow.status === "completed") {
+      return `流程「${flow.flow_name}」已完成`;
+    }
+    if (!flow.current_scope) {
+      return `流程「${flow.flow_name}」已绑定；选择执行方式后将匹配对应审批分支`;
+    }
+    if (currentTask) {
+      return `流程「${flow.flow_name}」当前位于「${currentTask.node_name}」`;
+    }
+    return `流程「${flow.flow_name}」正在按${flow.current_scope === "build_only" ? "仅构建" : flow.current_scope === "deploy_only" ? "仅部署" : "完整发布"}分支推进`;
+  }
   if (!record.approval_required) {
-    return "当前发布单未启用审批流，可直接进入发布执行";
+    return "当前发布单未绑定审批流程，可直接进入发布执行";
   }
   const status = orderBusinessStatus(record);
   switch (status) {
@@ -1974,6 +2190,14 @@ function toCreate() {
   void router.push({ path: "/releases/new", query });
 }
 
+function toBatchCreate() {
+  const query: Record<string, string> = { batch: "1" };
+  if (filters.application_id) {
+    query.application_id = filters.application_id;
+  }
+  void router.push({ path: "/releases/new", query });
+}
+
 function toDetail(id: string) {
   void router.push({
     path: `/releases/${id}`,
@@ -2212,15 +2436,19 @@ async function confirmExecuteRelease() {
   }
   executeSubmitting.value = true;
   try {
+    let response;
     if (action === "build") {
-      await buildReleaseOrder(executePreviewOrder.value.id);
-      message.success("仅构建已提交，正在调度执行");
+      response = await buildReleaseOrder(executePreviewOrder.value.id);
     } else if (action === "deploy") {
-      await deployReleaseOrder(executePreviewOrder.value.id);
-      message.success("发布已提交，正在调度执行");
+      response = await deployReleaseOrder(executePreviewOrder.value.id);
     } else {
-      await executeReleaseOrder(executePreviewOrder.value.id);
-      message.success("发布已提交，正在调度执行");
+      response = await executeReleaseOrder(executePreviewOrder.value.id);
+    }
+    const nextStatus = orderBusinessStatus(response.data);
+    if (nextStatus === "pending_approval" || nextStatus === "approving") {
+      message.success("审批流程已发起，审批通过后可继续执行发布");
+    } else {
+      message.success(action === "build" ? "仅构建已提交，正在调度执行" : "发布已提交，正在调度执行");
     }
     closeExecutePreviewModal();
     await loadOverviewStats({ force: true, silent: true });
@@ -2653,6 +2881,12 @@ function handleOverviewChartResize() {
           </template>
           {{ advancedSearchExpanded ? "收起检索" : "高级检索" }}
         </a-button>
+        <a-button v-if="canCreateRelease" class="release-toolbar-action-btn" @click="toBatchCreate">
+          <template #icon>
+            <PlusOutlined />
+          </template>
+          批量创建
+        </a-button>
         <a-button v-if="canCreateRelease" class="release-toolbar-action-btn release-toolbar-action-btn--primary" @click="toCreate">
           <template #icon>
             <PlusOutlined />
@@ -2921,9 +3155,25 @@ function handleOverviewChartResize() {
         :loading="loading"
         :pagination="false"
         :scroll="{ x: 1060 }"
+        @expand="handleApprovalFlowExpand"
       >
         <template #expandedRowRender="{ record }">
-          <div class="approval-flow-card release-list-expand-card">
+          <div v-if="isApprovalFlowLoading(record)" class="approval-flow-compact-state release-list-expand-card" data-testid="release-approval-flow-loading">
+            <a-spin size="small" />
+            <div>
+              <strong>正在读取审批流程</strong>
+              <span>加载该发布单创建时固化的流程快照</span>
+            </div>
+          </div>
+          <div v-else-if="approvalFlowLoadError(record)" class="approval-flow-compact-state approval-flow-compact-state-error release-list-expand-card" data-testid="release-approval-flow-error">
+            <ExclamationCircleOutlined class="approval-flow-compact-icon" />
+            <div>
+              <strong>审批流程加载失败</strong>
+              <span>{{ approvalFlowLoadError(record) }}</span>
+            </div>
+            <a-button type="link" size="small" @click="loadExpandedApprovalFlow(record, { force: true })">重新加载</a-button>
+          </div>
+          <div v-else class="approval-flow-card release-list-expand-card" :data-testid="expandedApprovalFlowTestID(record)">
             <div class="approval-flow-head">
               <div>
                 <div class="approval-flow-kicker">审批流程</div>
@@ -2937,21 +3187,21 @@ function handleOverviewChartResize() {
             <div class="approval-flow-summary">{{ approvalFlowSummary(record) }}</div>
             <div class="approval-flow-track">
               <div
-                v-for="(node, index) in approvalFlowNodes(record)"
+                v-for="(node, index) in expandedApprovalFlowNodes(record)"
                 :key="`${record.id}-${node.key}`"
                 class="approval-flow-node"
                 :class="approvalFlowToneClass(node.tone)"
               >
                 <div class="approval-flow-node-main">
                   <div class="approval-flow-node-icon">
-                    <component :is="approvalFlowIcon(node.tone)" :spin="node.tone === 'active'" />
+                    <component :is="approvalFlowIcon(node)" :spin="node.spinning === true" />
                   </div>
                   <div class="approval-flow-node-copy">
                     <strong>{{ node.title }}</strong>
                     <p>{{ node.caption }}</p>
                   </div>
                 </div>
-                <div v-if="index < approvalFlowNodes(record).length - 1" class="approval-flow-connector"></div>
+                <div v-if="index < expandedApprovalFlowNodes(record).length - 1" class="approval-flow-connector"></div>
               </div>
             </div>
           </div>
@@ -4241,13 +4491,10 @@ function handleOverviewChartResize() {
 }
 
 .release-order-table--selecting :deep(.ant-table-tbody > tr.release-order-effect-row--selected > td::after) {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  background: rgba(239, 246, 255, 0.62);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  content: none;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   pointer-events: none;
 }
 
@@ -4511,6 +4758,8 @@ function handleOverviewChartResize() {
 
 .release-order-no-cell--selecting {
   position: relative;
+  box-sizing: border-box;
+  padding-left: 72px;
 }
 
 .release-order-no-trigger {
@@ -4706,6 +4955,52 @@ function handleOverviewChartResize() {
 
 .release-list-expand-card {
   margin: 6px 0 10px;
+}
+
+.approval-flow-compact-state {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 78px;
+  padding: 14px 18px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+}
+
+.approval-flow-compact-state > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.approval-flow-compact-state strong {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.approval-flow-compact-state span {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.approval-flow-compact-icon {
+  color: #16a34a;
+  font-size: 22px;
+}
+
+.approval-flow-compact-state-error {
+  border-color: rgba(239, 68, 68, 0.18);
+  background: rgba(254, 242, 242, 0.86);
+}
+
+.approval-flow-compact-state-error .approval-flow-compact-icon {
+  color: #dc2626;
 }
 
 .approval-flow-head {
@@ -5108,6 +5403,16 @@ function handleOverviewChartResize() {
 
   .approval-flow-head {
     flex-direction: column;
+  }
+
+  .approval-flow-compact-state {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .approval-flow-compact-state > .status-tag,
+  .approval-flow-compact-state > .ant-btn {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .approval-flow-track {

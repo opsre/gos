@@ -16,5 +16,8 @@ var (
 	ErrAppReleaseStateNotFound       = errors.New("app release state not found")
 	ErrAppReleaseStateNotConfirmable = errors.New("app release state is not confirmable")
 	ErrScheduleNotFound              = errors.New("release order schedule not found")
+	ErrApprovalFlowNotFound          = errors.New("release approval flow not found")
+	ErrApprovalFlowInstanceNotFound  = errors.New("release approval flow instance not found")
+	ErrApprovalFlowTaskNotFound      = errors.New("release approval flow task not found")
 	ErrScheduleDuplicated            = errors.New("release order schedule already exists")
 )

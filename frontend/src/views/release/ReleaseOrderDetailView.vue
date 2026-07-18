@@ -6,6 +6,7 @@ import {
   CloseCircleFilled,
   ExclamationCircleOutlined,
   LoadingOutlined,
+  RobotOutlined,
   StopFilled,
   SyncOutlined,
 } from "@ant-design/icons-vue";
@@ -23,6 +24,7 @@ import {
 import { useRoute, useRouter } from "vue-router";
 import {
   approveReleaseOrder,
+  approveReleaseOrderApprovalFlowTask,
   buildReleaseOrder,
   buildReleaseOrderLogStreamURL,
   cancelReleaseOrder,
@@ -32,6 +34,7 @@ import {
   followUpReleaseOrderPipelineStageDiagnosis,
   getReleaseOrderConcurrentBatchProgress,
   getReleaseOrderByID,
+  getReleaseOrderApprovalFlow,
   getLatestReleaseOrderPipelineStageDiagnosis,
   getReleaseOrderPrecheck,
   getReleaseOrderPipelineStageLog,
@@ -43,16 +46,19 @@ import {
   listReleaseOrderPipelineStages,
   listReleaseOrderSteps,
   rejectReleaseOrder,
+  rejectReleaseOrderApprovalFlowTask,
   replayReleaseOrderByID,
   rollbackReleaseOrderByID,
   submitReleaseOrderApproval,
 } from "../../api/release";
+import { useReleaseOrderRealtime } from "../../composables/useReleaseOrderRealtime";
 import { useResizableColumns } from "../../composables/useResizableColumns";
 import { useAuthStore } from "../../stores/auth";
 import type {
   ReleaseOperationType,
   ReleaseOrderArtifactMetadata,
   ReleaseOrderApprovalRecord,
+  ReleaseOrderApprovalFlow,
   ReleaseOrderDispatchAction,
   ReleaseOrder,
   ReleaseOrderBusinessStatus,
@@ -64,6 +70,7 @@ import type {
   ReleaseOrderParam,
   ReleaseOrderPrecheck,
   ReleaseOrderPrecheckItem,
+  ReleaseOrderRealtimeSnapshot,
   ReleaseOrderValueProgress,
   ReleaseOrderValueProgressStatus,
   ReleaseOrderPipelineStage,
@@ -82,9 +89,9 @@ import { extractHTTPErrorMessage } from "../../utils/http-error";
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
-const AUTO_REFRESH_INTERVAL_MS = 5000;
-// Keep pipeline stages in sync with the main release polling cadence so progress feels responsive.
+// Avoid duplicate stage requests when a full detail refresh is explicitly requested.
 const PIPELINE_STAGE_REFRESH_INTERVAL_MS = 5000;
+const PRECHECK_REFRESH_INTERVAL_MS = 5_000;
 
 type ScopeLogState = {
   text: string;
@@ -139,12 +146,13 @@ const cancelling = ref(false);
 const executing = ref(false);
 const recovering = ref(false);
 const approvalActing = ref(false);
-const autoRefreshTimer = ref<number | null>(null);
 const executeLocked = ref(false);
 const currentDispatchAction = ref<ReleaseOrderDispatchAction>("execute");
+const precheckRefreshTimer = ref<number | null>(null);
 
 const order = ref<ReleaseOrder | null>(null);
 const approvalRecords = ref<ReleaseOrderApprovalRecord[]>([]);
+const approvalFlow = ref<ReleaseOrderApprovalFlow | null>(null);
 const approvalRecordsLoading = ref(false);
 const params = ref<ReleaseOrderParam[]>([]);
 const valueProgress = ref<ReleaseOrderValueProgress[]>([]);
@@ -155,6 +163,11 @@ const artifactMetadataLoading = ref(false);
 const pipelineStages = ref<ReleaseOrderPipelineStage[]>([]);
 const precheck = ref<ReleaseOrderPrecheck | null>(null);
 const precheckLoading = ref(false);
+const precheckQuerying = ref(false);
+let precheckRequest: Promise<void> | null = null;
+let precheckRequestAction: ReleaseOrderDispatchAction | null = null;
+let precheckRequestSequence = 0;
+let precheckRefreshActive = false;
 const pipelineStageModuleVisible = ref(false);
 const pipelineStageExecutorType = ref("");
 const pipelineStageMessage = ref("");
@@ -280,6 +293,31 @@ function isAgentHookStep(item: ReleaseOrderStep) {
   return hookStepSearchText(item).includes("agent");
 }
 
+const cdApprovalAgentSteps = computed(() =>
+  steps.value.filter((item) => {
+    const code = String(item.step_code || "").trim().toLowerCase();
+    return (
+      code.startsWith("hook:build_complete:") &&
+      isAgentHookStep(item) &&
+      !isSkippedHookStep(item)
+    );
+  }),
+);
+
+const cdApprovalAgentSummary = computed(() => {
+  const items = cdApprovalAgentSteps.value;
+  if (items.some((item) => item.status === "failed")) {
+    return "Agent 自动检查失败，CD 审核与部署已阻断";
+  }
+  if (items.some((item) => item.status === "running")) {
+    return "Agent 自动检查执行中，完成后进入人工 CD 审核";
+  }
+  if (items.some((item) => item.status === "pending")) {
+    return "Agent 自动检查待执行，完成后进入人工 CD 审核";
+  }
+  return "Agent 自动检查已通过，可继续人工 CD 审核";
+});
+
 const agentHookRuntimeStatus = computed<AgentHookRuntimeStatus>(() => {
   const agentHookSteps = steps.value.filter(
     (item) =>
@@ -388,15 +426,40 @@ const isCurrentUserApprover = computed(() => {
   }
   return (order.value.approval_approver_ids || []).includes(currentUserID.value);
 });
+const currentApprovalFlowTask = computed(() => {
+  const flow = approvalFlow.value;
+  if (!flow || !flow.current_task_id) {
+    return null;
+  }
+  return flow.tasks.find((item) => item.id === flow.current_task_id) || null;
+});
+const isCurrentUserFlowApprover = computed(() =>
+  Boolean(currentApprovalFlowTask.value?.approver_ids.includes(currentUserID.value) || authStore.isAdmin),
+);
+const hasCustomApprovalFlow = computed(() => Boolean(approvalFlow.value));
 const showApprovalCard = computed(
-  () => Boolean(order.value?.approval_required) || approvalRecords.value.length > 0,
+  () => hasCustomApprovalFlow.value || Boolean(order.value?.approval_required) || approvalRecords.value.length > 0,
 );
 const displayApprovalRecords = computed<ReleaseOrderApprovalRecord[]>(() => {
-  if (approvalRecords.value.length > 0) {
-    return approvalRecords.value;
-  }
   if (!order.value) {
     return [];
+  }
+  const customFlowRecords: ReleaseOrderApprovalRecord[] = (approvalFlow.value?.tasks || []).flatMap((task) =>
+    (task.records || []).map((record) => ({
+      id: record.id,
+      release_order_id: order.value?.id || "",
+      action: record.action,
+      operator_user_id: record.operator_user_id,
+      operator_name: record.operator_name,
+      comment: record.comment,
+      created_at: record.created_at,
+    })),
+  );
+  const storedRecords = Array.from(
+    new Map([...approvalRecords.value, ...customFlowRecords].map((record) => [record.id, record])).values(),
+  ).sort((left, right) => dayjs(left.created_at).valueOf() - dayjs(right.created_at).valueOf());
+  if (storedRecords.length > 0) {
+    return storedRecords;
   }
   const fallbackRecords: ReleaseOrderApprovalRecord[] = [];
   if (order.value.approved_at) {
@@ -431,12 +494,14 @@ const canSubmitApproval = computed(
 );
 const canApproveOrder = computed(
   () =>
+    (hasCustomApprovalFlow.value && currentApprovalFlowTask.value?.status === "pending" && isCurrentUserFlowApprover.value) ||
     Boolean(order.value?.approval_required) &&
     ["pending_approval", "approving"].includes(currentBusinessStatus.value) &&
     (isCurrentUserApprover.value || authStore.isAdmin),
 );
 const canRejectOrder = computed(
   () =>
+    (hasCustomApprovalFlow.value && currentApprovalFlowTask.value?.status === "pending" && isCurrentUserFlowApprover.value) ||
     Boolean(order.value?.approval_required) &&
     ["pending_approval", "approving"].includes(currentBusinessStatus.value) &&
     (isCurrentUserApprover.value || authStore.isAdmin),
@@ -548,6 +613,17 @@ const shouldAutoRefresh = computed(() => {
     "deploying",
     "approved",
   ].includes(currentBusinessStatus.value);
+});
+const {
+  start: startRealtimeUpdates,
+  stop: stopRealtimeUpdates,
+  refreshNow: refreshRealtimeSnapshot,
+} = useReleaseOrderRealtime({
+  orderID,
+  accessToken: () => authStore.accessToken,
+  enabled: shouldAutoRefresh,
+  onSnapshot: applyRealtimeSnapshot,
+  fallbackIntervalMs: 5_000,
 });
 const shouldKeepLogStreaming = computed(() => {
   if (!order.value) {
@@ -1971,6 +2047,29 @@ function approvalActionText(action: ReleaseOrderApprovalRecord["action"]) {
 }
 
 const approvalStatusSummary = computed(() => {
+  if (approvalFlow.value) {
+    const task = currentApprovalFlowTask.value;
+    if (approvalFlow.value.status === "rejected") {
+      return `流程「${approvalFlow.value.flow_name}」已拒绝`;
+    }
+    if (!approvalFlow.value.current_scope && !task) {
+      return `流程「${approvalFlow.value.flow_name}」将在首次选择执行模式时匹配审批分支`;
+    }
+    if (approvalFlow.value.status === "completed") {
+      return `流程「${approvalFlow.value.flow_name}」已完成；当前发布单没有需要等待的 CD 环节，待部署节点已自动放行`;
+    }
+    if (approvalFlow.value.current_node_code === "waiting_deploy") {
+      if (cdApprovalAgentSteps.value.length > 0) {
+        return `流程「${approvalFlow.value.flow_name}」的 ${cdApprovalAgentSummary.value}；当前等待发起 CD 部署`;
+      }
+      return `流程「${approvalFlow.value.flow_name}」已完成构建，当前处于待部署状态；发起部署后将继续匹配 CD 审批分支`;
+    }
+    if (task) {
+      const gateText = task.gate === "before_ci" ? "CI 前" : task.gate === "before_cd" ? "CD 前" : "整单执行前";
+      return `流程「${approvalFlow.value.flow_name}」正在等待${gateText}节点「${task.node_name}」审批（${approvalFlowScopeText(approvalFlow.value.current_scope)}）`;
+    }
+    return `流程「${approvalFlow.value.flow_name}」已放行，等待 ${approvalFlow.value.current_gate === "before_cd" ? "CD" : approvalFlow.value.current_gate === "before_ci" ? "CI" : "整单"} 执行`;
+  }
   if (!order.value?.approval_required) {
     return "当前模板未启用审批流";
   }
@@ -1995,6 +2094,12 @@ const approvalStatusSummary = computed(() => {
       return "审批流程已完成，可在此查看审批记录与审批人";
   }
 });
+
+function approvalFlowScopeText(scope: string) {
+  if (scope === "build_only") return "仅构建";
+  if (scope === "deploy_only") return "仅部署";
+  return "完整发布";
+}
 
 const approvalActionModalTitle = computed(() => {
   switch (approvalActionMode.value) {
@@ -2460,6 +2565,72 @@ function syncVisibleLogStreams() {
   });
 }
 
+function applyRealtimeSnapshot(snapshot: ReleaseOrderRealtimeSnapshot) {
+  const currentOrderUpdatedAt = Date.parse(String(order.value?.updated_at || ""));
+  const incomingOrderUpdatedAt = Date.parse(
+    String(snapshot.order?.updated_at || ""),
+  );
+  // An action response may reach the page before an older cached stream frame.
+  // The order's persisted updated_at is monotonic for those state changes, so do
+  // not let an older representation roll the page back while the stream catches up.
+  if (
+    Number.isFinite(currentOrderUpdatedAt) &&
+    Number.isFinite(incomingOrderUpdatedAt) &&
+    incomingOrderUpdatedAt < currentOrderUpdatedAt
+  ) {
+    if (!snapshot.value_progress_visible || !canViewParamSnapshot.value) {
+      valueProgress.value = [];
+    }
+    return;
+  }
+  const previousBusinessStatus = currentBusinessStatus.value;
+
+  order.value = snapshot.order;
+  executions.value = [...(snapshot.executions || [])].sort(
+    (a, b) => scopeSort(a.pipeline_scope) - scopeSort(b.pipeline_scope),
+  );
+  steps.value = snapshot.steps || [];
+  valueProgress.value =
+    snapshot.value_progress_visible && canViewParamSnapshot.value
+      ? snapshot.value_progress || []
+      : [];
+  artifactMetadata.value = snapshot.artifact_metadata || [];
+  approvalRecords.value = snapshot.approval_records || [];
+  concurrentBatchProgress.value = snapshot.concurrent_batch_progress || null;
+
+  const pipelineStageView = snapshot.pipeline_stage_view;
+  pipelineStageModuleVisible.value = Boolean(pipelineStageView?.show_module);
+  pipelineStageExecutorType.value = String(
+    pipelineStageView?.executor_type || "",
+  ).trim();
+  pipelineStageMessage.value = String(pipelineStageView?.message || "").trim();
+  pipelineStages.value = pipelineStageView?.data || [];
+  lastPipelineStageRefreshAt.value = Date.now();
+
+  if (selectedPipelineStage.value) {
+    selectedPipelineStage.value =
+      pipelineStages.value.find(
+        (item) => item.id === selectedPipelineStage.value?.id,
+      ) || selectedPipelineStage.value;
+  }
+  if (selectedDiagnosisStage.value) {
+    selectedDiagnosisStage.value =
+      pipelineStages.value.find(
+        (item) => item.id === selectedDiagnosisStage.value?.id,
+      ) || selectedDiagnosisStage.value;
+  }
+
+  syncVisibleLogStreams();
+
+  if (previousBusinessStatus !== currentBusinessStatus.value) {
+    if (shouldLoadPrecheck.value) {
+      schedulePrecheckRefresh(0);
+    } else {
+      precheck.value = null;
+    }
+  }
+}
+
 async function loadDetail(options?: { silent?: boolean }) {
   const silent = Boolean(options?.silent);
   if (!orderID.value) {
@@ -2560,7 +2731,7 @@ async function loadDetail(options?: { silent?: boolean }) {
       );
     }
 
-    await loadApprovalRecords({ silent: true });
+    await Promise.all([loadApprovalRecords({ silent: true }), loadApprovalFlow({ silent: true })]);
     if (orderResp.data.is_concurrent) {
       await loadConcurrentBatchProgress({ silent });
     } else {
@@ -2701,25 +2872,50 @@ async function loadPrecheck(options?: {
     precheck.value = null;
     return;
   }
+  const requestedAction = options?.action || currentPrecheckAction.value;
+  if (precheckRequest) {
+    const inFlightAction = precheckRequestAction;
+    await precheckRequest;
+    if (
+      inFlightAction !== requestedAction &&
+      orderID.value &&
+      shouldLoadPrecheck.value
+    ) {
+      await loadPrecheck(options);
+    }
+    return;
+  }
   const silent = Boolean(options?.silent);
   if (!silent) {
     precheckLoading.value = true;
   }
-  try {
-    const response = await getReleaseOrderPrecheck(
-      orderID.value,
-      options?.action || currentPrecheckAction.value,
-    );
-    precheck.value = response.data;
-  } catch (error) {
-    if (!silent) {
-      message.error(extractHTTPErrorMessage(error, "执行前预检加载失败"));
+  precheckQuerying.value = true;
+  precheckRequestAction = requestedAction;
+  const requestSequence = ++precheckRequestSequence;
+  const request = (async () => {
+    try {
+      const response = await getReleaseOrderPrecheck(
+        orderID.value,
+        requestedAction,
+      );
+      precheck.value = response.data;
+    } catch (error) {
+      if (!silent) {
+        message.error(extractHTTPErrorMessage(error, "执行前预检加载失败"));
+      }
+    } finally {
+      if (!silent) {
+        precheckLoading.value = false;
+      }
+      if (requestSequence === precheckRequestSequence) {
+        precheckQuerying.value = false;
+        precheckRequest = null;
+        precheckRequestAction = null;
+      }
     }
-  } finally {
-    if (!silent) {
-      precheckLoading.value = false;
-    }
-  }
+  })();
+  precheckRequest = request;
+  await request;
 }
 
 async function loadApprovalRecords(options?: { silent?: boolean }) {
@@ -2750,6 +2946,22 @@ async function loadApprovalRecords(options?: { silent?: boolean }) {
   } finally {
     if (!silent) {
       approvalRecordsLoading.value = false;
+    }
+  }
+}
+
+async function loadApprovalFlow(options?: { silent?: boolean }) {
+  if (!orderID.value) {
+    approvalFlow.value = null;
+    return;
+  }
+  try {
+    const response = await getReleaseOrderApprovalFlow(orderID.value);
+    approvalFlow.value = response.data;
+  } catch (error) {
+    approvalFlow.value = null;
+    if (!options?.silent) {
+      message.error(extractHTTPErrorMessage(error, "发布单审批流程加载失败"));
     }
   }
 }
@@ -2950,7 +3162,16 @@ async function handleCancel() {
     const response = await cancelReleaseOrder(order.value.id);
     order.value = response.data;
     message.success("发布单取消成功");
-    await loadDetail({ silent: true });
+    try {
+      await refreshRealtimeSnapshot();
+    } catch (refreshError) {
+      message.warning(
+        extractHTTPErrorMessage(
+          refreshError,
+          "发布单已取消，但实时详情刷新失败，请稍后重试",
+        ),
+      );
+    }
   } catch (error) {
     message.error(extractHTTPErrorMessage(error, "发布单取消失败"));
   } finally {
@@ -3026,16 +3247,19 @@ async function executeCurrentOrder(
           ? await deployReleaseOrder(order.value.id)
           : await executeReleaseOrder(order.value.id);
     order.value = response.data;
+    const approvalStarted = currentBusinessStatus.value === "pending_approval" || currentBusinessStatus.value === "approving";
     message.success(
       options?.successMessage ||
-        (action === "build"
+        (approvalStarted
+          ? "审批流程已发起，审批通过后可继续执行发布"
+          : action === "build"
           ? "仅构建已提交，正在调度执行"
           : action === "deploy"
             ? "发布已提交，正在调度执行"
             : "发布已提交，正在调度执行"),
     );
     try {
-      await loadDetail({ silent: true });
+      await refreshRealtimeSnapshot();
     } catch (refreshError) {
       message.warning(
         extractHTTPErrorMessage(
@@ -3098,6 +3322,19 @@ async function handleApprovalAction() {
   approvalActing.value = true;
   try {
     let response;
+    const customTask = currentApprovalFlowTask.value;
+    if (hasCustomApprovalFlow.value && customTask && approvalActionMode.value !== "submit") {
+      if (approvalActionMode.value === "approve") {
+        await approveReleaseOrderApprovalFlowTask(order.value.id, customTask.id, { comment });
+        message.success("流程节点已通过");
+      } else {
+        await rejectReleaseOrderApprovalFlowTask(order.value.id, customTask.id, { comment });
+        message.success("流程节点已拒绝");
+      }
+      closeApprovalActionModal();
+      await loadApprovalFlow({ silent: true });
+      return;
+    }
     switch (approvalActionMode.value) {
       case "submit":
         response = await submitReleaseOrderApproval(order.value.id, { comment });
@@ -3116,8 +3353,16 @@ async function handleApprovalAction() {
     }
     order.value = response.data;
     closeApprovalActionModal();
-    await loadApprovalRecords({ silent: true });
-    await loadDetail({ silent: true });
+    try {
+      await refreshRealtimeSnapshot();
+    } catch (refreshError) {
+      message.warning(
+        extractHTTPErrorMessage(
+          refreshError,
+          "审批已完成，但实时详情刷新失败，请稍后重试",
+        ),
+      );
+    }
   } catch (error) {
     message.error(extractHTTPErrorMessage(error, "审批操作失败"));
   } finally {
@@ -3180,21 +3425,59 @@ function handleEdit() {
   void router.push(`/releases/${order.value.id}/edit`);
 }
 
-function stopAutoRefresh() {
-  if (autoRefreshTimer.value !== null) {
-    window.clearInterval(autoRefreshTimer.value);
-    autoRefreshTimer.value = null;
+function canPollPrecheck() {
+  return (
+    Boolean(orderID.value) &&
+    shouldLoadPrecheck.value &&
+    !document.hidden &&
+    !loading.value &&
+    !querying.value &&
+    !precheckLoading.value &&
+    !precheckQuerying.value &&
+    !cancelling.value &&
+    !executing.value &&
+    !recovering.value &&
+    !approvalActing.value &&
+    !executeLocked.value
+  );
+}
+
+function clearPrecheckRefreshTimer() {
+  if (precheckRefreshTimer.value !== null) {
+    window.clearTimeout(precheckRefreshTimer.value);
+    precheckRefreshTimer.value = null;
   }
 }
 
-function startAutoRefresh() {
-  stopAutoRefresh();
-  autoRefreshTimer.value = window.setInterval(() => {
-    if (document.hidden || cancelling.value || !shouldAutoRefresh.value) {
-      return;
+function schedulePrecheckRefresh(delayMs = PRECHECK_REFRESH_INTERVAL_MS) {
+  if (!precheckRefreshActive) {
+    return;
+  }
+  clearPrecheckRefreshTimer();
+  precheckRefreshTimer.value = window.setTimeout(() => {
+    precheckRefreshTimer.value = null;
+    void runPrecheckRefresh();
+  }, Math.max(0, delayMs));
+}
+
+async function runPrecheckRefresh() {
+  try {
+    if (canPollPrecheck()) {
+      await loadPrecheck({ silent: true });
     }
-    void loadDetail({ silent: true });
-  }, AUTO_REFRESH_INTERVAL_MS);
+  } finally {
+    schedulePrecheckRefresh();
+  }
+}
+
+function startPrecheckRefresh() {
+  precheckRefreshActive = true;
+  schedulePrecheckRefresh();
+}
+
+function stopPrecheckRefresh() {
+  precheckRefreshActive = false;
+  clearPrecheckRefreshTimer();
 }
 
 function closeAllLogStreams() {
@@ -3207,11 +3490,13 @@ onMounted(async () => {
   await loadDetail();
   await nextTick();
   await tryAutoExecuteFastRelease();
-  startAutoRefresh();
+  startRealtimeUpdates();
+  startPrecheckRefresh();
 });
 
 onBeforeUnmount(() => {
-  stopAutoRefresh();
+  stopPrecheckRefresh();
+  stopRealtimeUpdates();
   closeAllLogStreams();
 });
 </script>
@@ -4174,14 +4459,18 @@ onBeforeUnmount(() => {
               <div class="approval-meta-item">
                 <span class="approval-meta-label">审批方式</span>
                 <span class="approval-meta-value">{{
-                  approvalModeText(order?.approval_mode)
+                  approvalModeText(currentApprovalFlowTask?.approval_mode || order?.approval_mode)
                 }}</span>
               </div>
               <div class="approval-meta-item">
                 <span class="approval-meta-label">审批人</span>
                 <span class="approval-meta-value">{{
-                  (order?.approval_approver_names || []).join(" / ") || "-"
+                  (currentApprovalFlowTask?.approver_names || order?.approval_approver_names || []).join(" / ") || "-"
                 }}</span>
+              </div>
+              <div v-if="approvalFlow" class="approval-meta-item">
+                <span class="approval-meta-label">流程节点</span>
+                <span class="approval-meta-value">{{ currentApprovalFlowTask?.node_name || approvalFlow.flow_name }}</span>
               </div>
               <div class="approval-meta-item" v-if="order?.approved_at">
                 <span class="approval-meta-label">通过时间</span>
@@ -4194,6 +4483,33 @@ onBeforeUnmount(() => {
                 <span class="approval-meta-value">{{
                   formatTime(order?.rejected_at || null)
                 }}</span>
+              </div>
+            </div>
+            <div
+              v-if="cdApprovalAgentSteps.length > 0"
+              class="approval-agent-checks"
+            >
+              <div class="approval-agent-checks-head">
+                <span class="approval-agent-checks-icon"><RobotOutlined /></span>
+                <div>
+                  <strong>CD 审核 · Agent 自动检查</strong>
+                  <span>{{ cdApprovalAgentSummary }}</span>
+                </div>
+              </div>
+              <div class="approval-agent-check-list">
+                <div
+                  v-for="step in cdApprovalAgentSteps"
+                  :key="step.id || step.step_code"
+                  class="approval-agent-check-item"
+                >
+                  <div>
+                    <strong>{{ step.step_name || "Agent 任务" }}</strong>
+                    <span>{{ step.message || "等待执行" }}</span>
+                  </div>
+                  <a-tag :class="['status-tag', hookToneClass(step.status)]">
+                    {{ hookStatusText(step.status) }}
+                  </a-tag>
+                </div>
               </div>
             </div>
           </div>
@@ -6173,6 +6489,79 @@ onBeforeUnmount(() => {
   font-size: 13px;
   font-weight: 700;
   word-break: break-word;
+}
+
+.approval-agent-checks {
+  padding: 14px;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 12px;
+  background: rgba(239, 246, 255, 0.72);
+}
+
+.approval-agent-checks-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.approval-agent-checks-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  border-radius: 10px;
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.approval-agent-checks-head strong,
+.approval-agent-checks-head span {
+  display: block;
+}
+
+.approval-agent-checks-head strong {
+  color: var(--color-text-main);
+  font-size: 13px;
+}
+
+.approval-agent-checks-head span {
+  margin-top: 3px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.approval-agent-check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.approval-agent-check-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(147, 197, 253, 0.32);
+}
+
+.approval-agent-check-item strong,
+.approval-agent-check-item span {
+  display: block;
+}
+
+.approval-agent-check-item strong {
+  color: var(--color-text-main);
+  font-size: 12px;
+}
+
+.approval-agent-check-item span {
+  margin-top: 3px;
+  color: var(--color-text-soft);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .approval-records {
