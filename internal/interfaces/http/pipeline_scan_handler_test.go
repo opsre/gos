@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +16,58 @@ import (
 	scandomain "gos/internal/domain/pipelinescan"
 	userdomain "gos/internal/domain/user"
 )
+
+func TestPipelineScanHandlerDisablesBuiltinRule(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const builtinID = "psr-builtin-gos-artifact-url"
+	scanRepo := &pipelineScanHandlerScanRepoFake{rules: []scandomain.Rule{{
+		ID:                       builtinID,
+		RuleCode:                 "artifact.gos.artifact_url.standard",
+		RuleName:                 "GOS 制品地址输出规范",
+		Category:                 scandomain.CategoryArtifact,
+		Severity:                 scandomain.SeverityWarning,
+		Enabled:                  true,
+		Builtin:                  true,
+		TemplateValidationScopes: []string{"ci"},
+		ScopeJSON:                `{}`,
+		RuleDSL:                  `{"matcher":{"type":"regex","pattern":"GOS_ARTIFACT_URL"}}`,
+		Message:                  "缺少 GOS_ARTIFACT_URL 制品地址输出",
+		Suggestion:               "输出 GOS_ARTIFACT_URL",
+	}}}
+	manager := usecase.NewPipelineScanManager(
+		scanRepo,
+		&pipelineScanHandlerPipelineRepoFake{pipelines: map[string]pipelinedomain.Pipeline{}},
+		&pipelineScanHandlerJenkinsFake{},
+	)
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		setCurrentUser(c, userdomain.User{ID: "usr-1"})
+		c.Next()
+	})
+	NewPipelineScanHandler(manager, pipelineScanHandlerAllowAllAuthorizer{}).RegisterRoutes(router)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/pipeline-scan/rules/"+builtinID+"/enabled",
+		strings.NewReader(`{"enabled":false}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var resp PipelineScanRuleDataResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Data.ID != builtinID || resp.Data.Enabled {
+		t.Fatalf("response = %#v, want disabled builtin rule", resp.Data)
+	}
+}
 
 func TestPipelineScanHandlerScanAllPipelines(t *testing.T) {
 	gin.SetMode(gin.TestMode)

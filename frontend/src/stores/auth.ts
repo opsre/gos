@@ -44,6 +44,7 @@ export const useAuthStore = defineStore('auth', () => {
     const response = await loginAPI({ username, password })
     setToken(response.data.access_token)
     try { localStorage.removeItem('gos-seen-announcement-ids') } catch { /* ignore */ }
+    try { localStorage.removeItem('gos-seen-workflow-notification-ids') } catch { /* ignore */ }
     await loadMe(true)
   }
 

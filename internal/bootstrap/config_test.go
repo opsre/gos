@@ -56,6 +56,16 @@ func TestResolveConfigPathUsesDefaultWhenEmpty(t *testing.T) {
 	}
 }
 
+func TestDefaultConfigEnablesJenkinsAutoSync(t *testing.T) {
+	cfg := defaultConfig()
+	if !cfg.Jenkins.AutoSyncEnabled {
+		t.Fatal("Jenkins auto sync should default to enabled so a new deployment pulls pipelines on startup")
+	}
+	if cfg.Jenkins.AutoSyncIntervalSec <= 0 {
+		t.Fatalf("Jenkins auto sync interval = %d, want a positive interval", cfg.Jenkins.AutoSyncIntervalSec)
+	}
+}
+
 func TestLoadConfigFromPathAcceptsReleaseEnvironmentSettings(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.json")

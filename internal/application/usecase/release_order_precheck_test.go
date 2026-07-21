@@ -12,6 +12,46 @@ import (
 	domain "gos/internal/domain/release"
 )
 
+func TestPrecheckExecuteReturnsConflictOrderIdentity(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Date(2026, 7, 21, 9, 0, 0, 0, time.UTC)
+	manager.now = func() time.Time { return now }
+
+	owner := testReleaseOrder("ro-running-owner", "RO-RUNNING-OWNER", domain.OrderStatusRunning, now.Add(-time.Minute))
+	owner.TemplateID = ""
+	owner.TemplateName = ""
+	if err := repo.Create(ctx, owner, nil, nil, nil); err != nil {
+		t.Fatalf("Create owner failed: %v", err)
+	}
+
+	waiting := testReleaseOrder("ro-waiting", "RO-WAITING", domain.OrderStatusPending, now)
+	waiting.TemplateID = ""
+	waiting.TemplateName = ""
+	executions := []domain.ReleaseOrderExecution{
+		testReleaseExecution(waiting.ID, "exec-waiting-ci", domain.PipelineScopeCI, domain.ExecutionStatusPending, now),
+	}
+	if err := repo.Create(ctx, waiting, executions, nil, nil); err != nil {
+		t.Fatalf("Create waiting order failed: %v", err)
+	}
+
+	precheck, err := manager.PrecheckExecute(ctx, waiting.ID)
+	if err != nil {
+		t.Fatalf("PrecheckExecute failed: %v", err)
+	}
+	if precheck.Executable {
+		t.Fatal("precheck executable = true, want blocked by running owner")
+	}
+	if precheck.ConflictOrderID != owner.ID {
+		t.Fatalf("conflict_order_id = %q, want %q", precheck.ConflictOrderID, owner.ID)
+	}
+	if precheck.ConflictOrderNo != owner.OrderNo {
+		t.Fatalf("conflict_order_no = %q, want %q", precheck.ConflictOrderNo, owner.OrderNo)
+	}
+}
+
 func TestPrecheckExecuteBlocksViolatedTemplate(t *testing.T) {
 	t.Parallel()
 

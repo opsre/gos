@@ -3,6 +3,7 @@ import {
   AppstoreOutlined,
   ClusterOutlined,
   DatabaseOutlined,
+  HomeOutlined,
   LogoutOutlined,
   RocketOutlined,
   SettingOutlined,
@@ -11,13 +12,17 @@ import {
 import { message } from 'ant-design-vue'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { listReleaseApprovalWorkbenchTasks } from '../api/release'
 import { useAuthStore } from '../stores/auth'
+import { releaseApprovalTasksChangedEvent } from '../utils/release-approval-events'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const siderCollapsed = ref(false)
 const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1440)
+const hasPendingApprovalTasks = ref(false)
+let pendingApprovalRefreshTimer: ReturnType<typeof window.setInterval> | null = null
 
 const activeMenuKey = computed(() => {
   if (route.path.startsWith('/system/users')) {
@@ -74,6 +79,9 @@ const activeMenuKey = computed(() => {
   if (route.path.startsWith('/components/agent-tasks')) {
     return ['agent-task-management']
   }
+  if (route.path.startsWith('/release-search')) {
+    return ['release-home']
+  }
   if (route.path.startsWith('/releases')) {
     return ['release-orders']
   }
@@ -115,6 +123,9 @@ const openMenuKeys = computed(() => {
   }
   if (route.path.startsWith('/releases')) {
     return ['release-management']
+  }
+  if (route.path.startsWith('/release-search')) {
+    return []
   }
   if (route.path.startsWith('/release-schedules')) {
     return ['release-management']
@@ -281,6 +292,10 @@ function goToReleaseOrders() {
   void router.push('/releases')
 }
 
+function goToReleaseSearch() {
+  void router.push('/release-search')
+}
+
 function goToReleaseSchedules() {
   void router.push('/release-schedules')
 }
@@ -338,13 +353,42 @@ function toggleSider() {
   siderCollapsed.value = !siderCollapsed.value
 }
 
+async function refreshPendingApprovalIndicator() {
+  try {
+    const response = await listReleaseApprovalWorkbenchTasks({ page: 1, page_size: 1 })
+    hasPendingApprovalTasks.value = response.total > 0
+  } catch {
+    // Keep the previous state when a background refresh temporarily fails.
+  }
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    void refreshPendingApprovalIndicator()
+  }
+}
+
 onMounted(() => {
   handleResize()
+  void refreshPendingApprovalIndicator()
+  pendingApprovalRefreshTimer = window.setInterval(() => {
+    void refreshPendingApprovalIndicator()
+  }, 30_000)
   window.addEventListener('resize', handleResize)
+  window.addEventListener('focus', refreshPendingApprovalIndicator)
+  window.addEventListener(releaseApprovalTasksChangedEvent, refreshPendingApprovalIndicator)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
+  if (pendingApprovalRefreshTimer !== null) {
+    window.clearInterval(pendingApprovalRefreshTimer)
+    pendingApprovalRefreshTimer = null
+  }
   window.removeEventListener('resize', handleResize)
+  window.removeEventListener('focus', refreshPendingApprovalIndicator)
+  window.removeEventListener(releaseApprovalTasksChangedEvent, refreshPendingApprovalIndicator)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
 
@@ -360,7 +404,7 @@ onUnmounted(() => {
       :trigger="null"
       collapsible
     >
-      <div class="sider-brand" @click="goToApplications">
+      <div class="sider-brand" @click="goToReleaseSearch">
         <div class="brand-mark">G</div>
         <div class="brand-copy">
           <div class="brand-title">GOS Release</div>
@@ -373,6 +417,13 @@ onUnmounted(() => {
         :open-keys="visibleOpenMenuKeys"
         class="sider-menu"
       >
+        <a-menu-item key="release-home" @click="goToReleaseSearch">
+          <template #icon>
+            <HomeOutlined />
+          </template>
+          首页
+        </a-menu-item>
+
         <a-sub-menu v-if="showApplicationMenu" key="application-management">
           <template #icon>
             <AppstoreOutlined />
@@ -402,7 +453,10 @@ onUnmounted(() => {
           <a-menu-item key="release-orders" @click="goToReleaseOrders">发布单</a-menu-item>
           <a-menu-item key="release-order-schedules" @click="goToReleaseSchedules">预约发布</a-menu-item>
           <a-menu-item key="release-approval-workbench" @click="goToReleaseApprovalWorkbench">
-            审批待办
+            <span class="sidebar-approval-menu-label">
+              <span>审批待办</span>
+              <span v-if="hasPendingApprovalTasks" class="sidebar-approval-menu-dot" aria-label="存在待审批任务"></span>
+            </span>
           </a-menu-item>
           <a-menu-item v-if="canManageReleaseTemplate" key="release-templates" @click="goToReleaseTemplates">
             发布模板
@@ -497,7 +551,7 @@ onUnmounted(() => {
       <div class="sider-footer">
         <div class="sider-footer-row">
           <div class="sider-footer-version">
-            <span>v1.3</span>
+            <span>v1.3.1</span>
             <a href="https://github.com/yl1664907302/gos" target="_blank" class="github-link" title="访问 GitHub">
               <svg class="github-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" fill="currentColor"/>
@@ -879,6 +933,22 @@ onUnmounted(() => {
 
 .sider-menu :deep(.ant-menu-sub.ant-menu-inline .ant-menu-item-selected::before) {
   display: none;
+}
+
+.sidebar-approval-menu-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-approval-menu-dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.16);
 }
 
 .sider-footer {

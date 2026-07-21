@@ -3,6 +3,7 @@ package sqlrepo
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -130,8 +131,8 @@ func TestPipelineScanRepositorySeedsBuiltinGOSArtifactURLRule(t *testing.T) {
 	if got.RuleName != "GOS 制品地址输出规范" {
 		t.Fatalf("RuleName = %q, want GOS 制品地址输出规范", got.RuleName)
 	}
-	if !got.Enabled {
-		t.Fatalf("Enabled = false, want true")
+	if got.Enabled {
+		t.Fatalf("Enabled = true, want false for a fresh deployment")
 	}
 	if len(got.TemplateValidationScopes) != 1 || got.TemplateValidationScopes[0] != "ci" {
 		t.Fatalf("TemplateValidationScopes = %#v, want ci", got.TemplateValidationScopes)
@@ -142,6 +143,35 @@ func TestPipelineScanRepositorySeedsBuiltinGOSArtifactURLRule(t *testing.T) {
 	if got.RuleDSL == "" || got.Message == "" || got.Suggestion == "" {
 		t.Fatalf("seeded rule content is incomplete: %#v", got)
 	}
+}
+
+func TestPipelineScanRepositoryRecordsAutomaticV131MigrationOnce(t *testing.T) {
+	t.Parallel()
+
+	repo := newTestPipelineScanRepository(t)
+	ctx := context.Background()
+	const version = "deploy_platform_v1_3_1_pipeline_scan_rules"
+
+	assertMigrationCount := func(want int) {
+		t.Helper()
+		var got int
+		if err := repo.db.QueryRowContext(
+			ctx,
+			`SELECT COUNT(*) FROM gos_schema_migration WHERE version = ?;`,
+			version,
+		).Scan(&got); err != nil {
+			t.Fatalf("query migration record failed: %v", err)
+		}
+		if got != want {
+			t.Fatalf("migration record count = %d, want %d", got, want)
+		}
+	}
+
+	assertMigrationCount(1)
+	if err := repo.InitSchema(ctx); err != nil {
+		t.Fatalf("second InitSchema failed: %v", err)
+	}
+	assertMigrationCount(1)
 }
 
 func TestPipelineScanRepositoryPreservesBuiltinEnabledOnReseed(t *testing.T) {
@@ -169,7 +199,7 @@ func TestPipelineScanRepositoryPreservesBuiltinEnabledOnReseed(t *testing.T) {
 		RuleName:                 builtin.RuleName,
 		Category:                 builtin.Category,
 		Severity:                 builtin.Severity,
-		Enabled:                  false,
+		Enabled:                  true,
 		TemplateValidationScopes: append([]string(nil), builtin.TemplateValidationScopes...),
 		ScopeJSON:                builtin.ScopeJSON,
 		RuleDSL:                  builtin.RuleDSL,
@@ -186,11 +216,97 @@ func TestPipelineScanRepositoryPreservesBuiltinEnabledOnReseed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetRuleByID failed: %v", err)
 	}
-	if got.Enabled {
-		t.Fatalf("Enabled = true after reseed, want false")
+	if !got.Enabled {
+		t.Fatalf("Enabled = false after reseed, want preserved true")
 	}
 	if !got.Builtin || got.RuleName != "GOS 制品地址输出规范" {
 		t.Fatalf("builtin metadata was not preserved after reseed: %#v", got)
+	}
+}
+
+func TestPipelineScanRepositoryMigratesLegacyBuiltinRuleID(t *testing.T) {
+	t.Parallel()
+
+	repo := newTestPipelineScanRepository(t)
+	ctx := context.Background()
+	const (
+		builtinID = "psr-builtin-gos-artifact-url"
+		legacyID  = "psr-legacy-gos-artifact-url"
+	)
+
+	builtin, err := repo.GetRuleByID(ctx, builtinID)
+	if err != nil {
+		t.Fatalf("GetRuleByID failed: %v", err)
+	}
+	if _, err := repo.UpdateRule(ctx, builtin.ID, scandomain.RuleUpdateInput{
+		RuleCode:                 builtin.RuleCode,
+		RuleName:                 builtin.RuleName,
+		Category:                 builtin.Category,
+		Severity:                 builtin.Severity,
+		Enabled:                  false,
+		TemplateValidationScopes: append([]string(nil), builtin.TemplateValidationScopes...),
+		ScopeJSON:                builtin.ScopeJSON,
+		RuleDSL:                  builtin.RuleDSL,
+		Message:                  builtin.Message,
+		Suggestion:               builtin.Suggestion,
+	}); err != nil {
+		t.Fatalf("disable builtin rule failed: %v", err)
+	}
+
+	now := time.Unix(1_710_000_100, 0).UTC()
+	if err := repo.SaveScan(ctx, scandomain.Result{
+		ID:            "psres-legacy-rule-id",
+		PipelineID:    "pln-legacy-rule-id",
+		PipelineName:  "legacy-rule-id",
+		ScanStatus:    scandomain.ScanStatusWarning,
+		TotalFindings: 1,
+		WarningCount:  1,
+		ScriptHash:    "legacy-rule-id",
+		LastScannedAt: now,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}, []scandomain.Finding{{
+		ID:          "psf-legacy-rule-id",
+		PipelineID:  "pln-legacy-rule-id",
+		RuleID:      builtinID,
+		RuleCode:    builtin.RuleCode,
+		RuleName:    builtin.RuleName,
+		Severity:    builtin.Severity,
+		Message:     builtin.Message,
+		Suggestion:  builtin.Suggestion,
+		DetailsJSON: `{}`,
+		Status:      scandomain.FindingStatusOpen,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}}); err != nil {
+		t.Fatalf("SaveScan failed: %v", err)
+	}
+	if _, err := repo.db.ExecContext(ctx, `UPDATE pipeline_scan_findings SET rule_id = ? WHERE rule_id = ?;`, legacyID, builtinID); err != nil {
+		t.Fatalf("prepare legacy finding failed: %v", err)
+	}
+	if _, err := repo.db.ExecContext(ctx, `UPDATE pipeline_scan_rules SET id = ? WHERE id = ?;`, legacyID, builtinID); err != nil {
+		t.Fatalf("prepare legacy rule failed: %v", err)
+	}
+
+	if err := repo.InitSchema(ctx); err != nil {
+		t.Fatalf("InitSchema migration failed: %v", err)
+	}
+	migrated, err := repo.GetRuleByID(ctx, builtinID)
+	if err != nil {
+		t.Fatalf("canonical builtin rule missing after migration: %v", err)
+	}
+	if migrated.Enabled {
+		t.Fatal("builtin enabled state was reset during ID migration")
+	}
+	if _, err := repo.GetRuleByID(ctx, legacyID); !errors.Is(err, scandomain.ErrRuleNotFound) {
+		t.Fatalf("legacy rule lookup error = %v, want ErrRuleNotFound", err)
+	}
+	_, findings, err := repo.GetResultByPipelineID(ctx, "pln-legacy-rule-id")
+	if err != nil {
+		t.Fatalf("GetResultByPipelineID failed: %v", err)
+	}
+	if len(findings) != 1 || findings[0].RuleID != builtinID {
+		t.Fatalf("migrated findings = %#v, want rule ID %q", findings, builtinID)
 	}
 }
 

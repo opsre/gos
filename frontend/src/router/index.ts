@@ -26,6 +26,7 @@ const LoginView = () => import('../views/login/LoginView.vue')
 const ReleaseOrderCreateView = () => import('../views/release/ReleaseOrderCreateView.vue')
 const ReleaseOrderDetailView = () => import('../views/release/ReleaseOrderDetailView.vue')
 const ReleaseOrderListView = () => import('../views/release/ReleaseOrderListView.vue')
+const ReleaseOrderSearchView = () => import('../views/release/ReleaseOrderSearchView.vue')
 const ReleaseOrderScheduleView = () => import('../views/release/ReleaseOrderScheduleView.vue')
 const ReleaseApprovalWorkbenchView = () => import('../views/release/ReleaseApprovalWorkbenchView.vue')
 const ApprovalFlowManagementView = () => import('../views/release/ApprovalFlowManagementView.vue')
@@ -56,7 +57,7 @@ function normalizePermissions(metaPermission: string | string[] | undefined): st
 
 function resolveFirstAccessiblePath(authStore: ReturnType<typeof useAuthStore>) {
   void authStore
-  return '/releases'
+  return '/release-search'
 }
 
 const ROUTE_CHUNK_RELOAD_KEY = 'gos-route-chunk-reload-path'
@@ -85,7 +86,7 @@ export const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/applications',
+      redirect: '/release-search',
     },
     {
       path: '/login',
@@ -237,6 +238,12 @@ export const router = createRouter({
           name: 'release-order-list',
           component: ReleaseOrderListView,
           meta: { title: '发布单' },
+        },
+        {
+          path: '/release-search',
+          name: 'release-order-search',
+          component: ReleaseOrderSearchView,
+          meta: { title: '首页' },
         },
         {
           path: '/release-approvals',

@@ -28,6 +28,8 @@ import {
   createApplicationRollbackOrder,
   getApplicationRollbackCapability,
   getApplicationRollbackPrecheck,
+  listReleaseApprovalWorkbenchRecords,
+  listReleaseApprovalWorkbenchTasks,
 } from '../../api/release'
 import { useApplicationListStore } from '../../stores/application-list'
 import { useAuthStore } from '../../stores/auth'
@@ -37,16 +39,34 @@ import type {
   ApplicationRollbackPrecheck,
   ApplicationRollbackPrecheckParam,
   AppReleaseStateSummary,
+  ReleaseApprovalWorkbenchRecord,
+  ReleaseApprovalWorkbenchTask,
   ReleaseOperationType,
   ReleaseOrder,
   ReleaseOrderBusinessStatus,
+  ReleaseOrderStatus,
   RollbackSupportedAction,
 } from '../../types/release'
 import { extractHTTPErrorMessage } from '../../utils/http-error'
 
 type MetricTone = 'default' | 'success' | 'running' | 'danger' | 'warning'
 type OverviewCardKey = 'pending' | 'running' | 'failed' | 'ready'
+type NotificationTabKey = 'announcement' | 'workflow'
+type WorkflowNotificationTone = 'pending' | 'approved' | 'rejected' | 'running' | 'success' | 'failed' | 'default'
+
+interface WorkflowNotification {
+  id: string
+  releaseOrderID: string
+  title: string
+  content: string
+  statusText: string
+  occurredAt: string
+  tone: WorkflowNotificationTone
+}
+
 const gitOpsEnvOrder = ['dev', 'test', 'prod']
+const seenAnnouncementStorageKey = 'gos-seen-announcement-ids'
+const seenWorkflowNotificationStorageKey = 'gos-seen-workflow-notification-ids'
 
 function releaseBusinessStatus(order: Pick<ReleaseOrder, 'status' | 'business_status'>): ReleaseOrderBusinessStatus {
   if (order.business_status) {
@@ -155,25 +175,123 @@ const deletingId = ref('')
 const dataSource = ref<Application[]>([])
 const announcements = ref<Announcement[]>([])
 const announcementPopoverVisible = ref(false)
+const notificationTab = ref<NotificationTabKey>('announcement')
 const lastSeenAnnouncementIds = ref<string[]>([])
-
-const hasUnreadAnnouncement = computed(() => {
-  if (announcements.value.length === 0) return false
-  const seen = new Set(lastSeenAnnouncementIds.value)
-  return announcements.value.some(a => !seen.has(a.id))
-})
+const workflowPendingTasks = ref<ReleaseApprovalWorkbenchTask[]>([])
+const workflowHandledRecords = ref<ReleaseApprovalWorkbenchRecord[]>([])
+const workflowNotificationLoading = ref(false)
+const workflowNotificationLoaded = ref(false)
+const workflowNotificationError = ref('')
+const lastSeenWorkflowNotificationIds = ref<string[]>([])
 
 const unreadCount = computed(() => {
   const seen = new Set(lastSeenAnnouncementIds.value)
   return announcements.value.filter(a => !seen.has(a.id)).length
 })
 
-function markAsRead() {
-  lastSeenAnnouncementIds.value = announcements.value.map(a => a.id)
+function workflowReleaseStatusText(status: ReleaseOrderStatus) {
+  switch (status) {
+    case 'pending_approval': return '等待审批'
+    case 'approving': return '审批中'
+    case 'approved': return '审批通过'
+    case 'building': return '构建中'
+    case 'built_waiting_deploy': return '等待部署'
+    case 'queued': return '排队中'
+    case 'deploying':
+    case 'running': return '发布中'
+    case 'deploy_success':
+    case 'success': return '发布成功'
+    case 'deploy_failed':
+    case 'failed': return '发布失败'
+    case 'rejected': return '审批拒绝'
+    case 'cancelled': return '已取消'
+    default: return '待执行'
+  }
+}
+
+function workflowNotificationTone(status: ReleaseOrderStatus, action?: ReleaseApprovalWorkbenchRecord['action']): WorkflowNotificationTone {
+  if (status === 'rejected' || action === 'reject') return 'rejected'
+  if (status === 'deploy_failed' || status === 'failed' || status === 'cancelled') return 'failed'
+  if (status === 'deploy_success' || status === 'success') return 'success'
+  if (status === 'building' || status === 'deploying' || status === 'running' || status === 'queued') return 'running'
+  if (status === 'approved' || action === 'approve') return 'approved'
+  if (status === 'pending_approval' || status === 'approving') return 'pending'
+  return 'default'
+}
+
+function workflowContextText(item: Pick<ReleaseApprovalWorkbenchTask, 'flow_name' | 'node_name'>) {
+  return [item.flow_name || '发布审批', item.node_name || '审批节点'].filter(Boolean).join(' · ')
+}
+
+const workflowNotifications = computed<WorkflowNotification[]>(() => {
+  const pending = workflowPendingTasks.value.map((item): WorkflowNotification => ({
+    id: `pending:${item.source}:${item.task_id || item.release_order_id}:${item.release_order_status}`,
+    releaseOrderID: item.release_order_id,
+    title: `待你审批 · ${item.application_name || '未命名应用'}${item.env_code ? ` · ${item.env_code}` : ''}`,
+    content: `${item.order_no} · ${workflowContextText(item)}`,
+    statusText: '待处理',
+    occurredAt: item.updated_at || item.created_at,
+    tone: 'pending',
+  }))
+  const handled = workflowHandledRecords.value.map((item): WorkflowNotification => ({
+    id: `handled:${item.source}:${item.id || item.task_id || item.release_order_id}:${item.release_order_status}`,
+    releaseOrderID: item.release_order_id,
+    title: `${item.action === 'approve' ? '你已通过' : '你已拒绝'} · ${item.application_name || '未命名应用'}${item.env_code ? ` · ${item.env_code}` : ''}`,
+    content: [item.order_no, workflowContextText(item), item.comment ? `备注：${item.comment}` : ''].filter(Boolean).join(' · '),
+    statusText: workflowReleaseStatusText(item.release_order_status),
+    occurredAt: item.created_at,
+    tone: workflowNotificationTone(item.release_order_status, item.action),
+  }))
+  return [...pending, ...handled]
+    .sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime())
+    .slice(0, 30)
+})
+
+const workflowUnreadCount = computed(() => {
+  const seen = new Set(lastSeenWorkflowNotificationIds.value)
+  return workflowNotifications.value.filter((item) => !seen.has(item.id)).length
+})
+
+const notificationUnreadCount = computed(() => unreadCount.value + workflowUnreadCount.value)
+const hasUnreadNotification = computed(() => notificationUnreadCount.value > 0)
+const activeNotificationUnreadCount = computed(() =>
+  notificationTab.value === 'announcement' ? unreadCount.value : workflowUnreadCount.value,
+)
+
+function persistSeenNotificationIDs(storageKey: string, values: string[]) {
   try {
-    localStorage.setItem('gos-seen-announcement-ids', JSON.stringify(lastSeenAnnouncementIds.value))
+    localStorage.setItem(storageKey, JSON.stringify(values))
   } catch { /* ignore */ }
+}
+
+function markCurrentNotificationsAsRead() {
+  if (notificationTab.value === 'announcement') {
+    lastSeenAnnouncementIds.value = announcements.value.map((item) => item.id)
+    persistSeenNotificationIDs(seenAnnouncementStorageKey, lastSeenAnnouncementIds.value)
+  } else {
+    lastSeenWorkflowNotificationIds.value = workflowNotifications.value.map((item) => item.id)
+    persistSeenNotificationIDs(seenWorkflowNotificationStorageKey, lastSeenWorkflowNotificationIds.value)
+  }
   announcementPopoverVisible.value = false
+}
+
+function markWorkflowNotificationAsRead(id: string) {
+  if (lastSeenWorkflowNotificationIds.value.includes(id)) return
+  lastSeenWorkflowNotificationIds.value = [...lastSeenWorkflowNotificationIds.value, id]
+  persistSeenNotificationIDs(seenWorkflowNotificationStorageKey, lastSeenWorkflowNotificationIds.value)
+}
+
+function openWorkflowNotification(item: WorkflowNotification) {
+  markWorkflowNotificationAsRead(item.id)
+  announcementPopoverVisible.value = false
+  void router.push(`/releases/${item.releaseOrderID}`)
+}
+
+function openNotificationPopover() {
+  if (unreadCount.value === 0 && workflowUnreadCount.value > 0) {
+    notificationTab.value = 'workflow'
+  }
+  announcementPopoverVisible.value = true
 }
 const total = ref(0)
 const templateApplicationIDs = ref<Set<string>>(new Set())
@@ -962,9 +1080,28 @@ async function loadActiveAnnouncements() {
   try {
     const items = await listActiveAnnouncements()
     announcements.value = Array.isArray(items) ? items : []
-    console.log('announcements loaded:', announcements.value.length, 'hasUnread:', hasUnreadAnnouncement.value, 'unreadCount:', unreadCount.value)
   } catch (err) {
     console.error('loadActiveAnnouncements failed:', err)
+  }
+}
+
+async function loadWorkflowNotifications(options: { silent?: boolean } = {}) {
+  if (!options.silent) workflowNotificationLoading.value = true
+  workflowNotificationError.value = ''
+  try {
+    const [pending, handled] = await Promise.all([
+      listReleaseApprovalWorkbenchTasks({ page: 1, page_size: 30 }),
+      listReleaseApprovalWorkbenchRecords({ page: 1, page_size: 30 }),
+    ])
+    workflowPendingTasks.value = pending.data || []
+    workflowHandledRecords.value = handled.data || []
+    workflowNotificationLoaded.value = true
+  } catch (error) {
+    if (!workflowNotificationLoaded.value) {
+      workflowNotificationError.value = extractHTTPErrorMessage(error, '流程通知加载失败')
+    }
+  } finally {
+    workflowNotificationLoading.value = false
   }
 }
 
@@ -1179,7 +1316,10 @@ function toApprovalWorkbench() {
 }
 
 async function refreshWorkbenchSilently() {
-  await loadWorkbench({ silent: true })
+  await Promise.all([
+    loadWorkbench({ silent: true }),
+    loadWorkflowNotifications({ silent: true }),
+  ])
 }
 
 function startAutoRefresh() {
@@ -1657,10 +1797,14 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 
 onMounted(() => {
   try {
-    const raw = localStorage.getItem('gos-seen-announcement-ids')
+    const raw = localStorage.getItem(seenAnnouncementStorageKey)
     if (raw) lastSeenAnnouncementIds.value = JSON.parse(raw)
   } catch { /* ignore */ }
-  loadActiveAnnouncements()
+  try {
+    const raw = localStorage.getItem(seenWorkflowNotificationStorageKey)
+    if (raw) lastSeenWorkflowNotificationIds.value = JSON.parse(raw)
+  } catch { /* ignore */ }
+  void Promise.all([loadActiveAnnouncements(), loadWorkflowNotifications()])
   void (async () => {
     await loadProjectOptions()
     await loadWorkbench()
@@ -1687,7 +1831,12 @@ onUnmounted(() => {
       <div class="page-header-copy">
         <span class="page-title-wrap">
           <h2 class="page-title">应用</h2>
-          <span v-if="hasUnreadAnnouncement" class="announcement-badge" @click.stop="announcementPopoverVisible = true">{{ unreadCount }}</span>
+          <span
+            v-if="hasUnreadNotification"
+            class="announcement-badge"
+            :class="{ 'announcement-badge-workflow-alert': workflowUnreadCount > 0 }"
+            @click.stop="openNotificationPopover"
+          >{{ notificationUnreadCount > 99 ? '99+' : notificationUnreadCount }}</span>
         </span>
         <a-popover
           v-model:open="announcementPopoverVisible"
@@ -1699,9 +1848,33 @@ onUnmounted(() => {
             <div class="announcement-panel">
               <div class="announcement-panel-head">
                 <SoundOutlined class="announcement-head-icon" />
-                <span class="announcement-head-title">系统公告</span>
+                <span class="announcement-head-title">通知中心</span>
               </div>
-              <div class="announcement-list">
+              <div class="announcement-tabs" role="tablist" aria-label="通知类型">
+                <button
+                  type="button"
+                  class="announcement-tab"
+                  :class="{ 'announcement-tab-active': notificationTab === 'announcement' }"
+                  role="tab"
+                  :aria-selected="notificationTab === 'announcement'"
+                  @click="notificationTab = 'announcement'"
+                >
+                  系统公告
+                  <span v-if="unreadCount" class="announcement-tab-count">{{ unreadCount }}</span>
+                </button>
+                <button
+                  type="button"
+                  class="announcement-tab"
+                  :class="{ 'announcement-tab-active': notificationTab === 'workflow' }"
+                  role="tab"
+                  :aria-selected="notificationTab === 'workflow'"
+                  @click="notificationTab = 'workflow'"
+                >
+                  流程通知
+                  <span v-if="workflowUnreadCount" class="announcement-tab-count">{{ workflowUnreadCount }}</span>
+                </button>
+              </div>
+              <div v-if="notificationTab === 'announcement'" class="announcement-list">
                 <div
                   v-for="item in announcements"
                   :key="item.id"
@@ -1712,13 +1885,35 @@ onUnmounted(() => {
                 </div>
                 <div v-if="announcements.length === 0" class="announcement-empty">暂无公告</div>
               </div>
-              <div v-if="hasUnreadAnnouncement" class="announcement-panel-foot">
+              <div v-else class="announcement-list workflow-notification-list">
+                <div v-if="workflowNotificationLoading && !workflowNotificationLoaded" class="announcement-empty">正在加载流程通知...</div>
+                <div v-else-if="workflowNotificationError" class="announcement-empty announcement-error">{{ workflowNotificationError }}</div>
+                <template v-else>
+                  <button
+                    v-for="item in workflowNotifications"
+                    :key="item.id"
+                    type="button"
+                    class="announcement-item workflow-notification-item"
+                    :class="{ 'workflow-notification-unread': !lastSeenWorkflowNotificationIds.includes(item.id) }"
+                    @click="openWorkflowNotification(item)"
+                  >
+                    <div class="workflow-notification-head">
+                      <div class="announcement-item-title">{{ item.title }}</div>
+                      <span class="workflow-notification-status" :class="`workflow-notification-status-${item.tone}`">{{ item.statusText }}</span>
+                    </div>
+                    <div class="announcement-item-content">{{ item.content }}</div>
+                    <div class="workflow-notification-time">{{ dayjs(item.occurredAt).format('YYYY-MM-DD HH:mm:ss') }}</div>
+                  </button>
+                  <div v-if="workflowNotifications.length === 0" class="announcement-empty">暂无与你相关的审批流程通知</div>
+                </template>
+              </div>
+              <div v-if="activeNotificationUnreadCount" class="announcement-panel-foot">
                 <a-button
                   type="link"
                   size="small"
                   class="announcement-read-btn"
-                  @click="markAsRead"
-                >标记已读</a-button>
+                  @click="markCurrentNotificationsAsRead"
+                >当前全部已读</a-button>
               </div>
             </div>
           </template>
@@ -4902,7 +5097,8 @@ button.workbench-release-overview-chip:hover {
 @media (prefers-reduced-motion: reduce) {
   .workbench-card-shell-running,
   .workbench-card-shell-running::before,
-  .workbench-card-shell-running::after {
+  .workbench-card-shell-running::after,
+  .announcement-badge-workflow-alert {
     animation: none !important;
     transform: none !important;
   }
@@ -5202,6 +5398,24 @@ button.workbench-release-overview-chip:hover {
   white-space: nowrap;
 }
 
+.announcement-badge-workflow-alert {
+  animation: workflow-notification-breathe 1.6s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@keyframes workflow-notification-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 1px 4px rgba(239, 68, 68, 0.42), 0 0 0 0 rgba(239, 68, 68, 0.42);
+  }
+
+  50% {
+    transform: scale(1.12);
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.58), 0 0 0 7px rgba(239, 68, 68, 0);
+  }
+}
+
 .announcement-popover {
   z-index: 1060;
 }
@@ -5249,6 +5463,50 @@ button.workbench-release-overview-chip:hover {
   font-weight: 700;
 }
 
+.announcement-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin: 10px 14px 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #f1f5f9;
+}
+
+.announcement-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.announcement-tab-active {
+  background: #fff;
+  color: #1d4ed8;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+.announcement-tab-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px;
+  line-height: 18px;
+  text-align: center;
+}
+
 .announcement-list {
   display: flex;
   flex-direction: column;
@@ -5290,6 +5548,81 @@ button.workbench-release-overview-chip:hover {
   font-size: 13px;
   line-height: 1.6;
   white-space: pre-wrap;
+}
+
+.workflow-notification-item {
+  width: 100%;
+  border-top: 0;
+  border-right: 0;
+  border-left: 0;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.workflow-notification-item:hover,
+.workflow-notification-item:focus-visible {
+  background: #f8fbff;
+  outline: none;
+}
+
+.workflow-notification-unread {
+  background: rgba(239, 246, 255, 0.72);
+}
+
+.workflow-notification-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workflow-notification-head .announcement-item-title {
+  min-width: 0;
+}
+
+.workflow-notification-status {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.workflow-notification-status-pending {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.workflow-notification-status-approved,
+.workflow-notification-status-success {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.workflow-notification-status-running {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.workflow-notification-status-rejected,
+.workflow-notification-status-failed {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.workflow-notification-time {
+  margin-top: 8px;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.announcement-error {
+  color: #dc2626;
 }
 
 .announcement-empty {

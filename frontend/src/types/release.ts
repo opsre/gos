@@ -588,6 +588,7 @@ export interface ReleaseOrderPrecheck {
   lock_scope: string;
   conflict_strategy: string;
   lock_key: string;
+  conflict_order_id: string;
   conflict_order_no: string;
   conflict_message: string;
   items: ReleaseOrderPrecheckItem[];

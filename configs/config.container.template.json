@@ -29,7 +29,7 @@
     "startup_check_enabled": false,
     "startup_max_retries": 5,
     "startup_retry_interval_sec": 2,
-    "auto_sync_enabled": false,
+    "auto_sync_enabled": true,
     "auto_sync_interval_sec": 300,
     "release_track_enabled": false,
     "release_track_interval_sec": 10

@@ -13,6 +13,7 @@ import {
   PlusOutlined,
   SearchOutlined,
   SyncOutlined,
+  ArrowRightOutlined,
 } from "@ant-design/icons-vue";
 import { message } from "ant-design-vue";
 import type { TableColumnsType } from "ant-design-vue";
@@ -2205,6 +2206,33 @@ function toDetail(id: string) {
   });
 }
 
+function canOpenPrecheckConflictOrder(
+  precheck: ReleaseOrderPrecheck | null | undefined,
+  itemKey: string,
+) {
+  return (
+    itemKey === "concurrency_lock" &&
+    Boolean(String(precheck?.conflict_order_id || "").trim())
+  );
+}
+
+function openPrecheckConflictOrder(
+  precheck: ReleaseOrderPrecheck | null | undefined,
+) {
+  const conflictOrderID = String(precheck?.conflict_order_id || "").trim();
+  if (!conflictOrderID) {
+    message.warning("未获取到前序发布单信息，请刷新预审后重试");
+    return;
+  }
+  executePreviewVisible.value = false;
+  batchExecutePreviewVisible.value = false;
+  void router.push({
+    name: "release-order-detail",
+    params: { id: conflictOrderID },
+    query: buildReleaseListQuery(),
+  });
+}
+
 function handleEdit(record: ReleaseOrder) {
   if (!canEdit(record)) {
     message.warning("当前发布单不是可编辑的待执行普通发布单");
@@ -3593,6 +3621,16 @@ function handleOverviewChartResize() {
                     <div class="batch-preview-precheck-message">
                       {{ precheckItem.message }}
                     </div>
+                    <a-button
+                      v-if="canOpenPrecheckConflictOrder(item.precheck, precheckItem.key)"
+                      class="precheck-conflict-link"
+                      type="link"
+                      size="small"
+                      @click="openPrecheckConflictOrder(item.precheck)"
+                    >
+                      查看前序单
+                      <ArrowRightOutlined />
+                    </a-button>
                   </div>
                   <a-tag
                     :class="[
@@ -3742,6 +3780,16 @@ function handleOverviewChartResize() {
                 <div class="batch-preview-precheck-message">
                   {{ precheckItem.message }}
                 </div>
+                <a-button
+                  v-if="canOpenPrecheckConflictOrder(executePreviewPrecheck, precheckItem.key)"
+                  class="precheck-conflict-link"
+                  type="link"
+                  size="small"
+                  @click="openPrecheckConflictOrder(executePreviewPrecheck)"
+                >
+                  查看前序单
+                  <ArrowRightOutlined />
+                </a-button>
               </div>
               <a-tag
                 :class="[
@@ -5360,6 +5408,14 @@ function handleOverviewChartResize() {
   color: var(--color-text-secondary);
   font-size: 12px;
   line-height: 1.7;
+}
+
+.precheck-conflict-link {
+  height: auto;
+  margin-top: 5px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .pagination-area {

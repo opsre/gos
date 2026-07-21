@@ -29,6 +29,8 @@
 
 <p>GOS 只做一件事：把分散执行收口成可治理的发布流程。</p>
 
+<p><strong>第一次使用？请从 <a href="docs/USER_GUIDE.md">GOS Release 用户操作手册</a> 开始。</strong></p>
+
 </div>
 
 ---
@@ -218,10 +220,19 @@ GOS 的标准化不是要求所有团队使用同一条流水线，而是把发�
 - 旧版本直接替换为最新二进制并重启即可升级表结构，迁移具备版本判断和幂等保护。
 - MySQL 多实例启动使用迁移锁，避免多个实例重复执行同一结构变更。
 - 任一迁移失败时服务停止启动，防止最新代码在旧表结构上继续运行；`script_sql/` 只保留给结构核查和故障应急。
+- `v1.3.1` 启动时会自动执行 `deploy_platform_v1_3_1_pipeline_scan_rules`：补齐管线规范字段并记录迁移版本，同时修正历史内置规则 ID；全新数据库中的“GOS 制品地址输出规范”默认停用，已有数据库保留管理员设置的启停状态。
 
 ---
 
 ## 🖼️ 界面预览
+
+<p align="center"><strong>登录首页：发布单快速查询</strong></p>
+
+<p align="center">登录后直接进入发布单查询首页，可通过完整单号直达详情，并快速进入发布单、新建发布和审批待办。</p>
+
+<p align="center">
+  <img src="images/release-search-home-v1.3.1.jpg" alt="发布单快速查询首页" width="90%" />
+</p>
 
 <p align="center"><strong>可视化审批流管理</strong></p>
 
@@ -311,8 +322,10 @@ GOS 的标准化不是要求所有团队使用同一条流水线，而是把发�
 
 <p align="center"><strong>管线规范</strong></p>
 
+<p align="center">内置 GOS 制品地址输出规范在新部署中默认停用，可由管理员按团队接入情况启用；启停请求由同源网关稳定转发。</p>
+
 <p align="center">
-  <img src="images/pipeline-rules.png" alt="管线规范" width="90%" />
+  <img src="images/pipeline-rules-v1.3.1.jpg" alt="v1.3.1 管线规范默认停用" width="90%" />
 </p>
 
 <p align="center"><strong>发布单列表页</strong></p>
@@ -398,19 +411,34 @@ docker run -d \
   -e GOS_JENKINS_BASE_URL='http://jenkins.example.com/' \
   -e GOS_JENKINS_USERNAME='admin' \
   -e GOS_JENKINS_API_TOKEN='your-token' \
+  -e GOS_JENKINS_AUTO_SYNC_ENABLED=true \
   -e GOS_AUTH_ADMIN_USERNAME='admin' \
   -e GOS_AUTH_ADMIN_PASSWORD='your-admin-password' \
   -e GOS_SECURITY_ENCRYPTION_KEY='replace-with-a-strong-key' \
-  yl10115658529/gos-release:v1.3
+  yl10115658529/gos-release:v1.3.1
 ```
 
 > **说明**：GOS_SECURITY_ENCRYPTION_KEY 用于加密数据，请自定义 。
+
+Jenkins 启用后，管线自动同步默认开启：服务启动时会立即拉取一次管线，之后按 `GOS_JENKINS_AUTO_SYNC_INTERVAL_SEC` 周期同步；无需在新部署后手动点击“同步”。如需明确关闭，可设置 `GOS_JENKINS_AUTO_SYNC_ENABLED=false`。
 
 Docker Compose 启动前可先复制 `.env.example` 到本地 `.env` 并填写真实值，`.env` 不应提交到仓库。
 
 访问地址：
 
 - 登入：`http://127.0.0.1:5174/login`
+
+生产镜像中的前端 API 默认走 `5174` 同源反向代理，不依赖宿主机是否直接暴露 `8081`，因此可以安全地修改前端端口映射或在容器前增加 HTTPS 反向代理。`8081` 仅在需要直接调试后端接口时暴露。
+
+`GOS_AUTH_ADMIN_USERNAME` 与 `GOS_AUTH_ADMIN_PASSWORD` 用于首次初始化管理员；复用已有数据库或 Docker Volume 时不会覆盖数据库内现有账号和密码。
+
+如果登录请求异常，可先检查同源健康接口：
+
+```bash
+curl -i http://127.0.0.1:5174/healthz
+```
+
+正常应返回 `200`。如果登录仍返回 Nginx `404`，通常表示运行的还是修复前镜像，需要重新拉取新版本并重建容器。
 
 首次部署只需要预先创建空数据库，并确保 GOS 数据库账号具备建表、建索引和修改表结构的权限。服务启动时会自动创建表并执行版本化迁移。
 
@@ -483,7 +511,7 @@ Docker 单容器运行时由 `docker/entrypoint.sh` 根据环境变量生成：
 
 | 模块 | 页面 | 路由 |
 | --- | --- | --- |
-| 入口 | 官网 / 产品页 | `/` |
+| 入口 | 首页 / 发布单查询 | `/release-search`（登录后默认进入） |
 | 入口 | 登录 | `/login` |
 | 应用管理 | 我的应用 | `/applications` |
 | 应用管理 | 新增应用 | `/applications/new` |

@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import {
   ArrowLeftOutlined,
+  ArrowRightOutlined,
   CheckCircleFilled,
   ClockCircleFilled,
   CloseCircleFilled,
+  CopyOutlined,
   ExclamationCircleOutlined,
   LoadingOutlined,
   RobotOutlined,
   StopFilled,
+  SwapOutlined,
   SyncOutlined,
 } from "@ant-design/icons-vue";
 import { message } from "ant-design-vue";
@@ -85,6 +88,7 @@ import type {
   ReleaseTriggerType,
 } from "../../types/release";
 import { extractHTTPErrorMessage } from "../../utils/http-error";
+import { notifyReleaseApprovalTasksChanged } from "../../utils/release-approval-events";
 
 const route = useRoute();
 const router = useRouter();
@@ -149,6 +153,7 @@ const approvalActing = ref(false);
 const executeLocked = ref(false);
 const currentDispatchAction = ref<ReleaseOrderDispatchAction>("execute");
 const precheckRefreshTimer = ref<number | null>(null);
+const heroShowsReleaseName = ref(true);
 
 const order = ref<ReleaseOrder | null>(null);
 const approvalRecords = ref<ReleaseOrderApprovalRecord[]>([]);
@@ -747,6 +752,48 @@ const heroFacts = computed(() => {
     { label: "发布人", value: order.value.triggered_by || "-" },
   ];
 });
+
+const heroReleaseName = computed(
+  () => String(order.value?.release_name || "").trim() || "未命名发布",
+);
+const heroIdentityLabel = computed(() =>
+  heroShowsReleaseName.value ? "发布名称" : "发布单号",
+);
+const heroIdentityValue = computed(() =>
+  heroShowsReleaseName.value
+    ? heroReleaseName.value
+    : String(order.value?.order_no || "-").trim() || "-",
+);
+
+function toggleHeroIdentity() {
+  heroShowsReleaseName.value = !heroShowsReleaseName.value;
+}
+
+async function copyHeroOrderNo() {
+  const text = String(order.value?.order_no || "").trim();
+  if (!text) {
+    message.warning("暂无可复制的发布单号");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    message.success("发布单号已复制");
+  } catch {
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      message.success("发布单号已复制");
+    } catch {
+      message.error("复制失败，请手动选择发布单号");
+    }
+  }
+}
 
 const showConcurrentBatchCard = computed(() =>
   Boolean(order.value?.is_concurrent && order.value?.concurrent_batch_no),
@@ -1770,6 +1817,26 @@ const precheckSummaryTone = computed<"info" | "warning" | "error">(() => {
 });
 
 const precheckCardTitle = computed(() => `${dispatchActionText(currentPrecheckAction.value)}前预检`);
+
+function canOpenPrecheckConflictOrder(item: ReleaseOrderPrecheckItem) {
+  return (
+    item.key === "concurrency_lock" &&
+    Boolean(String(precheck.value?.conflict_order_id || "").trim())
+  );
+}
+
+function openPrecheckConflictOrder() {
+  const conflictOrderID = String(precheck.value?.conflict_order_id || "").trim();
+  if (!conflictOrderID) {
+    message.warning("未获取到前序发布单信息，请刷新预检后重试");
+    return;
+  }
+  void router.push({
+    name: "release-order-detail",
+    params: { id: conflictOrderID },
+    query: route.query,
+  });
+}
 
 function triggerTypeText(
   triggerType: ReleaseTriggerType | "" | null | undefined,
@@ -3331,6 +3398,7 @@ async function handleApprovalAction() {
         await rejectReleaseOrderApprovalFlowTask(order.value.id, customTask.id, { comment });
         message.success("流程节点已拒绝");
       }
+      notifyReleaseApprovalTasksChanged();
       closeApprovalActionModal();
       await loadApprovalFlow({ silent: true });
       return;
@@ -3352,6 +3420,7 @@ async function handleApprovalAction() {
         return;
     }
     order.value = response.data;
+    notifyReleaseApprovalTasksChanged();
     closeApprovalActionModal();
     try {
       await refreshRealtimeSnapshot();
@@ -3656,23 +3725,75 @@ onBeforeUnmount(() => {
       <div class="release-hero">
         <div class="release-hero-main">
           <div class="release-hero-title-row">
-            <div>
-              <div class="release-hero-label">发布单号</div>
-              <div class="release-hero-order">
-                <span>{{ order?.order_no || "-" }}</span>
-                <a-tag
-                  v-if="order?.operation_type === 'rollback'"
-                  class="status-chip status-chip-danger"
-                >
-                  {{ operationTypeText(order?.operation_type) }}
-                </a-tag>
-                <a-tag
-                  v-else-if="order?.operation_type === 'replay'"
-                  class="status-chip status-chip-warning"
-                >
-                  {{ operationTypeText(order?.operation_type) }}
-                </a-tag>
+            <div class="release-hero-identity">
+              <div class="release-hero-identity-viewport">
+                <Transition name="release-identity-swap" mode="out-in">
+                  <div
+                    :key="heroShowsReleaseName ? 'release-name' : 'order-no'"
+                    class="release-hero-identity-panel"
+                  >
+                    <div class="release-hero-label-row">
+                      <div class="release-hero-label">
+                        {{ heroIdentityLabel }}
+                      </div>
+                      <a-tooltip
+                        :title="
+                          heroShowsReleaseName
+                            ? '切换到发布单号'
+                            : '切换到发布名称'
+                        "
+                      >
+                        <a-button
+                          class="release-hero-toggle-button"
+                          type="text"
+                          size="small"
+                          :aria-label="
+                            heroShowsReleaseName
+                              ? '切换到发布单号'
+                              : '切换到发布名称'
+                          "
+                          @click="toggleHeroIdentity"
+                        >
+                          <template #icon>
+                            <SwapOutlined />
+                          </template>
+                        </a-button>
+                      </a-tooltip>
+                    </div>
+                    <div class="release-hero-order" :title="heroIdentityValue">
+                      <span class="release-hero-identity-value">
+                        {{ heroIdentityValue }}
+                      </span>
+                    </div>
+                  </div>
+                </Transition>
               </div>
+              <a-tooltip title="复制发布单号">
+                <a-button
+                  class="release-hero-copy-button"
+                  type="text"
+                  shape="circle"
+                  :disabled="!order?.order_no"
+                  aria-label="复制发布单号"
+                  @click="copyHeroOrderNo"
+                >
+                  <template #icon>
+                    <CopyOutlined />
+                  </template>
+                </a-button>
+              </a-tooltip>
+              <a-tag
+                v-if="order?.operation_type === 'rollback'"
+                class="status-chip status-chip-danger release-hero-operation-tag"
+              >
+                {{ operationTypeText(order?.operation_type) }}
+              </a-tag>
+              <a-tag
+                v-else-if="order?.operation_type === 'replay'"
+                class="status-chip status-chip-warning release-hero-operation-tag"
+              >
+                {{ operationTypeText(order?.operation_type) }}
+              </a-tag>
             </div>
           </div>
 
@@ -4588,6 +4709,16 @@ onBeforeUnmount(() => {
               <div class="precheck-item-copy">
                 <div class="precheck-item-name">{{ item.name }}</div>
                 <div class="precheck-item-message">{{ item.message }}</div>
+                <a-button
+                  v-if="canOpenPrecheckConflictOrder(item)"
+                  class="precheck-conflict-link"
+                  type="link"
+                  size="small"
+                  @click="openPrecheckConflictOrder"
+                >
+                  查看前序单
+                  <ArrowRightOutlined />
+                </a-button>
               </div>
               <a-tag :class="['status-tag', precheckToneClass(item.status)]">
                 <LoadingOutlined v-if="item.status === 'warn'" spin />
@@ -5640,6 +5771,29 @@ onBeforeUnmount(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+  min-width: 0;
+}
+
+.release-hero-identity {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+}
+
+.release-hero-identity-viewport {
+  flex: 1;
+  min-width: 0;
+  min-height: 82px;
+  overflow: hidden;
+}
+
+.release-hero-identity-panel {
+  display: flex;
+  min-height: 82px;
+  flex-direction: column;
+  justify-content: flex-start;
 }
 
 .release-hero-label {
@@ -5649,15 +5803,97 @@ onBeforeUnmount(() => {
   color: var(--color-text-soft);
 }
 
+.release-hero-label-row {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 4px;
+}
+
+.release-hero-toggle-button {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--color-text-soft);
+}
+
+.release-hero-toggle-button:hover {
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--color-primary);
+}
+
 .release-hero-order {
   margin-top: 8px;
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
   font-size: 26px;
   font-weight: 800;
   color: var(--color-dashboard-900);
   word-break: break-all;
+}
+
+.release-hero-identity-value {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.release-hero-copy-button {
+  flex: none;
+  margin-bottom: 15px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--color-text-secondary);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.release-hero-copy-button:not(:disabled):hover {
+  border-color: rgba(37, 99, 235, 0.38);
+  background: rgba(239, 246, 255, 0.94);
+  color: var(--color-primary);
+  transform: translateY(-1px);
+}
+
+.release-hero-operation-tag {
+  flex: none;
+  margin-bottom: 17px;
+}
+
+.release-identity-swap-enter-active,
+.release-identity-swap-leave-active {
+  transition:
+    opacity 0.26s ease,
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.release-identity-swap-enter-from {
+  opacity: 0;
+  transform: translateY(10px) rotateX(-5deg);
+}
+
+.release-identity-swap-leave-to {
+  opacity: 0;
+  transform: translateY(-10px) rotateX(5deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .release-identity-swap-enter-active,
+  .release-identity-swap-leave-active,
+  .release-hero-copy-button,
+  .release-hero-toggle-button {
+    transition: none;
+  }
 }
 
 .release-hero-status {
@@ -6434,6 +6670,14 @@ onBeforeUnmount(() => {
   margin-top: 4px;
   color: var(--color-text-secondary);
   line-height: 1.6;
+}
+
+.precheck-conflict-link {
+  height: auto;
+  margin-top: 6px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .approval-summary {

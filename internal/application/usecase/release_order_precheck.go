@@ -39,6 +39,7 @@ type ReleaseOrderPrecheckOutput struct {
 	LockScope        string                     `json:"lock_scope"`
 	ConflictStrategy string                     `json:"conflict_strategy"`
 	LockKey          string                     `json:"lock_key"`
+	ConflictOrderID  string                     `json:"conflict_order_id"`
 	ConflictOrderNo  string                     `json:"conflict_order_no"`
 	ConflictMessage  string                     `json:"conflict_message"`
 	Items            []ReleaseOrderPrecheckItem `json:"items"`
@@ -169,9 +170,11 @@ func (uc *ReleaseOrderManager) buildOrderPrecheck(
 		output.LockKey = guard.LockKey
 		switch {
 		case guard.ConflictLock != nil:
+			output.ConflictOrderID = strings.TrimSpace(guard.ConflictLock.ReleaseOrderID)
 			output.ConflictOrderNo = strings.TrimSpace(guard.ConflictLock.ReleaseOrderNo)
 			output.ConflictMessage = strings.TrimSpace(guard.Message)
 		case guard.ConflictOrder != nil:
+			output.ConflictOrderID = strings.TrimSpace(guard.ConflictOrder.ID)
 			output.ConflictOrderNo = strings.TrimSpace(guard.ConflictOrder.OrderNo)
 			output.ConflictMessage = strings.TrimSpace(guard.Message)
 		}

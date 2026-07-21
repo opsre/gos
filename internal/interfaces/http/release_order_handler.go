@@ -449,6 +449,7 @@ type ReleaseOrderPrecheckResponse struct {
 		LockScope        string                             `json:"lock_scope"`
 		ConflictStrategy string                             `json:"conflict_strategy"`
 		LockKey          string                             `json:"lock_key"`
+		ConflictOrderID  string                             `json:"conflict_order_id"`
 		ConflictOrderNo  string                             `json:"conflict_order_no"`
 		ConflictMessage  string                             `json:"conflict_message"`
 		Items            []ReleaseOrderPrecheckItemResponse `json:"items"`
@@ -1899,6 +1900,7 @@ func (h *ReleaseOrderHandler) GetPrecheck(c *gin.Context) {
 	resp.Data.LockScope = output.LockScope
 	resp.Data.ConflictStrategy = output.ConflictStrategy
 	resp.Data.LockKey = output.LockKey
+	resp.Data.ConflictOrderID = output.ConflictOrderID
 	resp.Data.ConflictOrderNo = output.ConflictOrderNo
 	resp.Data.ConflictMessage = output.ConflictMessage
 	resp.Data.Items = make([]ReleaseOrderPrecheckItemResponse, 0, len(output.Items))

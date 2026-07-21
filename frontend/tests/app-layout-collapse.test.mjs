@@ -6,7 +6,7 @@ const layoutURL = new URL('../src/layouts/AppLayout.vue', import.meta.url)
 const source = readFileSync(layoutURL, 'utf8')
 
 test('sider footer displays the current release version', () => {
-  assert.match(source, /<span>v1\.3<\/span>/, 'sider footer should display v1.3')
+  assert.match(source, /<span>v1\.3\.1<\/span>/, 'sider footer should display v1.3.1')
   assert.doesNotMatch(source, /v1\.2\.3/, 'sider footer should not display the previous version')
 })
 

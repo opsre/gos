@@ -36,7 +36,7 @@ async function handleSubmit() {
     await authStore.login(formState.username, formState.password)
     message.success('登录成功')
     const redirect = String(route.query.redirect || '').trim()
-    void router.replace(redirect || '/applications')
+    void router.replace(redirect || '/release-search')
   } catch (error) {
     message.error(extractHTTPErrorMessage(error, '登录失败，请检查用户名和密码'))
   } finally {

@@ -78,7 +78,7 @@ cfg = {
         "startup_check_enabled": env_bool("GOS_JENKINS_STARTUP_CHECK_ENABLED", False),
         "startup_max_retries": env_int("GOS_JENKINS_STARTUP_MAX_RETRIES", 5),
         "startup_retry_interval_sec": env_int("GOS_JENKINS_STARTUP_RETRY_INTERVAL_SEC", 2),
-        "auto_sync_enabled": env_bool("GOS_JENKINS_AUTO_SYNC_ENABLED", False),
+        "auto_sync_enabled": env_bool("GOS_JENKINS_AUTO_SYNC_ENABLED", True),
         "auto_sync_interval_sec": env_int("GOS_JENKINS_AUTO_SYNC_INTERVAL_SEC", 300),
         "release_track_enabled": env_bool("GOS_JENKINS_RELEASE_TRACK_ENABLED", False),
         "release_track_interval_sec": env_int("GOS_JENKINS_RELEASE_TRACK_INTERVAL_SEC", 10),

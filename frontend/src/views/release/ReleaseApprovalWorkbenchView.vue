@@ -19,6 +19,7 @@ import type {
   ReleaseOperationType,
 } from '../../types/release'
 import { extractHTTPErrorMessage } from '../../utils/http-error'
+import { notifyReleaseApprovalTasksChanged } from '../../utils/release-approval-events'
 
 const router = useRouter()
 
@@ -262,6 +263,7 @@ async function handleApprovalAction() {
       await rejectReleaseOrder(task.release_order_id, { comment })
     }
     message.success(approvalActionMode.value === 'approve' ? '审批已通过' : '审批已拒绝')
+    notifyReleaseApprovalTasksChanged()
     closeApprovalAction()
     await reloadAll()
   } catch (error) {

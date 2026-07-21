@@ -192,7 +192,7 @@ func defaultConfig() Config {
 			StartupCheckEnabled:     false,
 			StartupMaxRetries:       5,
 			StartupRetryIntervalSec: 2,
-			AutoSyncEnabled:         false,
+			AutoSyncEnabled:         true,
 			AutoSyncIntervalSec:     300,
 			ReleaseTrackEnabled:     true,
 			ReleaseTrackIntervalSec: 10,

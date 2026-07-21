@@ -15,12 +15,12 @@ function resolveDefaultAPIBaseURL() {
     return configured
   }
 
-  const protocol = window.location.protocol || 'http:'
-  const hostname = window.location.hostname || 'localhost'
-  const port = window.location.port || ''
-
-  // 本地开发默认前端 5174、后端 8081；生产环境默认走同源
-  if (port === '5174') {
+  // 开发服务器默认直连 8081；生产构建始终走同源，由容器内 Nginx
+  // 转发到后端。不能根据浏览器端口判断环境，因为端口映射和外部
+  // 反向代理都可能改变公开端口。
+  if (import.meta.env.DEV) {
+    const protocol = window.location.protocol || 'http:'
+    const hostname = window.location.hostname || 'localhost'
     return `${protocol}//${hostname}:8081`
   }
 

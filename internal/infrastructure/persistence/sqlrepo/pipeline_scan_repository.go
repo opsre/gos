@@ -34,7 +34,16 @@ func (r *PipelineScanRepository) InitSchema(ctx context.Context) error {
 			return execErr
 		}
 	}
-	if err := r.migratePipelineScanRuleSchema(ctx); err != nil {
+	if err := runSchemaMigrations(
+		ctx,
+		r.db,
+		r.dbDriver,
+		schemaMigration{
+			Version:     "deploy_platform_v1_3_1_pipeline_scan_rules",
+			Description: "upgrade pipeline scan rule metadata for builtin rule management",
+			Up:          r.migratePipelineScanRuleSchema,
+		},
+	); err != nil {
 		return err
 	}
 	return r.ensureBuiltinPipelineScanRules(ctx)
@@ -209,6 +218,9 @@ func (r *PipelineScanRepository) ensureBuiltinPipelineScanRules(ctx context.Cont
 		if err := r.upsertBuiltinPipelineScanRule(ctx, item); err != nil {
 			return err
 		}
+		if err := r.normalizeBuiltinPipelineScanRuleID(ctx, item); err != nil {
+			return err
+		}
 	}
 	return r.normalizePipelineScanBuiltinFlags(ctx, builtinPipelineScanRuleCodes(items), now)
 }
@@ -216,12 +228,14 @@ func (r *PipelineScanRepository) ensureBuiltinPipelineScanRules(ctx context.Cont
 func builtinPipelineScanRules(now time.Time) []domain.Rule {
 	return []domain.Rule{
 		{
-			ID:                       "psr-builtin-gos-artifact-url",
-			RuleCode:                 "artifact.gos.artifact_url.standard",
-			RuleName:                 "GOS 制品地址输出规范",
-			Category:                 domain.CategoryArtifact,
-			Severity:                 domain.SeverityWarning,
-			Enabled:                  true,
+			ID:       "psr-builtin-gos-artifact-url",
+			RuleCode: "artifact.gos.artifact_url.standard",
+			RuleName: "GOS 制品地址输出规范",
+			Category: domain.CategoryArtifact,
+			Severity: domain.SeverityWarning,
+			// 新部署默认不强制现有 Jenkinsfile 输出 GOS_ARTIFACT_URL；
+			// 管理员确认团队已经采用该约定后再手动启用。
+			Enabled:                  false,
 			Builtin:                  true,
 			TemplateValidationScopes: []string{"ci"},
 			ScopeJSON:                "{}",
@@ -303,6 +317,56 @@ ON CONFLICT(rule_code) DO UPDATE SET
 	default:
 		return fmt.Errorf("unsupported db driver: %s", r.dbDriver)
 	}
+}
+
+// normalizeBuiltinPipelineScanRuleID migrates rows created before a rule became
+// platform-owned to the stable builtin ID. The rule code has always been unique,
+// so an upsert by rule_code can otherwise retain the historical random ID and
+// make builtin-ID endpoints return 404. Existing findings are migrated together
+// so historical scan details keep pointing at the rule.
+func (r *PipelineScanRepository) normalizeBuiltinPipelineScanRuleID(ctx context.Context, item domain.Rule) error {
+	var existingID string
+	err := r.db.QueryRowContext(
+		ctx,
+		`SELECT id FROM pipeline_scan_rules WHERE rule_code = ?;`,
+		item.RuleCode,
+	).Scan(&existingID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	existingID = strings.TrimSpace(existingID)
+	if existingID == "" || existingID == item.ID {
+		return nil
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(
+		ctx,
+		`UPDATE pipeline_scan_findings SET rule_id = ? WHERE rule_id = ?;`,
+		item.ID,
+		existingID,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(
+		ctx,
+		`UPDATE pipeline_scan_rules SET id = ?, updated_at = ? WHERE id = ? AND rule_code = ?;`,
+		item.ID,
+		item.UpdatedAt.UTC().UnixNano(),
+		existingID,
+		item.RuleCode,
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *PipelineScanRepository) normalizePipelineScanBuiltinFlags(ctx context.Context, builtinCodes []string, now time.Time) error {
