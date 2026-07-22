@@ -29,7 +29,7 @@
 <h2>🌐 在线体验</h2>
 
 <p>
-  <a href="https://gos.lingyunyeqing.site:8888/"><strong>立即访问 GOS Release 体验环境 →</strong></a>
+  <a href="http://36.151.150.63:5174/"><strong>立即访问 GOS Release 体验环境 →</strong></a>
 </p>
 
 <p>
