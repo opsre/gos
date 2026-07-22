@@ -11,6 +11,7 @@
   <img alt="Gin API" src="https://img.shields.io/badge/Gin-API-00ACD7" />
   <img alt="MySQL / SQLite" src="https://img.shields.io/badge/MySQL%20%2F%20SQLite-supported-4479A1" />
   <img alt="Docker Ready" src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white" />
+  <a href="https://hub.docker.com/r/yl10115658529/gos-release"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/yl10115658529/gos-release?logo=docker&amp;label=Docker%20Pulls&amp;color=2496ED&amp;cacheSeconds=300" /></a>
 </p>
 
 <p>
