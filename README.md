@@ -26,6 +26,18 @@
   <img alt="Feishu WeCom DingTalk" src="https://img.shields.io/badge/Notify-Feishu%20%2F%20WeCom%20%2F%20DingTalk-1677FF?logo=dingtalk&logoColor=white" />
 </p>
 
+<h2>🌐 在线体验</h2>
+
+<p>
+  <a href="https://gos.lingyunyeqing.site:8888/"><strong>立即访问 GOS Release 体验环境 →</strong></a>
+</p>
+
+<p>
+  登录账号：<code>admin</code>　登录密码：<code>admin123</code>
+</p>
+
+<p><sub>体验环境数据可能定期清理，请勿录入生产凭据或其他敏感信息。</sub></p>
+
 <p>GOS 不是 Jenkins、ArgoCD 或 Agent 的替代品，而是它们上层的发布治理层。</p>
 
 <p>GOS 只做一件事：把分散执行收口成可治理的发布流程。</p>
