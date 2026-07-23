@@ -132,6 +132,28 @@ test('release detail applies dynamic snapshots without full-detail interval poll
   assert.match(detailSource, /await refreshRealtimeSnapshot\(\)/)
 })
 
+test('release detail refreshes approval flow when realtime approval state changes', () => {
+  const applySnapshotSource = detailSource.match(
+    /function applyRealtimeSnapshot[\s\S]*?\n}\n\nasync function loadDetail/,
+  )?.[0] || ''
+  assert.match(
+    applySnapshotSource,
+    /shouldRefreshApprovalFlowFromRealtime\(previousOrder,\s*snapshot\.order\)/,
+    'a realtime order update must also refresh the independently loaded approval flow',
+  )
+  assert.match(applySnapshotSource, /scheduleApprovalFlowRealtimeRefresh\(\)/)
+  assert.match(
+    detailSource,
+    /function shouldRefreshApprovalFlowFromRealtime[\s\S]*pending_approval[\s\S]*current_task_id[\s\S]*currentApprovalFlowTask/,
+    'an approval task created after the first detail load must be detected as incomplete state',
+  )
+  assert.match(
+    detailSource,
+    /function scheduleApprovalFlowRealtimeRefresh[\s\S]*approvalFlowRealtimeRefreshQueued[\s\S]*loadApprovalFlow\(\{\s*silent:\s*true\s*\}\)/,
+    'overlapping realtime frames should be coalesced without losing the latest approval state',
+  )
+})
+
 test('release precheck keeps its own serial lightweight polling cadence', () => {
   assert.match(detailSource, /PRECHECK_REFRESH_INTERVAL_MS\s*=\s*5_000/)
   const pollingSource = detailSource.match(

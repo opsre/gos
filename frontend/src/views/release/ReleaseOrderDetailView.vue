@@ -158,6 +158,8 @@ const heroShowsReleaseName = ref(true);
 const order = ref<ReleaseOrder | null>(null);
 const approvalRecords = ref<ReleaseOrderApprovalRecord[]>([]);
 const approvalFlow = ref<ReleaseOrderApprovalFlow | null>(null);
+let approvalFlowRealtimeRefreshPromise: Promise<void> | null = null;
+let approvalFlowRealtimeRefreshQueued = false;
 const approvalRecordsLoading = ref(false);
 const params = ref<ReleaseOrderParam[]>([]);
 const valueProgress = ref<ReleaseOrderValueProgress[]>([]);
@@ -2633,6 +2635,7 @@ function syncVisibleLogStreams() {
 }
 
 function applyRealtimeSnapshot(snapshot: ReleaseOrderRealtimeSnapshot) {
+  const previousOrder = order.value;
   const currentOrderUpdatedAt = Date.parse(String(order.value?.updated_at || ""));
   const incomingOrderUpdatedAt = Date.parse(
     String(snapshot.order?.updated_at || ""),
@@ -2664,6 +2667,9 @@ function applyRealtimeSnapshot(snapshot: ReleaseOrderRealtimeSnapshot) {
   artifactMetadata.value = snapshot.artifact_metadata || [];
   approvalRecords.value = snapshot.approval_records || [];
   concurrentBatchProgress.value = snapshot.concurrent_batch_progress || null;
+  if (shouldRefreshApprovalFlowFromRealtime(previousOrder, snapshot.order)) {
+    scheduleApprovalFlowRealtimeRefresh();
+  }
 
   const pipelineStageView = snapshot.pipeline_stage_view;
   pipelineStageModuleVisible.value = Boolean(pipelineStageView?.show_module);
@@ -3031,6 +3037,57 @@ async function loadApprovalFlow(options?: { silent?: boolean }) {
       message.error(extractHTTPErrorMessage(error, "发布单审批流程加载失败"));
     }
   }
+}
+
+function shouldRefreshApprovalFlowFromRealtime(
+  previousOrder: ReleaseOrder | null,
+  incomingOrder: ReleaseOrder,
+) {
+  const previousStatus = String(previousOrder?.status || "").trim();
+  const incomingStatus = String(incomingOrder.status || "").trim();
+  const approvalStatuses = [
+    "pending_approval",
+    "approving",
+    "approved",
+    "rejected",
+  ];
+  const approvalActive =
+    approvalStatuses.includes(previousStatus) ||
+    approvalStatuses.includes(incomingStatus);
+  if (
+    approvalActive &&
+    (!approvalFlow.value ||
+      (Boolean(approvalFlow.value.current_task_id) &&
+        !currentApprovalFlowTask.value))
+  ) {
+    return true;
+  }
+  if (!approvalFlow.value) {
+    return false;
+  }
+  return (
+    previousStatus !== incomingStatus ||
+    String(previousOrder?.updated_at || "") !==
+      String(incomingOrder.updated_at || "")
+  );
+}
+
+function scheduleApprovalFlowRealtimeRefresh() {
+  approvalFlowRealtimeRefreshQueued = true;
+  if (approvalFlowRealtimeRefreshPromise) {
+    return;
+  }
+  approvalFlowRealtimeRefreshPromise = (async () => {
+    do {
+      approvalFlowRealtimeRefreshQueued = false;
+      await loadApprovalFlow({ silent: true });
+    } while (approvalFlowRealtimeRefreshQueued);
+  })().finally(() => {
+    approvalFlowRealtimeRefreshPromise = null;
+    if (approvalFlowRealtimeRefreshQueued) {
+      scheduleApprovalFlowRealtimeRefresh();
+    }
+  });
 }
 
 async function openStageLogDrawer(stage: ReleaseOrderPipelineStage) {

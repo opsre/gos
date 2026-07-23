@@ -1343,7 +1343,7 @@ func (uc *ReleaseOrderManager) startApprovalFlowNode(ctx context.Context, instan
 	if err != nil {
 		return domain.ReleaseOrderApprovalFlowTask{}, err
 	}
-	instance.CurrentTaskID, instance.CurrentGate, instance.UpdatedAt = task.ID, task.Gate, now
+	instance.CurrentNodeCode, instance.CurrentTaskID, instance.CurrentGate, instance.UpdatedAt = task.NodeCode, task.ID, task.Gate, now
 	if task.NodeType == domain.ApprovalFlowNodeTypeAgentTask {
 		instance.Status = domain.ApprovalFlowInstanceStatusRunningAgentTask
 	} else {

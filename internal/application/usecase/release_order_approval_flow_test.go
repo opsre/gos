@@ -633,7 +633,7 @@ func TestReleaseOrderApprovalFlowGraphSelectsExecutionScopeAndWaitsForCD(t *test
 		t.Fatal("full release should be blocked by CI approval")
 	}
 	instance, tasks, err = manager.GetApprovalFlowInstance(ctx, "order-graph")
-	if err != nil || instance.CurrentScope != domain.ApprovalFlowExecutionScopeFullRelease || instance.CurrentNodeCode != "start" || len(tasks) != 1 || tasks[0].NodeCode != "ci" {
+	if err != nil || instance.CurrentScope != domain.ApprovalFlowExecutionScopeFullRelease || instance.CurrentNodeCode != "ci" || len(tasks) != 1 || tasks[0].NodeCode != "ci" {
 		t.Fatalf("CI graph state = %#v tasks=%#v err=%v", instance, tasks, err)
 	}
 	if _, err := manager.ApproveApprovalFlowTask(ctx, "order-graph", tasks[0].ID, "u-ci", "CI", "ok"); err != nil {
@@ -718,7 +718,7 @@ func TestReleaseOrderApprovalFlowBuildOnlyPausesAtWaitingDeployBeforeCD(t *testi
 		t.Fatal("deploy should be blocked by CD approval")
 	}
 	instance, tasks, err = manager.GetApprovalFlowInstance(ctx, "order-build-then-deploy")
-	if err != nil || instance.CurrentScope != domain.ApprovalFlowExecutionScopeDeployOnly || instance.CurrentNodeCode != "waiting_deploy" || len(tasks) != 2 || tasks[1].NodeCode != "cd" {
+	if err != nil || instance.CurrentScope != domain.ApprovalFlowExecutionScopeDeployOnly || instance.CurrentNodeCode != "cd" || len(tasks) != 2 || tasks[1].NodeCode != "cd" {
 		t.Fatalf("CD graph state = %#v tasks=%#v err=%v", instance, tasks, err)
 	}
 	if _, err := manager.ApproveApprovalFlowTask(ctx, "order-build-then-deploy", tasks[1].ID, "u-cd", "CD", "ok"); err != nil {
