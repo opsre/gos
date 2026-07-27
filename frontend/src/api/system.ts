@@ -5,6 +5,8 @@ import type {
   AIModelConfigPayload,
   AIModelConfigTestResponse,
   ReleaseSettingsDataResponse,
+  SystemManagementSettingsDataResponse,
+  UpdateSystemManagementSettingsPayload,
   UpdateReleaseSettingsPayload,
 } from '../types/system'
 
@@ -17,6 +19,21 @@ export async function updateReleaseSettings(
   payload: UpdateReleaseSettingsPayload,
 ): Promise<ReleaseSettingsDataResponse> {
   const response = await http.put<ReleaseSettingsDataResponse>('/system/settings/release', payload)
+  return response.data
+}
+
+export async function getSystemManagementSettings(): Promise<SystemManagementSettingsDataResponse> {
+  const response = await http.get<SystemManagementSettingsDataResponse>('/system/settings/system')
+  return response.data
+}
+
+export async function updateSystemManagementSettings(
+  payload: UpdateSystemManagementSettingsPayload,
+): Promise<SystemManagementSettingsDataResponse> {
+  const response = await http.put<SystemManagementSettingsDataResponse>(
+    '/system/settings/system',
+    payload,
+  )
   return response.data
 }
 

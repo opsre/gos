@@ -943,6 +943,11 @@ func (uc *ReleaseOrderManager) buildHookTaskVariables(
 		}
 	}
 	values["order_no"] = strings.TrimSpace(order.OrderNo)
+	releaseDetailURL, err := uc.buildReleaseDetailURL(ctx, order.ID)
+	if err != nil {
+		return nil, err
+	}
+	values["release_detail_url"] = releaseDetailURL
 	values["operation_type"] = strings.TrimSpace(string(order.OperationType))
 	values["source_order_no"] = strings.TrimSpace(order.SourceOrderNo)
 	values["executor_user_id"] = strings.TrimSpace(firstNonEmpty(order.ExecutorUserID, order.CreatorUserID))
@@ -972,6 +977,32 @@ func (uc *ReleaseOrderManager) buildHookTaskVariables(
 		values[key] = value
 	}
 	return values, nil
+}
+
+func (uc *ReleaseOrderManager) buildReleaseDetailURL(ctx context.Context, orderID string) (string, error) {
+	if uc == nil || uc.systemManagementSettings == nil || strings.TrimSpace(orderID) == "" {
+		return "", nil
+	}
+	currentSiteURL, err := uc.systemManagementSettings.LoadCurrentSiteURL(ctx)
+	if err != nil {
+		return "", err
+	}
+	currentSiteURL = strings.TrimSpace(currentSiteURL)
+	if currentSiteURL == "" {
+		return "", nil
+	}
+	parsed, err := url.Parse(currentSiteURL)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", fmt.Errorf("%w: current site URL is invalid", ErrInvalidInput)
+	}
+	parsed.RawQuery = ""
+	parsed.ForceQuery = false
+	parsed.Fragment = ""
+	detailURL, err := url.JoinPath(parsed.String(), "releases", strings.TrimSpace(orderID))
+	if err != nil {
+		return "", fmt.Errorf("%w: build release detail URL failed", ErrInvalidInput)
+	}
+	return detailURL, nil
 }
 
 // enforceNotificationCoreVariables 封装当前模块的业务处理逻辑。

@@ -12,12 +12,13 @@ import (
 )
 
 const (
-	releaseSettingsKeyEnvOptions   = "release_env_options"
-	releaseSettingsKeyEnvConfigs   = "release_env_configs"
-	releaseSettingsKeyDefaultEnv   = "release_default_env"
-	releaseSettingsKeyConcurrency  = "release_concurrency"
-	releaseSettingsKeyGitOpsConfig = "release_gitops_config"
-	settingsUpdatedAtSQLiteLayout  = "2006-01-02 15:04:05"
+	releaseSettingsKeyEnvOptions    = "release_env_options"
+	releaseSettingsKeyEnvConfigs    = "release_env_configs"
+	releaseSettingsKeyDefaultEnv    = "release_default_env"
+	releaseSettingsKeyConcurrency   = "release_concurrency"
+	releaseSettingsKeyGitOpsConfig  = "release_gitops_config"
+	systemSettingsKeyCurrentSiteURL = "system_current_site_url"
+	settingsUpdatedAtSQLiteLayout   = "2006-01-02 15:04:05"
 )
 
 type DatabaseReleaseStore struct {
@@ -283,6 +284,24 @@ func (s *DatabaseReleaseStore) SaveGitOpsConfig(ctx context.Context, input useca
 		_ = s.fallback.SaveGitOpsConfig(ctx, normalized)
 	}
 	return nil
+}
+
+// LoadCurrentSiteURL 读取当前站点 URL。
+func (s *DatabaseReleaseStore) LoadCurrentSiteURL(ctx context.Context) (string, error) {
+	var stored string
+	ok, err := s.loadJSONSetting(ctx, systemSettingsKeyCurrentSiteURL, &stored)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", nil
+	}
+	return strings.TrimSpace(stored), nil
+}
+
+// SaveCurrentSiteURL 保存当前站点 URL。
+func (s *DatabaseReleaseStore) SaveCurrentSiteURL(ctx context.Context, value string) error {
+	return s.saveJSONSetting(ctx, systemSettingsKeyCurrentSiteURL, strings.TrimSpace(value))
 }
 
 // normalizeDBGitOpsConfig 标准化输入值，保证后续逻辑使用统一格式。

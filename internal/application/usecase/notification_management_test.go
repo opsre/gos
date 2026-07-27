@@ -30,7 +30,7 @@ func TestNormalizeNotificationVariablesBuildsRichFallbacks(t *testing.T) {
 }
 
 // TestAllowedMarkdownVariableKeysIncludesReleaseName 内置通知变量应包含发布名称。
-func TestAllowedMarkdownVariableKeysIncludesReleaseName(t *testing.T) {
+func TestAllowedMarkdownVariableKeysIncludesBuiltinAndSystemFields(t *testing.T) {
 	t.Parallel()
 
 	manager := &NotificationManager{}
@@ -41,8 +41,15 @@ func TestAllowedMarkdownVariableKeysIncludesReleaseName(t *testing.T) {
 	if _, ok := keys["release_name"]; !ok {
 		t.Fatal("release_name is not an allowed notification markdown variable")
 	}
-	if err := validateNotificationMarkdownPlaceholders(keys, "[{env}] {release_name}", "发布名称：{release_name}"); err != nil {
-		t.Fatalf("validateNotificationMarkdownPlaceholders release_name failed: %v", err)
+	if _, ok := keys["release_detail_url"]; !ok {
+		t.Fatal("release_detail_url is not an allowed notification markdown variable")
+	}
+	if err := validateNotificationMarkdownPlaceholders(
+		keys,
+		"[{env}] {release_name}",
+		"发布名称：{release_name}\n[发布单详情]({release_detail_url})",
+	); err != nil {
+		t.Fatalf("validateNotificationMarkdownPlaceholders failed: %v", err)
 	}
 }
 

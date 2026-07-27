@@ -38,6 +38,16 @@ export interface UpdateReleaseSettingsPayload {
   gitops_config: ReleaseGitOpsConfig
 }
 
+export interface SystemManagementSettings {
+  current_site_url: string
+}
+
+export interface SystemManagementSettingsDataResponse {
+  data: SystemManagementSettings
+}
+
+export type UpdateSystemManagementSettingsPayload = SystemManagementSettings
+
 export interface AIModelConfig {
   id: string
   name: string

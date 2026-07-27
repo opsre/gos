@@ -193,6 +193,7 @@ func main() {
 		authSessionManager,
 	)
 	releaseSettingsQuery := usecase.NewQueryReleaseSettings(releaseStore)
+	systemManagementSettingsQuery := usecase.NewQuerySystemManagementSettings(releaseStore)
 	aiClientFactory := aiinfra.NewOpenAICompatibleClientFactory()
 	aiModelConfigManager := usecase.NewAIModelConfigManager(aiModelConfigRepo)
 	systemSettingsHandler := httpapi.NewSystemSettingsHandler(
@@ -200,6 +201,11 @@ func main() {
 		usecase.NewUpdateReleaseSettings(
 			releaseStore,
 			releaseSettingsQuery,
+		),
+		systemManagementSettingsQuery,
+		usecase.NewUpdateSystemManagementSettings(
+			releaseStore,
+			systemManagementSettingsQuery,
 		),
 		authSessionManager,
 	)
@@ -272,6 +278,7 @@ func main() {
 	handler.SetApprovalFlowManager(releaseOrderManager)
 	releaseTemplateManager := usecase.NewReleaseTemplateManager(releaseRepo, repo, pipelineRepo, executorParamRepo, platformParamRepo, argocdAppRepo, agentRepo, notificationRepo, gitopsInstanceManager)
 	releaseOrderManager.SetArtifactRepository(artifactRepositoryRepo)
+	releaseOrderManager.SetSystemManagementSettingsStore(releaseStore)
 	releaseOrderManager.SetApprovalManagerResolver(userRepo)
 	releaseOrderManager.SetPipelineScanRepository(pipelineScanRepo)
 	releaseOrderManager.SetAIModelRepository(aiModelConfigRepo)

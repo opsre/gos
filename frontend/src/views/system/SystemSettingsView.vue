@@ -6,12 +6,14 @@ import {
   createAIModelConfig,
   deleteAIModelConfig,
   getReleaseSettings,
+  getSystemManagementSettings,
   listAIModelConfigs,
   setDiagnosisAIModelConfig,
   testAIModelConfig,
   unsetDiagnosisAIModelConfig,
   updateAIModelConfig,
   updateReleaseSettings,
+  updateSystemManagementSettings,
 } from '../../api/system'
 import type { AIModelConfig, ReleaseEnvironmentConfig } from '../../types/system'
 import { extractHTTPErrorMessage } from '../../utils/http-error'
@@ -21,6 +23,8 @@ const activeTab = ref('release')
 const announcementRef = ref<InstanceType<typeof AnnouncementManage> | null>(null)
 const loading = ref(false)
 const saving = ref(false)
+const systemManagementLoading = ref(false)
+const systemManagementSaving = ref(false)
 const aiModelLoading = ref(false)
 const aiModelSaving = ref(false)
 const aiModelModalVisible = ref(false)
@@ -42,6 +46,10 @@ const concurrency = reactive({
 const gitopsConfig = reactive({
   helm_scan_path: 'apps/helm',
   kustomize_scan_path: 'apps/{app_key}/overlays/{env}',
+})
+
+const systemManagementForm = reactive({
+  current_site_url: '',
 })
 
 const envOptions = computed(() => envConfigs.value.map((item) => item.code))
@@ -147,6 +155,45 @@ async function saveSettings() {
     message.error(extractHTTPErrorMessage(error, '系统设置保存失败'))
   } finally {
     saving.value = false
+  }
+}
+
+async function loadSystemManagementSettings() {
+  systemManagementLoading.value = true
+  try {
+    const response = await getSystemManagementSettings()
+    systemManagementForm.current_site_url = response.data.current_site_url || ''
+  } catch (error) {
+    message.error(extractHTTPErrorMessage(error, '系统管理设置加载失败'))
+  } finally {
+    systemManagementLoading.value = false
+  }
+}
+
+async function saveSystemManagementSettings() {
+  const currentSiteURL = systemManagementForm.current_site_url.trim()
+  if (currentSiteURL) {
+    try {
+      const parsed = new URL(currentSiteURL)
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        throw new Error('unsupported protocol')
+      }
+    } catch {
+      message.warning('请输入有效的 HTTP 或 HTTPS 站点地址')
+      return
+    }
+  }
+  systemManagementSaving.value = true
+  try {
+    const response = await updateSystemManagementSettings({
+      current_site_url: currentSiteURL,
+    })
+    systemManagementForm.current_site_url = response.data.current_site_url || ''
+    message.success('系统管理设置已保存')
+  } catch (error) {
+    message.error(extractHTTPErrorMessage(error, '系统管理设置保存失败'))
+  } finally {
+    systemManagementSaving.value = false
   }
 }
 
@@ -351,6 +398,7 @@ async function removeAIModel(item: AIModelConfig) {
 
 onMounted(() => {
   void loadSettings()
+  void loadSystemManagementSettings()
   void loadAIModelConfigs()
 })
 </script>
@@ -367,6 +415,12 @@ onMounted(() => {
           class="settings-toolbar-action-btn settings-toolbar-action-btn--primary"
           :loading="saving"
           @click="saveSettings"
+        >保存</a-button>
+        <a-button
+          v-if="activeTab === 'system-management'"
+          class="settings-toolbar-action-btn settings-toolbar-action-btn--primary"
+          :loading="systemManagementSaving"
+          @click="saveSystemManagementSettings"
         >保存</a-button>
         <a-button
           v-if="activeTab === 'announcement'"
@@ -541,6 +595,23 @@ onMounted(() => {
         </a-form-item>
       </a-form>
     </a-card>
+        </a-tab-pane>
+        <a-tab-pane key="system-management" tab="系统管理">
+          <a-card :loading="systemManagementLoading" :bordered="false" class="settings-card">
+            <template #title>站点设置</template>
+            <a-form layout="vertical">
+              <a-form-item label="当前站点URL">
+                <a-input
+                  v-model:value="systemManagementForm.current_site_url"
+                  placeholder="https://gos.example.com"
+                  style="max-width: 640px"
+                />
+                <div class="settings-field-help">
+                  填写用户访问当前平台时使用的完整 HTTP 或 HTTPS 地址。
+                </div>
+              </a-form-item>
+            </a-form>
+          </a-card>
         </a-tab-pane>
         <a-tab-pane key="announcement" tab="公告管理">
           <AnnouncementManage ref="announcementRef" />
@@ -789,6 +860,13 @@ onMounted(() => {
 .settings-card :deep(.ant-select),
 .settings-card :deep(.ant-input-number) {
   max-width: 480px;
+}
+
+.settings-field-help {
+  margin-top: 8px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .release-env-config-toolbar {

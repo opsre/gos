@@ -10,21 +10,27 @@ import (
 )
 
 type SystemSettingsHandler struct {
-	query  *usecase.QueryReleaseSettings
-	update *usecase.UpdateReleaseSettings
-	authz  RequestAuthorizer
+	query                  *usecase.QueryReleaseSettings
+	update                 *usecase.UpdateReleaseSettings
+	systemManagementQuery  *usecase.QuerySystemManagementSettings
+	systemManagementUpdate *usecase.UpdateSystemManagementSettings
+	authz                  RequestAuthorizer
 }
 
 // NewSystemSettingsHandler 创建并返回对应组件实例。
 func NewSystemSettingsHandler(
 	query *usecase.QueryReleaseSettings,
 	update *usecase.UpdateReleaseSettings,
+	systemManagementQuery *usecase.QuerySystemManagementSettings,
+	systemManagementUpdate *usecase.UpdateSystemManagementSettings,
 	authz RequestAuthorizer,
 ) *SystemSettingsHandler {
 	return &SystemSettingsHandler{
-		query:  query,
-		update: update,
-		authz:  authz,
+		query:                  query,
+		update:                 update,
+		systemManagementQuery:  systemManagementQuery,
+		systemManagementUpdate: systemManagementUpdate,
+		authz:                  authz,
 	}
 }
 
@@ -32,6 +38,8 @@ func NewSystemSettingsHandler(
 func (h *SystemSettingsHandler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/system/settings/release", h.GetReleaseSettings)
 	router.PUT("/system/settings/release", h.UpdateReleaseSettings)
+	router.GET("/system/settings/system", h.GetSystemManagementSettings)
+	router.PUT("/system/settings/system", h.UpdateSystemManagementSettings)
 }
 
 type ReleaseSettingsResponse struct {
@@ -44,6 +52,61 @@ type UpdateReleaseSettingsRequest struct {
 	DefaultEnvCode string                                  `json:"default_env_code"`
 	Concurrency    usecase.ReleaseConcurrencySettingsInput `json:"concurrency"`
 	GitOpsConfig   usecase.ReleaseGitOpsConfigInput        `json:"gitops_config"`
+}
+
+type UpdateSystemManagementSettingsRequest struct {
+	CurrentSiteURL string `json:"current_site_url"`
+}
+
+// GetSystemManagementSettings 获取系统管理设置。
+func (h *SystemSettingsHandler) GetSystemManagementSettings(c *gin.Context) {
+	if !ensurePermission(c, h.authz, "system.permission.manage", "", "") {
+		return
+	}
+	if h.systemManagementQuery == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "system management settings are not configured"})
+		return
+	}
+	output, err := h.systemManagementQuery.Execute(c.Request.Context())
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrInvalidInput):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": output})
+}
+
+// UpdateSystemManagementSettings 更新系统管理设置。
+func (h *SystemSettingsHandler) UpdateSystemManagementSettings(c *gin.Context) {
+	if !ensurePermission(c, h.authz, "system.permission.manage", "", "") {
+		return
+	}
+	if h.systemManagementUpdate == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "system management settings are not configured"})
+		return
+	}
+	var req UpdateSystemManagementSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	output, err := h.systemManagementUpdate.Execute(c.Request.Context(), usecase.UpdateSystemManagementSettingsInput{
+		CurrentSiteURL: req.CurrentSiteURL,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrInvalidInput):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": output})
 }
 
 // GetReleaseSettings 获取Release Settings详情。

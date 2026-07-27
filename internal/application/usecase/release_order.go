@@ -27,30 +27,31 @@ import (
 )
 
 type ReleaseOrderManager struct {
-	repo                    domain.Repository
-	appRepo                 appdomain.Repository
-	pipelineRepo            pipelinedomain.Repository
-	paramRepo               pipelineparamdomain.Repository
-	platformRepo            platformparamdomain.Repository
-	artifactRepo            artifactrepodomain.Repository
-	releaseSettings         ReleaseSettingsStore
-	jenkins                 JenkinsReleaseExecutor
-	agentRepo               agentdomain.Repository
-	argocdRepo              argocddomain.Repository
-	gitopsRepo              gitopsdomain.Repository
-	notificationRepo        notificationdomain.Repository
-	pipelineScanRepo        scandomain.Repository
-	aiModelRepo             aidomain.ModelConfigRepository
-	stageDiagnosisRepo      aidomain.StageDiagnosisRepository
-	aiClientFactory         AIModelClientFactory
-	argocdFactory           ArgoCDClientFactory
-	gitopsFactory           GitOpsServiceFactory
-	gitops                  GitOpsReleaseService
-	approvalManagerResolver ApprovalManagerResolver
-	now                     func() time.Time
-	runAsync                func(func())
-	orderLocksMu            sync.Mutex
-	orderLocks              map[string]*releaseOrderOperationLock
+	repo                     domain.Repository
+	appRepo                  appdomain.Repository
+	pipelineRepo             pipelinedomain.Repository
+	paramRepo                pipelineparamdomain.Repository
+	platformRepo             platformparamdomain.Repository
+	artifactRepo             artifactrepodomain.Repository
+	releaseSettings          ReleaseSettingsStore
+	systemManagementSettings SystemManagementSettingsStore
+	jenkins                  JenkinsReleaseExecutor
+	agentRepo                agentdomain.Repository
+	argocdRepo               argocddomain.Repository
+	gitopsRepo               gitopsdomain.Repository
+	notificationRepo         notificationdomain.Repository
+	pipelineScanRepo         scandomain.Repository
+	aiModelRepo              aidomain.ModelConfigRepository
+	stageDiagnosisRepo       aidomain.StageDiagnosisRepository
+	aiClientFactory          AIModelClientFactory
+	argocdFactory            ArgoCDClientFactory
+	gitopsFactory            GitOpsServiceFactory
+	gitops                   GitOpsReleaseService
+	approvalManagerResolver  ApprovalManagerResolver
+	now                      func() time.Time
+	runAsync                 func(func())
+	orderLocksMu             sync.Mutex
+	orderLocks               map[string]*releaseOrderOperationLock
 }
 
 type ApprovalManagerResolver interface {
@@ -283,6 +284,13 @@ func (uc *ReleaseOrderManager) SetArtifactRepository(repo artifactrepodomain.Rep
 		return
 	}
 	uc.artifactRepo = repo
+}
+
+func (uc *ReleaseOrderManager) SetSystemManagementSettingsStore(store SystemManagementSettingsStore) {
+	if uc == nil {
+		return
+	}
+	uc.systemManagementSettings = store
 }
 
 // Create 创建业务资源并返回处理结果。

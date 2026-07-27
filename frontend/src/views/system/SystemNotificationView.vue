@@ -103,27 +103,53 @@ const builtinVariableOptions = [
   { label: 'release_stage_rich', value: 'release_stage_rich', type: '内置字段' },
 ] as const
 
-const markdownVariableOptions = computed(() => {
-  const platformOptions = platformParams.value.map((item) => ({
+const systemVariableOptions = [
+  {
+    label: '发布单详情',
+    value: 'release_detail_url',
+    type: '系统字段',
+    description: '当前站点URL + /releases/发布单ID',
+  },
+] as const
+
+const platformVariableOptions = computed(() =>
+  platformParams.value.map((item) => ({
     label: `${item.name} (${item.param_key})`,
     value: item.param_key,
     type: '标准平台 Key',
-  }))
+  })),
+)
+
+const markdownVariableGroups = computed(() => {
   // 去重：移除与内置字段重复的平台参数
   const builtinKeys = new Set(builtinVariableOptions.map((item) => item.value))
-  const uniquePlatformOptions = platformOptions.filter(
+  const uniquePlatformOptions = platformVariableOptions.value.filter(
     (item) => !builtinKeys.has(item.value)
   )
-  return [...builtinVariableOptions, ...uniquePlatformOptions]
+  return [
+    {
+      key: 'system',
+      title: '系统字段',
+      description: '由系统设置和当前发布上下文动态生成',
+      options: systemVariableOptions,
+    },
+    {
+      key: 'platform',
+      title: '标准平台 Key',
+      description: '来自平台参数字典的已启用标准字段',
+      options: uniquePlatformOptions,
+    },
+    {
+      key: 'builtin',
+      title: '内置字段',
+      description: '由发布单及执行过程自动提供的基础字段',
+      options: builtinVariableOptions,
+    },
+  ]
 })
 
 // 条件下拉选择专用选项，排除 release_status 等运行时字段
 const conditionParamKeyOptions = computed(() => {
-  const platformOptions = platformParams.value.map((item) => ({
-    label: `${item.name} (${item.param_key})`,
-    value: item.param_key,
-    type: '标准平台 Key',
-  }))
   // 排除 release_status 等不适合作为条件的运行时字段
   const excludeKeys = new Set(['release_status', 'release_stage', 'release_status_rich', 'release_stage_rich'])
   const filteredBuiltin = builtinVariableOptions.filter(
@@ -131,7 +157,7 @@ const conditionParamKeyOptions = computed(() => {
   )
   // 去重：移除与内置字段重复的平台参数
   const builtinKeys = new Set(filteredBuiltin.map((item) => item.value))
-  const uniquePlatformOptions = platformOptions.filter(
+  const uniquePlatformOptions = platformVariableOptions.value.filter(
     (item) => !builtinKeys.has(item.value)
   )
   return [...filteredBuiltin, ...uniquePlatformOptions]
@@ -148,6 +174,10 @@ const conditionOperatorOptions = [
 
 function conditionOperatorLabel(operator: string) {
   return conditionOperatorOptions.find((item) => item.value === operator)?.label || operator
+}
+
+function variablePlaceholder(value: string) {
+  return `{${value}}`
 }
 
 const sourceLoading = ref(false)
@@ -523,6 +553,7 @@ const defaultNotificationTemplatePreset = {
     '- **发布名称**：`{release_name}`',
     '- **环境**：`{env}`',
     '- **发布单**：`{order_no}`',
+    '- **发布单详情**：[点击查看]({release_detail_url})',
     '- **操作**：`{operation_type}`',
     '- **分支**：`{branch}`',
     '- **子服务**：`{project_name}`',
@@ -559,6 +590,7 @@ const templatePreviewMockValues = computed<Record<string, string>>(() => {
     image_version: '20260415.15',
     image_tag: '20260415.15',
     order_no: 'RO-20260415094512-8AC7D1E2',
+    release_detail_url: 'https://gos.example.com/releases/ro-preview-8ac7d1e2',
     operation_type: 'deploy',
     source_order_no: 'RO-20260415090100-01AB23CD',
     executor_user_id: 'user-ops-01',
@@ -713,6 +745,10 @@ function escapeMarkdownHTML(input: string) {
 
 function renderInlineMarkdown(input: string) {
   let text = escapeMarkdownHTML(input)
+  text = text.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
+  )
   text = text.replace(/`([^`]+)`/g, '<code>$1</code>')
   text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
   text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>')
@@ -1860,12 +1896,29 @@ onBeforeUnmount(() => {
 
         <div class="variable-guide-card">
           <div class="section-title">可用变量</div>
-          <div class="section-description">推荐优先使用 <code>{release_stage_rich}</code> 与 <code>{release_status_rich}</code>标准 Markdown 不支持直接改字色，这两个变量会按当前阶段 / 结果自动输出带语义色彩的展示文本</div>
-          <div class="variable-chip-grid">
-            <span v-for="item in markdownVariableOptions" :key="item.value" class="variable-chip">
-              {{ item.value }}
-              <small>{{ item.type }}</small>
-            </span>
+          <div class="section-description">变量已按来源分组；系统字段 <code>{release_detail_url}</code> 会使用“系统设置 → 系统管理”中的当前站点URL，动态指向本次发布单详情页</div>
+          <div class="variable-group-list">
+            <section v-for="group in markdownVariableGroups" :key="group.key" class="variable-group">
+              <div class="variable-group-head">
+                <div>
+                  <div class="variable-group-title">{{ group.title }}</div>
+                  <div class="variable-group-description">{{ group.description }}</div>
+                </div>
+                <a-tag>{{ group.options.length }} 个</a-tag>
+              </div>
+              <div v-if="group.options.length" class="variable-chip-grid">
+                <span
+                  v-for="item in group.options"
+                  :key="item.value"
+                  class="variable-chip"
+                  :title="'description' in item ? item.description : item.label"
+                >
+                  <strong>{{ item.label }}</strong>
+                  <code>{{ variablePlaceholder(item.value) }}</code>
+                </span>
+              </div>
+              <a-empty v-else :image-style="{ height: '34px' }" description="暂无可用字段" />
+            </section>
           </div>
         </div>
 
@@ -2605,6 +2658,45 @@ onBeforeUnmount(() => {
   margin: 14px 0;
 }
 
+.markdown-preview-content :deep(a) {
+  color: #2563eb;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.variable-group-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.variable-group {
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.variable-group-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.variable-group-title {
+  color: #17345f;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.variable-group-description {
+  margin-top: 2px;
+  color: #7b8798;
+  font-size: 11px;
+}
+
 .variable-chip-grid {
   display: flex;
   flex-wrap: wrap;
@@ -2625,8 +2717,14 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
-.variable-chip small {
-  color: #7b8798;
+.variable-chip strong {
+  font-weight: 700;
+}
+
+.variable-chip code {
+  color: #64748b;
+  font-family: 'SFMono-Regular', 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 11px;
   font-weight: 500;
 }
 

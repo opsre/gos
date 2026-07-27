@@ -252,6 +252,30 @@ func TestBuildHookTaskVariablesIncludesReleaseName(t *testing.T) {
 	}
 }
 
+// TestBuildHookTaskVariablesIncludesReleaseDetailURL 系统字段应指向当前站点的具体发布单详情页。
+func TestBuildHookTaskVariablesIncludesReleaseDetailURL(t *testing.T) {
+	t.Parallel()
+
+	manager, _ := newReleaseOrderManagerForCancelTest(t)
+	manager.SetSystemManagementSettingsStore(&systemManagementSettingsStoreStub{
+		currentSiteURL: "https://gos.example.com/platform/",
+	})
+	values, err := manager.buildHookTaskVariables(context.Background(), domain.ReleaseOrder{
+		ID:        "ro-hook-release-detail",
+		OrderNo:   "RO-HOOK-RELEASE-DETAIL",
+		EnvCode:   "prod",
+		Status:    domain.OrderStatusSuccess,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}, nil, domain.ReleaseTemplateHook{}, domain.TemplateHookExecuteStagePostRelease)
+	if err != nil {
+		t.Fatalf("buildHookTaskVariables failed: %v", err)
+	}
+	if got := values["release_detail_url"]; got != "https://gos.example.com/platform/releases/ro-hook-release-detail" {
+		t.Fatalf("release_detail_url = %q, want concrete release detail URL", got)
+	}
+}
+
 // TestBuildHookTaskVariablesUsesCIOnlyForGOSArtifactURL Hook 变量中的 GOS 制品地址只能来自 CI 单元。
 func TestBuildHookTaskVariablesUsesCIOnlyForGOSArtifactURL(t *testing.T) {
 	t.Parallel()

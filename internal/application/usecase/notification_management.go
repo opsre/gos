@@ -38,6 +38,10 @@ var notificationBuiltinKeys = map[string]struct{}{
 	"release_stage_rich":  {},
 }
 
+var notificationSystemKeys = map[string]struct{}{
+	"release_detail_url": {},
+}
+
 type NotificationManager struct {
 	repo         notificationdomain.Repository
 	platformRepo platformparamdomain.Repository
@@ -718,8 +722,11 @@ func (uc *NotificationManager) normalizeHookInput(ctx context.Context, name, sou
 
 // allowedMarkdownVariableKeys 封装当前模块的业务处理逻辑。
 func (uc *NotificationManager) allowedMarkdownVariableKeys(ctx context.Context) (map[string]struct{}, error) {
-	result := make(map[string]struct{}, len(notificationBuiltinKeys)+16)
+	result := make(map[string]struct{}, len(notificationBuiltinKeys)+len(notificationSystemKeys)+16)
 	for key := range notificationBuiltinKeys {
+		result[key] = struct{}{}
+	}
+	for key := range notificationSystemKeys {
 		result[key] = struct{}{}
 	}
 	if uc == nil || uc.platformRepo == nil {

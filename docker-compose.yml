@@ -6,7 +6,6 @@ services:
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
-      - --default-authentication-plugin=mysql_native_password
     environment:
       MYSQL_DATABASE: gos_release
       MYSQL_USER: gos
@@ -44,7 +43,7 @@ services:
     volumes:
       - ./configs/config.docker.json:/app/configs/config.docker.json:ro
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8081/healthz"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/healthz"]
       interval: 10s
       timeout: 5s
       retries: 10

@@ -94,6 +94,17 @@ func TestDatabaseReleaseStoreFallbackAndPersistence(t *testing.T) {
 	if !reloadedConcurrency.Enabled || reloadedConcurrency.LockScope != usecase.ReleaseConcurrencyLockScopeGitOpsRepoBranch || reloadedConcurrency.ConflictStrategy != usecase.ReleaseConcurrencyConflictStrategyQueue || reloadedConcurrency.LockTimeoutSec != 600 {
 		t.Fatalf("persisted concurrency = %#v, want updated values", reloadedConcurrency)
 	}
+
+	if err := store.SaveCurrentSiteURL(ctx, "https://gos.example.com"); err != nil {
+		t.Fatalf("SaveCurrentSiteURL failed: %v", err)
+	}
+	reloadedCurrentSiteURL, err := store.LoadCurrentSiteURL(ctx)
+	if err != nil {
+		t.Fatalf("LoadCurrentSiteURL persisted failed: %v", err)
+	}
+	if reloadedCurrentSiteURL != "https://gos.example.com" {
+		t.Fatalf("persisted current site URL = %q, want %q", reloadedCurrentSiteURL, "https://gos.example.com")
+	}
 }
 
 type releaseDBStoreStub struct {
