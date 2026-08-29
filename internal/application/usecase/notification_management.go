@@ -27,6 +27,8 @@ var notificationBuiltinKeys = map[string]struct{}{
 	"git_ref":             {},
 	"image_version":       {},
 	"image_tag":           {},
+	standardParamCIJob:    {},
+	standardParamCIBuild:  {},
 	"order_no":            {},
 	"operation_type":      {},
 	"source_order_no":     {},

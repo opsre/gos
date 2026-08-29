@@ -288,17 +288,13 @@ test('release order number truncates and copies on click', () => {
 
   const orderNoTextRule = extractStyleRule('.release-order-no-text')
   assert.match(orderNoTextRule, /overflow:\s*hidden/, 'long order numbers should hide overflow')
+  assert.match(orderNoTextRule, /text-overflow:\s*ellipsis/, 'long order numbers should use a transparent ellipsis')
   assert.match(orderNoTextRule, /white-space:\s*nowrap/, 'long order numbers should stay on one line')
 
   const orderNoTextValueRule = extractStyleRule('.release-order-no-text-value')
-  assert.match(orderNoTextValueRule, /mask-image:\s*linear-gradient/, 'long order number text should be masked so overflow characters are not visible under the cover')
-  assert.match(orderNoTextValueRule, /-webkit-mask-image:\s*linear-gradient/, 'long order number text mask should support webkit browsers')
-
-  const orderNoFadeRule = extractStyleRule('.release-order-no-text::after')
-  assert.match(orderNoFadeRule, /z-index:\s*1/, 'gradient cover should sit above the order number text')
-  assert.match(orderNoFadeRule, /linear-gradient/, 'long order numbers should fade out with a gradient overlay')
-  assert.match(orderNoFadeRule, /rgba\(255,\s*255,\s*255,\s*0\.88\)/, 'gradient cover should be semi-transparent so it blends with row backgrounds')
-  assert.match(orderNoFadeRule, /backdrop-filter:\s*blur\(3px\)/, 'long order numbers should use a blur treatment at the fade edge')
+  assert.match(orderNoTextValueRule, /text-overflow:\s*ellipsis/, 'the order number value should truncate without a background overlay')
+  assert.doesNotMatch(orderNoTextValueRule, /mask-image/, 'transparent table rows should not use a masked fade')
+  assert.doesNotMatch(source, /\.release-order-no-text::after\s*\{/, 'transparent table rows should not render a white fade cover')
 
   const orderNoTagsRule = extractStyleRule('.release-order-no-tags')
   assert.match(orderNoTagsRule, /flex-wrap:\s*wrap/, 'order number tags should wrap instead of being hidden')

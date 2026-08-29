@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   AimOutlined,
+  AppstoreOutlined,
   ExclamationCircleOutlined,
   MoreOutlined,
   PlusOutlined,
@@ -9,6 +10,7 @@ import {
   SearchOutlined,
   SoundOutlined,
   SyncOutlined,
+  UnorderedListOutlined,
   WarningOutlined,
 } from '@ant-design/icons-vue'
 import { Modal, message } from 'ant-design-vue'
@@ -53,6 +55,7 @@ type MetricTone = 'default' | 'success' | 'running' | 'danger' | 'warning'
 type OverviewCardKey = 'pending' | 'running' | 'failed' | 'ready'
 type NotificationTabKey = 'announcement' | 'workflow'
 type WorkflowNotificationTone = 'pending' | 'approved' | 'rejected' | 'running' | 'success' | 'failed' | 'default'
+type ApplicationViewMode = 'card' | 'list'
 
 interface WorkflowNotification {
   id: string
@@ -67,6 +70,18 @@ interface WorkflowNotification {
 const gitOpsEnvOrder = ['dev', 'test', 'prod']
 const seenAnnouncementStorageKey = 'gos-seen-announcement-ids'
 const seenWorkflowNotificationStorageKey = 'gos-seen-workflow-notification-ids'
+const applicationViewModeStorageKey = 'gos-application-view-mode'
+
+function readStoredApplicationViewMode(): ApplicationViewMode {
+  if (typeof window === 'undefined') {
+    return 'card'
+  }
+  try {
+    return window.localStorage.getItem(applicationViewModeStorageKey) === 'list' ? 'list' : 'card'
+  } catch {
+    return 'card'
+  }
+}
 
 function releaseBusinessStatus(order: Pick<ReleaseOrder, 'status' | 'business_status'>): ReleaseOrderBusinessStatus {
   if (order.business_status) {
@@ -307,6 +322,7 @@ const selectedApplication = ref<Application | null>(null)
 const releaseDetailCardID = ref('')
 const selectedReleaseEnvByApplication = ref<Record<string, string>>({})
 const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1440)
+const applicationViewMode = ref<ApplicationViewMode>(readStoredApplicationViewMode())
 const firstWorkbenchLoaded = ref(false)
 const searchDialogVisible = ref(false)
 const searchInputRef = ref()
@@ -327,6 +343,18 @@ let autoRefreshTimer: ReturnType<typeof window.setInterval> | null = null
 let searchSuggestionTimer: ReturnType<typeof window.setTimeout> | null = null
 let searchSuggestionRequestSeq = 0
 let overviewTrendChart: ECharts | null = null
+
+function setApplicationViewMode(mode: ApplicationViewMode) {
+  applicationViewMode.value = mode
+  try {
+    window.localStorage.setItem(applicationViewModeStorageKey, mode)
+  } catch {
+    // Keep the in-memory preference when storage is unavailable.
+  }
+  if (mode === 'card') {
+    scheduleMeasureAppKeyOverflow()
+  }
+}
 
 const canManageApplication = computed(() => authStore.hasPermission('application.manage'))
 const canViewPipeline = computed(() => authStore.hasPermission('pipeline.view'))
@@ -1935,6 +1963,28 @@ onUnmounted(() => {
           :options="projectOptions"
           @change="handleProjectChange"
         />
+        <div class="application-view-switch" role="group" aria-label="应用展示方式">
+          <button
+            type="button"
+            class="application-view-switch-button"
+            :class="{ 'application-view-switch-button-active': applicationViewMode === 'card' }"
+            :aria-pressed="applicationViewMode === 'card'"
+            @click="setApplicationViewMode('card')"
+          >
+            <AppstoreOutlined aria-hidden="true" />
+            <span>卡片</span>
+          </button>
+          <button
+            type="button"
+            class="application-view-switch-button"
+            :class="{ 'application-view-switch-button-active': applicationViewMode === 'list' }"
+            :aria-pressed="applicationViewMode === 'list'"
+            @click="setApplicationViewMode('list')"
+          >
+            <UnorderedListOutlined aria-hidden="true" />
+            <span>列表</span>
+          </button>
+        </div>
         <a-button class="application-toolbar-action-btn" @click="openIntroDrawer">
           <template #icon>
             <QuestionCircleOutlined />
@@ -2043,11 +2093,13 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div
-      v-else-if="workbenchCards.length > 0"
-      class="application-workbench-columns"
-      :class="`application-workbench-columns-${workbenchColumnCount}`"
-    >
+    <transition name="application-view-mode" mode="out-in">
+      <div
+        v-if="!initialWorkbenchLoading && workbenchCards.length > 0 && applicationViewMode === 'card'"
+        key="card-view"
+        class="application-workbench-columns"
+        :class="`application-workbench-columns-${workbenchColumnCount}`"
+      >
       <a-card
         v-for="card in workbenchCards"
         :key="card.application.id"
@@ -2239,7 +2291,196 @@ onUnmounted(() => {
           </transition>
         </div>
       </a-card>
-    </div>
+      </div>
+      <div
+        v-else-if="!initialWorkbenchLoading && workbenchCards.length > 0"
+        key="list-view"
+        class="application-workbench-list"
+        role="list"
+        aria-label="应用列表"
+      >
+      <div class="application-workbench-list-header" aria-hidden="true">
+        <span>应用</span>
+        <span>状态</span>
+        <span>最近发布</span>
+        <span>发布态势</span>
+        <span>操作</span>
+      </div>
+      <article
+        v-for="card in workbenchCards"
+        :key="card.application.id"
+        class="application-workbench-list-item"
+        :class="[
+          card.runningCount > 0 ? 'application-workbench-list-item-running' : '',
+          isReleaseDetailCard(card.application.id) ? 'application-workbench-list-item-expanded' : '',
+        ]"
+        role="listitem"
+      >
+        <div class="application-workbench-list-row">
+          <div class="application-workbench-list-cell application-workbench-list-app" data-label="应用">
+            <div class="application-workbench-list-title-row">
+              <button
+                class="application-workbench-list-title"
+                type="button"
+                @click="openApplicationInfoDrawer(card.application)"
+              >
+                {{ card.application.name }}
+              </button>
+              <span class="application-workbench-list-key" :title="card.application.key">{{ card.application.key }}</span>
+            </div>
+            <div class="application-workbench-list-meta">
+              <span class="application-workbench-list-meta-item">{{ card.application.project_name || '未配置项目' }}</span>
+              <span class="application-workbench-list-meta-item">{{ card.application.owner || '未配置负责人' }}</span>
+            </div>
+          </div>
+
+          <div class="application-workbench-list-cell application-workbench-list-state" data-label="状态">
+            <span class="workbench-app-state" :class="applicationStatusClass(card.application.status)">
+              {{ applicationStatusText(card.application.status) }}
+            </span>
+          </div>
+
+          <div class="application-workbench-list-cell application-workbench-list-release" data-label="最近发布">
+            <button
+              v-if="card.latestOrder"
+              class="application-workbench-list-order"
+              type="button"
+              :title="card.latestOrder.order_no"
+              @click="toReleaseOrderDetail(card.latestOrder.id)"
+            >
+              {{ card.latestOrder.order_no }}
+            </button>
+            <span v-else class="application-workbench-list-empty">暂无最近发布</span>
+          </div>
+
+          <div class="application-workbench-list-cell application-workbench-list-activity" data-label="发布态势">
+            <span class="workbench-collapsed-chip workbench-status-chip" :class="cardActivityStatusClass(card.runningCount)">
+              <span v-if="card.runningCount > 0" class="workbench-status-chip-dot"></span>
+              {{ cardActivityStatusText(card.runningCount) }}
+            </span>
+          </div>
+
+          <div class="application-workbench-list-cell application-workbench-list-actions" data-label="操作">
+            <a-button class="workbench-primary-action application-workbench-list-action" type="primary" @click="toRelease(card.application.id)">
+              发布
+            </a-button>
+            <a-button
+              class="workbench-primary-action application-workbench-list-action application-workbench-list-detail-trigger"
+              type="primary"
+              :aria-pressed="isReleaseDetailCard(card.application.id)"
+              @click="handleReleaseDetailAction(card)"
+            >
+              <template #icon>
+                <AimOutlined />
+              </template>
+              {{ releaseDetailActionText(card) }}
+            </a-button>
+            <a-popover
+              v-if="canOpenWorkbenchConfig"
+              trigger="click"
+              placement="bottomRight"
+              overlay-class-name="workbench-manage-popover"
+            >
+              <template #content>
+                <div class="workbench-manage-actions">
+                  <a-button class="workbench-secondary-action" @click="toTemplates(card.application.id)">查看模版</a-button>
+                  <a-button
+                    v-if="canViewPipeline || canManageApplication"
+                    class="workbench-secondary-action"
+                    @click="toBindings(card.application.id)"
+                  >
+                    管线绑定
+                  </a-button>
+                  <a-button
+                    v-if="canManageApplication"
+                    class="workbench-secondary-action"
+                    @click="toEdit(card.application.id)"
+                  >
+                    编辑
+                  </a-button>
+                  <a-button
+                    v-if="canManageApplication"
+                    class="workbench-secondary-action workbench-danger-action"
+                    danger
+                    :style="{ color: '#ef4444', borderColor: 'rgba(248, 113, 113, 0.28)' }"
+                    :loading="deletingId === card.application.id"
+                    @click="confirmDeleteApplication(card.application.id)"
+                  >
+                    删除
+                  </a-button>
+                </div>
+              </template>
+              <a-button class="workbench-primary-action application-workbench-list-action application-workbench-list-config" type="primary">
+                <template #icon>
+                  <MoreOutlined />
+                </template>
+                配置
+              </a-button>
+            </a-popover>
+            <a-button
+              v-else
+              class="workbench-primary-action application-workbench-list-action application-workbench-list-config workbench-config-readonly"
+              type="primary"
+              @click.stop.prevent
+            >
+              <template #icon>
+                <MoreOutlined />
+              </template>
+              配置
+            </a-button>
+          </div>
+        </div>
+
+        <transition name="workbench-card-detail-switch">
+          <div v-if="isReleaseDetailCard(card.application.id)" class="application-workbench-list-detail">
+            <div class="application-workbench-list-detail-summary">
+              <div class="workbench-release-detail-head">
+                <span class="workbench-release-detail-env">{{ releaseDetailEnvText(card) }}</span>
+                <span class="workbench-app-state" :class="applicationStatusClass(card.application.status)">
+                  {{ applicationStatusText(card.application.status) }}
+                </span>
+              </div>
+              <div class="workbench-release-state-stack application-workbench-list-release-state">
+                <button
+                  v-if="releaseDetailCurrentOrderID(card)"
+                  class="state-bubble state-bubble-current latest-release-order-bubble"
+                  type="button"
+                  @click="toReleaseOrderDetail(releaseDetailCurrentOrderID(card))"
+                >
+                  生效：{{ releaseDetailCurrentOrderNo(card) }}
+                </button>
+                <span v-else class="state-bubble state-bubble-current latest-release-order-bubble">
+                  生效：未确认生效
+                </span>
+                <button
+                  v-if="releaseDetailLatestOrderID(card)"
+                  class="state-bubble state-bubble-latest latest-release-order-bubble"
+                  type="button"
+                  @click="toReleaseOrderDetail(releaseDetailLatestOrderID(card))"
+                >
+                  最近：{{ releaseDetailLatestOrderNo(card) }}
+                </button>
+                <span v-else class="state-bubble state-bubble-latest latest-release-order-bubble">
+                  最近：暂无最近发布
+                </span>
+              </div>
+            </div>
+            <div class="workbench-release-detail-actions application-workbench-list-detail-actions">
+              <a-button
+                v-if="canSwitchReleaseEnv(card)"
+                class="workbench-secondary-action"
+                @click="switchReleaseEnv(card)"
+              >
+                切换环境
+              </a-button>
+              <a-button class="workbench-secondary-action" @click="toReleaseRecords(card.application.id)">查看发布单</a-button>
+              <a-button class="workbench-secondary-action" @click="closeReleaseDetailCard">收起</a-button>
+            </div>
+          </div>
+        </transition>
+      </article>
+      </div>
+    </transition>
     <a-card v-if="!initialWorkbenchLoading && workbenchCards.length === 0" class="table-card" :bordered="true">
       <a-empty description="当前没有符合条件的应用" />
     </a-card>
@@ -2528,6 +2769,59 @@ onUnmounted(() => {
 :deep(.application-toolbar-project-select.ant-select .ant-select-selection-search-input) {
   color: #0f172a !important;
   font-weight: 700;
+}
+
+.application-view-switch {
+  display: inline-flex;
+  align-items: center;
+  height: 42px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.74),
+    0 10px 24px rgba(15, 23, 42, 0.06);
+  backdrop-filter: blur(18px) saturate(145%);
+}
+
+.application-view-switch-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 70px;
+  height: 34px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: rgba(51, 65, 85, 0.76);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.application-view-switch-button:hover {
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.application-view-switch-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+.application-view-switch-button-active,
+.application-view-switch-button-active:hover {
+  border-color: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.68);
+  color: #1e293b;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.84),
+    0 6px 14px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(18px) saturate(145%);
 }
 
 :deep(.application-toolbar-action-btn.ant-btn) {
@@ -2979,6 +3273,371 @@ onUnmounted(() => {
   gap: 20px;
   align-items: start;
   grid-auto-flow: row;
+}
+
+.application-view-mode-enter-active {
+  transform-origin: top center;
+  transition:
+    opacity 0.22s ease,
+    transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.application-view-mode-leave-active {
+  transform-origin: top center;
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+  will-change: opacity, transform;
+}
+
+.application-view-mode-enter-from {
+  opacity: 0;
+  transform: translateY(8px) scale(0.994);
+}
+
+.application-view-mode-leave-to {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.998);
+}
+
+.application-workbench-list {
+  --application-list-columns: minmax(220px, 1.4fr) 96px minmax(150px, 0.9fr) 120px minmax(224px, auto);
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.38);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.76),
+    0 18px 38px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(20px) saturate(145%);
+}
+
+.application-workbench-list-header,
+.application-workbench-list-row {
+  display: grid;
+  grid-template-columns: var(--application-list-columns);
+  align-items: center;
+  column-gap: 16px;
+}
+
+.application-workbench-list-header {
+  min-height: 48px;
+  padding: 12px 22px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(248, 250, 252, 0.34);
+  color: rgba(71, 85, 105, 0.76);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.application-workbench-list-header span:last-child {
+  text-align: right;
+}
+
+.application-workbench-list-item {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: none;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: none;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.application-workbench-list-item:last-child {
+  border-bottom: none;
+}
+
+.application-workbench-list-item:hover {
+  background: rgba(255, 255, 255, 0.52);
+  box-shadow: inset 3px 0 0 rgba(96, 165, 250, 0.28);
+}
+
+.application-workbench-list-item-running {
+  background: rgba(239, 246, 255, 0.54);
+  box-shadow: inset 3px 0 0 rgba(59, 130, 246, 0.56);
+}
+
+.application-workbench-list-item-expanded {
+  background: rgba(248, 250, 252, 0.58);
+}
+
+.application-workbench-list-row {
+  min-height: 104px;
+  padding: 18px 22px;
+}
+
+.application-workbench-list-cell {
+  min-width: 0;
+}
+
+.application-workbench-list-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.application-workbench-list-title {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  background: transparent;
+  color: #0f172a;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.18s ease;
+}
+
+.application-workbench-list-title:hover,
+.application-workbench-list-title:focus-visible {
+  color: #2563eb;
+  outline: none;
+}
+
+.application-workbench-list-key {
+  display: inline-flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 44%;
+  padding: 4px 8px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.68);
+  color: #475569;
+  font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.application-workbench-list-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 9px;
+  overflow: hidden;
+}
+
+.application-workbench-list-meta-item {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(71, 85, 105, 0.78);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.application-workbench-list-meta-item + .application-workbench-list-meta-item::before {
+  content: '·';
+  margin-right: 8px;
+  color: rgba(100, 116, 139, 0.62);
+}
+
+.application-workbench-list-state,
+.application-workbench-list-activity {
+  display: flex;
+  align-items: center;
+}
+
+.application-workbench-list-release {
+  overflow: hidden;
+}
+
+.application-workbench-list-order {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.18s ease;
+}
+
+.application-workbench-list-order:hover,
+.application-workbench-list-order:focus-visible {
+  color: #1d4ed8;
+  outline: none;
+}
+
+.application-workbench-list-empty {
+  color: rgba(100, 116, 139, 0.7);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.application-workbench-list-activity .workbench-collapsed-chip {
+  min-height: 32px;
+  padding: 7px 11px;
+  border-color: rgba(148, 163, 184, 0.2);
+  background: rgba(248, 250, 252, 0.7);
+  color: #475569;
+}
+
+.application-workbench-list .workbench-app-state {
+  box-shadow: none;
+}
+
+.application-workbench-list .app-state-chip-active {
+  border-color: rgba(34, 197, 94, 0.2);
+  background: rgba(220, 252, 231, 0.76);
+  color: #15803d;
+}
+
+.application-workbench-list .app-state-chip-inactive {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(241, 245, 249, 0.78);
+  color: #64748b;
+}
+
+.application-workbench-list-activity .workbench-status-chip-running {
+  border-color: rgba(59, 130, 246, 0.2);
+  background: rgba(219, 234, 254, 0.76);
+  color: #1d4ed8;
+}
+
+.application-workbench-list-activity .workbench-status-chip-idle {
+  border-color: rgba(148, 163, 184, 0.2);
+  background: rgba(248, 250, 252, 0.7);
+  color: #64748b;
+}
+
+.application-workbench-list-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+:deep(.application-workbench-list-action.ant-btn) {
+  height: 34px;
+  min-width: 0;
+  padding-inline: 12px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+:deep(.application-workbench-list-detail-trigger.ant-btn),
+:deep(.application-workbench-list-config.ant-btn) {
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  background: rgba(255, 255, 255, 0.52) !important;
+  color: #334155 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+}
+
+:deep(.application-workbench-list-detail-trigger.ant-btn:hover),
+:deep(.application-workbench-list-detail-trigger.ant-btn:focus),
+:deep(.application-workbench-list-config.ant-btn:hover),
+:deep(.application-workbench-list-config.ant-btn:focus) {
+  border-color: rgba(96, 165, 250, 0.3) !important;
+  background: rgba(239, 246, 255, 0.84) !important;
+  color: #1d4ed8 !important;
+}
+
+.application-workbench-list-detail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 22px 20px;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(239, 246, 255, 0.36);
+}
+
+.application-workbench-list-detail-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.application-workbench-list-detail .workbench-release-detail-head {
+  justify-content: flex-start;
+}
+
+.application-workbench-list-detail .workbench-release-detail-env {
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.application-workbench-list-release-state {
+  flex: none;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.application-workbench-list-release-state .state-bubble {
+  min-height: 34px;
+  padding: 7px 11px;
+  font-size: 12px;
+  box-shadow: none;
+}
+
+.application-workbench-list-release-state .state-bubble-current {
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  background: rgba(220, 252, 231, 0.76);
+  color: #15803d;
+}
+
+.application-workbench-list-release-state .state-bubble-latest {
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  background: rgba(254, 243, 199, 0.72);
+  color: #b45309;
+}
+
+.application-workbench-list-detail-actions {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+
+.application-workbench-list-detail :deep(.workbench-secondary-action.ant-btn) {
+  height: 34px;
+  padding-inline: 12px;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.58) !important;
+  color: #334155 !important;
+  font-size: 12px;
+}
+
+.application-workbench-list-detail :deep(.workbench-secondary-action.ant-btn:hover),
+.application-workbench-list-detail :deep(.workbench-secondary-action.ant-btn:focus) {
+  border-color: rgba(96, 165, 250, 0.3) !important;
+  background: rgba(239, 246, 255, 0.88) !important;
+  color: #1d4ed8 !important;
 }
 
 .application-search-card {
@@ -4983,6 +5642,44 @@ button.workbench-release-overview-chip:hover {
   .workbench-release-detail-grid {
     grid-template-columns: 1fr;
   }
+
+  .application-workbench-list-header {
+    display: none;
+  }
+
+  .application-workbench-list-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'app state'
+      'release activity'
+      'actions actions';
+    row-gap: 16px;
+  }
+
+  .application-workbench-list-app {
+    grid-area: app;
+  }
+
+  .application-workbench-list-state {
+    grid-area: state;
+    justify-content: flex-end;
+  }
+
+  .application-workbench-list-release {
+    grid-area: release;
+  }
+
+  .application-workbench-list-activity {
+    grid-area: activity;
+    justify-content: flex-end;
+  }
+
+  .application-workbench-list-actions {
+    grid-area: actions;
+    justify-content: flex-start;
+    padding-top: 14px;
+    border-top: 1px solid rgba(148, 163, 184, 0.14);
+  }
 }
 
 @media (max-width: 1024px) {
@@ -5092,13 +5789,91 @@ button.workbench-release-overview-chip:hover {
     width: 100%;
     min-width: 0;
   }
+
+  .application-view-switch {
+    width: 100%;
+  }
+
+  .application-view-switch-button {
+    flex: 1 1 50%;
+  }
+
+  .application-workbench-list-row {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 15px;
+    padding: 18px;
+  }
+
+  .application-workbench-list-title-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .application-workbench-list-key {
+    max-width: 100%;
+  }
+
+  .application-workbench-list-state,
+  .application-workbench-list-release,
+  .application-workbench-list-activity {
+    display: grid;
+    width: 100%;
+    grid-template-columns: 82px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    justify-content: initial;
+  }
+
+  .application-workbench-list-state::before,
+  .application-workbench-list-release::before,
+  .application-workbench-list-activity::before {
+    content: attr(data-label);
+    color: rgba(148, 163, 184, 0.74);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .application-workbench-list-order {
+    width: auto;
+  }
+
+  .application-workbench-list-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .application-workbench-list-detail {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 18px;
+  }
+
+  .application-workbench-list-detail-actions {
+    justify-content: flex-start;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .application-view-mode-enter-active,
+  .application-view-mode-leave-active {
+    transition: none !important;
+  }
+
+  .application-view-mode-enter-from,
+  .application-view-mode-leave-to {
+    opacity: 1;
+    transform: none;
+  }
+
   .workbench-card-shell-running,
   .workbench-card-shell-running::before,
   .workbench-card-shell-running::after,
-  .announcement-badge-workflow-alert {
+  .announcement-badge-workflow-alert,
+  .application-workbench-list-item {
     animation: none !important;
     transform: none !important;
   }

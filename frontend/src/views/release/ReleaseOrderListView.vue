@@ -4812,6 +4812,7 @@ function handleOverviewChartResize() {
 
 .release-order-no-trigger {
   display: block;
+  min-width: 0;
   width: 100%;
   max-width: 100%;
   padding: 0;
@@ -4822,15 +4823,14 @@ function handleOverviewChartResize() {
 }
 
 .release-order-no-text {
-  position: relative;
   display: block;
+  width: 100%;
   max-width: 100%;
-  padding-right: 34px;
   overflow: hidden;
   color: #334155;
   font-weight: 700;
   line-height: 1.5;
-  text-overflow: clip;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -4838,24 +4838,8 @@ function handleOverviewChartResize() {
   display: block;
   min-width: 0;
   overflow: hidden;
-  text-overflow: clip;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 44px), rgba(0, 0, 0, 0.38) calc(100% - 24px), transparent 100%);
-  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 44px), rgba(0, 0, 0, 0.38) calc(100% - 24px), transparent 100%);
-}
-
-.release-order-no-text::after {
-  position: absolute;
-  z-index: 1;
-  top: 0;
-  right: 0;
-  width: 38px;
-  height: 100%;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.72) 68%, rgba(255, 255, 255, 0.88));
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
-  content: "";
-  pointer-events: none;
 }
 
 .release-order-no-tags {

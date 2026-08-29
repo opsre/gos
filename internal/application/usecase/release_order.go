@@ -1140,6 +1140,7 @@ func (uc *ReleaseOrderManager) materializeCreateTemplateParams(
 	}
 
 	appKey := strings.TrimSpace(app.Key)
+	appRepoURL := strings.TrimSpace(app.RepoURL)
 	resolvedParams := make([]CreateReleaseOrderParamInput, 0, len(templateParams))
 	resolvedValues := map[domain.PipelineScope]map[string]string{
 		domain.PipelineScopeCI: {},
@@ -1209,7 +1210,7 @@ func (uc *ReleaseOrderManager) materializeCreateTemplateParams(
 					item,
 					firstNonEmpty(
 						resolvedValues[domain.PipelineScopeCI][strings.ToLower(strings.TrimSpace(item.SourceParamKey))],
-						resolveCreateStandardFieldValue(strings.TrimSpace(item.SourceParamKey), envCode, projectName, gitRef, imageTag, releaseName, appKey, artifactValues, resolvedValues),
+						resolveCreateStandardFieldValue(strings.TrimSpace(item.SourceParamKey), envCode, projectName, gitRef, imageTag, releaseName, appKey, appRepoURL, artifactValues, resolvedValues),
 					),
 					domain.ValueSourceCIParam,
 				)
@@ -1217,7 +1218,7 @@ func (uc *ReleaseOrderManager) materializeCreateTemplateParams(
 				appendResolved(
 					item,
 					firstNonEmpty(
-						resolveCreateStandardFieldValue(strings.TrimSpace(item.SourceParamKey), envCode, projectName, gitRef, imageTag, releaseName, appKey, artifactValues, resolvedValues),
+						resolveCreateStandardFieldValue(strings.TrimSpace(item.SourceParamKey), envCode, projectName, gitRef, imageTag, releaseName, appKey, appRepoURL, artifactValues, resolvedValues),
 						executorDefaultValue(item),
 					),
 					domain.ValueSourceBuiltin,
@@ -1326,6 +1327,7 @@ func resolveCreateStandardFieldValue(
 	imageTag string,
 	releaseName string,
 	appKey string,
+	appRepoURL string,
 	artifactValues map[string]string,
 	resolved map[domain.PipelineScope]map[string]string,
 ) string {
@@ -1356,6 +1358,8 @@ func resolveCreateStandardFieldValue(
 		return firstNonEmpty(pickResolved("image_version", "image_tag"), imageTag)
 	case "app_key":
 		return firstNonEmpty(pickResolved("app_key"), appKey)
+	case "repo_url":
+		return strings.TrimSpace(appRepoURL)
 	case standardParamGOSArtifactURL:
 		return strings.TrimSpace(resolved[domain.PipelineScopeCI][standardParamGOSArtifactURL])
 	case standardParamGOSArtifactPath:
@@ -3077,10 +3081,12 @@ func (uc *ReleaseOrderManager) buildJenkinsExecutionParams(
 	}
 
 	appKey := ""
+	appRepoURL := ""
 	artifactValues := map[string]string{}
 	if uc.appRepo != nil && strings.TrimSpace(order.ApplicationID) != "" {
 		if appRecord, appErr := uc.appRepo.GetByID(ctx, strings.TrimSpace(order.ApplicationID)); appErr == nil {
 			appKey = strings.TrimSpace(appRecord.Key)
+			appRepoURL = strings.TrimSpace(appRecord.RepoURL)
 			values, artifactErr := uc.resolveApplicationArtifactParamValues(ctx, appRecord)
 			if artifactErr != nil {
 				return nil, artifactErr
@@ -3097,10 +3103,26 @@ func (uc *ReleaseOrderManager) buildJenkinsExecutionParams(
 		if executorParamName == "" {
 			continue
 		}
+		if execution.PipelineScope == domain.PipelineScopeCD {
+			if upstreamKey := jenkinsUpstreamTemplateParamKey(item); upstreamKey != "" {
+				value := strings.TrimSpace(resolveCIJenkinsRuntimeValue(executions, upstreamKey))
+				if value == "" {
+					return nil, fmt.Errorf(
+						"%w: 未解析到上游 Jenkins CI 的 %s，无法继续执行 CD 管线",
+						ErrInvalidInput,
+						jenkinsUpstreamExecutorParamName(upstreamKey),
+					)
+				}
+				// CI_JOB/CI_BUILD are runtime-owned linkage values. They must override
+				// stale or manually submitted values saved on the release order.
+				buildParams[executorParamName] = value
+				continue
+			}
+		}
 		if strings.TrimSpace(buildParams[executorParamName]) != "" {
 			continue
 		}
-		value := strings.TrimSpace(uc.resolveTemplateExecutionParamValue(order, execution.PipelineScope, item, orderParams, executions, appKey, artifactValues))
+		value := strings.TrimSpace(uc.resolveTemplateExecutionParamValue(order, execution.PipelineScope, item, orderParams, executions, appKey, appRepoURL, artifactValues))
 		if value == "" {
 			if item.Required {
 				return nil, fmt.Errorf("%w: 未解析到 %s，无法继续执行 %s 管线", ErrInvalidInput, firstNonEmpty(strings.TrimSpace(item.ParamName), strings.TrimSpace(item.ParamKey), executorParamName), strings.ToUpper(string(execution.PipelineScope)))
@@ -3120,6 +3142,7 @@ func (uc *ReleaseOrderManager) resolveTemplateExecutionParamValue(
 	orderParams []domain.ReleaseOrderParam,
 	executions []domain.ReleaseOrderExecution,
 	appKey string,
+	appRepoURL string,
 	artifactValues map[string]string,
 ) string {
 	paramKey := strings.TrimSpace(item.ParamKey)
@@ -3140,10 +3163,10 @@ func (uc *ReleaseOrderManager) resolveTemplateExecutionParamValue(
 	case domain.TemplateParamValueSourceCIParam:
 		return firstNonEmpty(
 			findReleaseParamValue(orderParams, domain.PipelineScopeCI, item.SourceParamKey),
-			uc.resolveStandardFieldValue(order, orderParams, executions, appKey, artifactValues, item.SourceParamKey),
+			uc.resolveStandardFieldValue(order, orderParams, executions, appKey, appRepoURL, artifactValues, item.SourceParamKey),
 		)
 	case domain.TemplateParamValueSourceBuiltin:
-		return uc.resolveStandardFieldValue(order, orderParams, executions, appKey, artifactValues, item.SourceParamKey)
+		return uc.resolveStandardFieldValue(order, orderParams, executions, appKey, appRepoURL, artifactValues, item.SourceParamKey)
 	default:
 		return ""
 	}
@@ -3155,6 +3178,7 @@ func (uc *ReleaseOrderManager) resolveStandardFieldValue(
 	orderParams []domain.ReleaseOrderParam,
 	executions []domain.ReleaseOrderExecution,
 	appKey string,
+	appRepoURL string,
 	artifactValues map[string]string,
 	key string,
 ) string {
@@ -3191,8 +3215,12 @@ func (uc *ReleaseOrderManager) resolveStandardFieldValue(
 		return uc.resolveArgoCDImageVersion(order, orderParams, executions)
 	case "app_key":
 		return strings.TrimSpace(appKey)
+	case "repo_url":
+		return strings.TrimSpace(appRepoURL)
 	case "app_name":
 		return strings.TrimSpace(order.ApplicationName)
+	case standardParamCIJob, standardParamCIBuild:
+		return resolveCIJenkinsRuntimeValue(executions, normalizedKey)
 	case standardParamGOSArtifactURL:
 		return findReleaseParamValue(orderParams, domain.PipelineScopeCI, standardParamGOSArtifactURL)
 	case standardParamGOSArtifactPath:

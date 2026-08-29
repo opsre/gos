@@ -4,7 +4,9 @@ import {
   ClusterOutlined,
   DatabaseOutlined,
   HomeOutlined,
+  LeftOutlined,
   LogoutOutlined,
+  RightOutlined,
   RocketOutlined,
   SettingOutlined,
   UserOutlined,
@@ -405,7 +407,7 @@ onUnmounted(() => {
       collapsible
     >
       <div class="sider-brand" @click="goToReleaseSearch">
-        <div class="brand-mark">G</div>
+        <img class="brand-mark" src="/logo-mark.svg?v=20260829-b" alt="" />
         <div class="brand-copy">
           <div class="brand-title">GOS Release</div>
         </div>
@@ -551,7 +553,7 @@ onUnmounted(() => {
       <div class="sider-footer">
         <div class="sider-footer-row">
           <div class="sider-footer-version">
-            <span>v1.3.1</span>
+            <span>v1.3.2</span>
             <a href="https://github.com/yl1664907302/gos" target="_blank" class="github-link" title="访问 GitHub">
               <svg class="github-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" fill="currentColor"/>
@@ -560,8 +562,8 @@ onUnmounted(() => {
           </div>
           <div class="sider-footer-role-group">
             <div class="sider-footer-role">{{ roleText }}</div>
-            <button class="sider-footer-toggle" type="button" @click="toggleSider" aria-label="折叠菜单">
-              ‹
+            <button class="sider-footer-toggle" type="button" title="收起侧栏" @click="toggleSider" aria-label="收起侧栏">
+              <LeftOutlined aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -577,8 +579,8 @@ onUnmounted(() => {
         </a-button>
       </div>
     </a-layout-sider>
-    <button v-if="siderCollapsed" class="layout-sider-restore" type="button" @click="toggleSider" aria-label="展开菜单">
-      ›
+    <button v-if="siderCollapsed" class="layout-sider-restore" type="button" title="展开侧栏" @click="toggleSider" aria-label="展开侧栏">
+      <RightOutlined aria-hidden="true" />
     </button>
 
     <a-layout>
@@ -640,22 +642,12 @@ onUnmounted(() => {
 }
 
 .brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  flex: 0 0 auto;
   width: 38px;
   height: 38px;
-  border-radius: 14px;
-  border: 1px solid rgba(56, 189, 248, 0.22);
-  background:
-    radial-gradient(circle at top right, rgba(34, 197, 94, 0.16), transparent 42%),
-    linear-gradient(180deg, rgba(37, 99, 235, 0.24), rgba(15, 23, 42, 0.42)),
-    rgba(59, 130, 246, 0.08);
-  color: #eff6ff;
-  font-size: 18px;
-  font-weight: 800;
+  border-radius: 12px;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 10px 22px rgba(2, 6, 23, 0.18);
 }
 
@@ -713,32 +705,24 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid rgba(96, 165, 250, 0.34);
-  background:
-    radial-gradient(circle at top right, rgba(56, 189, 248, 0.2), transparent 42%),
-    rgba(15, 23, 42, 0.86);
-  color: #eff6ff;
-  font-size: 0;
-  font-weight: 700;
+  color: rgba(191, 219, 254, 0.68);
   line-height: 1;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 10px 24px rgba(2, 6, 23, 0.22);
   cursor: pointer;
   transition:
     color 0.18s ease,
-    opacity 0.18s ease,
     transform 0.18s ease,
     border-color 0.18s ease,
-    box-shadow 0.18s ease,
     background 0.18s ease;
 }
 
 .sider-footer-toggle {
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
-  border-radius: 9px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.06);
+  font-size: 12px;
 }
 
 .layout-sider-restore {
@@ -748,43 +732,36 @@ onUnmounted(() => {
   z-index: 36;
   width: 30px;
   min-width: 30px;
-  height: 64px;
-  border-radius: 14px;
+  height: 52px;
+  border: 1px solid rgba(96, 165, 250, 0.24);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.9);
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.2);
+  font-size: 13px;
   transform: translateY(-50%);
-}
-
-.sider-footer-toggle::before,
-.layout-sider-restore::before {
-  font-size: 16px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.sider-footer-toggle::before {
-  content: '<';
-  transform: translateX(-1px);
-}
-
-.layout-sider-restore::before {
-  content: '>';
-  transform: translateX(1px);
 }
 
 .sider-footer-toggle:hover,
 .sider-footer-toggle:focus,
-.sider-footer-toggle:focus-visible,
+.sider-footer-toggle:focus-visible {
+  color: #dbeafe;
+  border-color: rgba(96, 165, 250, 0.16);
+  background: rgba(96, 165, 250, 0.12);
+  outline: none;
+  transform: translateX(-1px);
+}
+
+.sider-footer-toggle:focus-visible {
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.16);
+}
+
 .layout-sider-restore:hover,
 .layout-sider-restore:focus,
 .layout-sider-restore:focus-visible {
   color: #eff6ff;
-  border-color: rgba(125, 211, 252, 0.72);
-  background:
-    radial-gradient(circle at top right, rgba(56, 189, 248, 0.3), transparent 40%),
-    rgba(30, 41, 59, 0.94);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 14px 28px rgba(2, 6, 23, 0.28);
-  transform: translateY(-1px);
+  border-color: rgba(96, 165, 250, 0.46);
+  background: rgba(30, 41, 59, 0.96);
+  outline: none;
 }
 
 .layout-sider-restore:hover,
@@ -970,7 +947,7 @@ onUnmounted(() => {
 .sider-footer-role-group {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .sider-footer-version {

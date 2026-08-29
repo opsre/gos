@@ -23,15 +23,18 @@ import (
 )
 
 var templateBuiltinSourceKeys = map[string]struct{}{
-	"app_key":       {},
-	"app_name":      {},
-	"release_name":  {},
-	"env":           {},
-	"env_code":      {},
-	"branch":        {},
-	"git_ref":       {},
-	"image_version": {},
-	"image_tag":     {},
+	"app_key":            {},
+	"app_name":           {},
+	"repo_url":           {},
+	"release_name":       {},
+	"env":                {},
+	"env_code":           {},
+	"branch":             {},
+	"git_ref":            {},
+	"image_version":      {},
+	"image_tag":          {},
+	standardParamCIJob:   {},
+	standardParamCIBuild: {},
 }
 
 type ReleaseTemplateManager struct {

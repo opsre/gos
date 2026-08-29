@@ -6,6 +6,7 @@ node_modules
 frontend/node_modules
 frontend/dist
 frontend/.tmp-playwright
+configs/config.local.json
 data
 tmp
 server

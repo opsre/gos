@@ -51,6 +51,7 @@ async function handleSubmit() {
     <div class="login-shell">
       <a-card class="login-card" :bordered="false">
         <div class="login-card-head">
+          <img class="login-logo" src="/logo-mark.svg?v=20260829-b" alt="" />
           <h2 class="login-title">GOS Release</h2>
         </div>
 
@@ -138,8 +139,20 @@ async function handleSubmit() {
 }
 
 .login-card-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
   margin-bottom: 12px;
   text-align: left;
+}
+
+.login-logo {
+  display: block;
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  border-radius: 15px;
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.16);
 }
 
 .login-title {

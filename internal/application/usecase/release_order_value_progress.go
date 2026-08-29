@@ -211,7 +211,8 @@ func resolveReleaseOrderValueProgressItem(
 		SortNo:            param.SortNo,
 	}
 
-	if isCIOnlyStandardParamKey(progress.ParamKey) {
+	ciOwnedValue := isCIOnlyStandardParamKey(progress.ParamKey) || isCIJenkinsRuntimeParamKey(progress.ParamKey)
+	if ciOwnedValue {
 		if snapshot, ok := findIndexedReleaseParam(paramsByScopeKey, domain.PipelineScopeCI, progress.ParamKey); ok {
 			progress.Value = strings.TrimSpace(snapshot.ParamValue)
 			progress.ValueSource = strings.TrimSpace(string(snapshot.ValueSource))
@@ -230,7 +231,7 @@ func resolveReleaseOrderValueProgressItem(
 	}
 
 	progressExecutionScope := param.PipelineScope
-	if isCIOnlyStandardParamKey(progress.ParamKey) {
+	if ciOwnedValue {
 		progressExecutionScope = domain.PipelineScopeCI
 	}
 	execution, hasExecution := executionByScope[progressExecutionScope]
@@ -243,7 +244,7 @@ func resolveReleaseOrderValueProgressItem(
 		return progress
 	}
 
-	if param.ValueSource == domain.TemplateParamValueSourceBuiltin && !isCIOnlyStandardParamKey(progress.ParamKey) {
+	if param.ValueSource == domain.TemplateParamValueSourceBuiltin && !ciOwnedValue {
 		if value := strings.TrimSpace(executorDefaultValue); value != "" {
 			progress.Value = value
 			progress.ValueSource = "executor_param_default"
@@ -498,7 +499,7 @@ func resolveValueProgressKind(param domain.ReleaseTemplateParam) ReleaseOrderVal
 }
 
 func isExecutionOutputStandardParamKey(key string) bool {
-	return isCIOnlyStandardParamKey(key)
+	return isCIOnlyStandardParamKey(key) || isCIJenkinsRuntimeParamKey(key)
 }
 
 func isRealExecutorParamName(value string) bool {
@@ -591,6 +592,21 @@ func deriveReleaseProgressValue(
 ) (derivedProgressValue, bool) {
 	paramKey := strings.ToLower(strings.TrimSpace(item.ParamKey))
 	switch paramKey {
+	case standardParamCIJob, standardParamCIBuild:
+		if value := resolveCIJenkinsRuntimeValue([]domain.ReleaseOrderExecution{execution}, paramKey); value != "" {
+			message := "已从 Jenkins CI 构建地址解析上游 Job 全路径"
+			source := "jenkins_ci_job"
+			if paramKey == standardParamCIBuild {
+				message = "已从 Jenkins CI 构建地址解析上游构建号"
+				source = "jenkins_ci_build"
+			}
+			return derivedProgressValue{
+				Value:     value,
+				Source:    source,
+				Message:   message,
+				UpdatedAt: timePointer(execution.UpdatedAt),
+			}, true
+		}
 	case "image_version":
 		if strings.EqualFold(strings.TrimSpace(execution.Provider), "jenkins") {
 			buildNumber := parseJenkinsBuildNumber(execution.BuildURL)
@@ -684,6 +700,10 @@ func buildResolvedMessage(source string) string {
 		return "已从环境默认值中取值"
 	case "jenkins_build_number":
 		return "已从 Jenkins 构建号 BUILD_NUMBER 自动取值"
+	case "jenkins_ci_job":
+		return "已从 Jenkins CI 构建地址解析上游 Job 全路径"
+	case "jenkins_ci_build":
+		return "已从 Jenkins CI 构建地址解析上游构建号"
 	case "builtin":
 		return "已从平台内置字段取值"
 	case "executor_param_default":

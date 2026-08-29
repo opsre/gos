@@ -41,3 +41,16 @@ test('release template builtin source options include GOS artifact path', () => 
     'release template should keep gos_artifact_path selectable as an internal builtin field',
   )
 })
+
+test('platform param and release template treat repo URL as a builtin field', () => {
+  assert.match(
+    platformParamView,
+    /protectedBuiltinParamKeys[\s\S]*repo_url/,
+    'platform param page should declare repo_url as a protected builtin key',
+  )
+  assert.match(
+    releaseTemplateView,
+    /builtinTemplateSourceKeys[\s\S]*'repo_url'/,
+    'release template should keep repo_url selectable as an internal builtin field',
+  )
+})

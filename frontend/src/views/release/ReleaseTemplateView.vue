@@ -142,6 +142,7 @@ interface TemplateExecutionUnit {
 const builtinTemplateSourceKeys = new Set([
   'app_key',
   'app_name',
+  'repo_url',
   'release_name',
   'env',
   'env_code',
@@ -149,6 +150,8 @@ const builtinTemplateSourceKeys = new Set([
   'git_ref',
   'image_version',
   'image_tag',
+  'ci_job',
+  'ci_build',
   'gos_artifact_path',
 ])
 

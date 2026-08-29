@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  AppstoreOutlined,
   AuditOutlined,
   ArrowRightOutlined,
   ExclamationCircleFilled,
@@ -82,6 +83,10 @@ function goToCreateRelease() {
 
 function goToApprovalWorkbench() {
   void router.push({ name: "release-approval-workbench" });
+}
+
+function goToApplications() {
+  void router.push({ name: "application-list" });
 }
 
 onMounted(async () => {
@@ -178,6 +183,15 @@ onMounted(async () => {
         >
           <AuditOutlined />
           <span>审批待办</span>
+          <ArrowRightOutlined class="release-search-shortcut-arrow" />
+        </button>
+        <button
+          class="release-search-shortcut"
+          type="button"
+          @click="goToApplications"
+        >
+          <AppstoreOutlined />
+          <span>我的应用</span>
           <ArrowRightOutlined class="release-search-shortcut-arrow" />
         </button>
       </nav>
@@ -379,7 +393,7 @@ onMounted(async () => {
 .release-search-shortcuts {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-top: 34px;
   padding-top: 28px;
   border-top: 1px solid rgba(148, 163, 184, 0.32);

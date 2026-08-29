@@ -277,7 +277,8 @@ func (r *ExecutorParamRepository) Upsert(ctx context.Context, items []domain.Exe
 
 	const (
 		updateByKey = `UPDATE executor_param_def
-SET param_type = ?, single_select = ?, required = ?, default_value = ?, description = ?, visible = ?, editable = ?, source_from = ?, status = ?, raw_meta = ?, sort_no = ?, updated_at = ?
+SET param_key = CASE WHEN TRIM(param_key) = '' THEN ? ELSE param_key END,
+	param_type = ?, single_select = ?, required = ?, default_value = ?, description = ?, visible = ?, editable = ?, source_from = ?, status = ?, raw_meta = ?, sort_no = ?, updated_at = ?
 WHERE pipeline_id = ? AND executor_type = ? AND executor_param_name = ?;`
 		insert = `INSERT INTO executor_param_def (
 	id, pipeline_id, executor_type, executor_param_name, param_key, param_type, single_select, required, default_value, description, visible, editable, source_from, status, raw_meta, sort_no, created_at, updated_at
@@ -309,6 +310,7 @@ WHERE pipeline_id = ? AND executor_type = ? AND executor_param_name = ?;`
 	for _, item := range items {
 		res, err := updateStmt.ExecContext(
 			ctx,
+			item.ParamKey,
 			string(item.ParamType),
 			boolToInt(item.SingleSelect),
 			boolToInt(item.Required),
@@ -460,6 +462,7 @@ id, pipeline_id, executor_type, executor_param_name, param_key, param_type, sing
 	}
 
 	builder.WriteString(` ON DUPLICATE KEY UPDATE
+param_key = CASE WHEN TRIM(param_key) = '' THEN VALUES(param_key) ELSE param_key END,
 param_type = VALUES(param_type),
 single_select = VALUES(single_select),
 required = VALUES(required),

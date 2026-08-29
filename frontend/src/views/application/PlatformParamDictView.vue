@@ -93,7 +93,7 @@ const statusFilterOptions = [
   { label: '全部状态', value: '' as const },
   ...statusOptions,
 ]
-const protectedBuiltinParamKeys = new Set(['gos_artifact_path'])
+const protectedBuiltinParamKeys = new Set(['gos_artifact_path', 'repo_url'])
 
 const modalTitle = computed(() => (modalMode.value === 'create' ? '新增标准字段' : '编辑标准字段'))
 const platformParamFormMaskStyle = computed(() => ({

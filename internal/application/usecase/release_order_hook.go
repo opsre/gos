@@ -914,10 +914,12 @@ func (uc *ReleaseOrderManager) buildHookTaskVariables(
 		return nil, err
 	}
 	appKey := ""
+	appRepoURL := ""
 	artifactValues := map[string]string{}
 	if uc.appRepo != nil && strings.TrimSpace(order.ApplicationID) != "" {
 		if appItem, appErr := uc.appRepo.GetByID(ctx, order.ApplicationID); appErr == nil {
 			appKey = strings.TrimSpace(appItem.Key)
+			appRepoURL = strings.TrimSpace(appItem.RepoURL)
 			artifactValues, _ = uc.resolveApplicationArtifactParamValues(ctx, appItem)
 		}
 	}
@@ -925,6 +927,7 @@ func (uc *ReleaseOrderManager) buildHookTaskVariables(
 	keys := []string{
 		"app_key",
 		"app_name",
+		"repo_url",
 		"release_name",
 		"project_name",
 		"env",
@@ -933,12 +936,14 @@ func (uc *ReleaseOrderManager) buildHookTaskVariables(
 		"git_ref",
 		"image_version",
 		"image_tag",
+		standardParamCIJob,
+		standardParamCIBuild,
 		standardParamGOSArtifactURL,
 		standardParamGOSArtifactPath,
 	}
 	values := make(map[string]string, len(keys)+4)
 	for _, key := range keys {
-		if value := strings.TrimSpace(uc.resolveStandardFieldValue(order, orderParams, executions, appKey, artifactValues, key)); value != "" {
+		if value := strings.TrimSpace(uc.resolveStandardFieldValue(order, orderParams, executions, appKey, appRepoURL, artifactValues, key)); value != "" {
 			values[key] = value
 		}
 	}

@@ -112,7 +112,7 @@ func (uc *SyncTemplatePipelineParams) Execute(ctx context.Context, templateID st
 				PipelineID:        ref.pipelineID,
 				ExecutorType:      domain.ExecutorTypeJenkins,
 				ExecutorParamName: paramName,
-				ParamKey:          "",
+				ParamKey:          defaultJenkinsExecutorParamKey(paramName),
 				ParamType:         paramType,
 				SingleSelect:      snapshot.SingleSelect,
 				Required:          snapshot.Required,

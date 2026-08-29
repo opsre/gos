@@ -544,6 +544,49 @@ func TestMaterializeCreateTemplateParamsResolvesGOSArtifactPathFromApplication(t
 	}
 }
 
+// TestMaterializeCreateTemplateParamsResolvesRepoURLFromApplication 应用 Git 仓库地址应作为内置字段写入发布参数快照。
+func TestMaterializeCreateTemplateParamsResolvesRepoURLFromApplication(t *testing.T) {
+	t.Parallel()
+
+	manager := &ReleaseOrderManager{}
+	resolved, err := manager.materializeCreateTemplateParams(
+		context.Background(),
+		appdomain.Application{
+			Key:     "app-1",
+			RepoURL: "https://git.example.com/team/payment-service.git",
+		},
+		[]domain.ReleaseTemplateParam{
+			{
+				PipelineScope:     domain.PipelineScopeCD,
+				ParamKey:          "repo_url",
+				ParamName:         "Git 仓库地址",
+				ExecutorParamName: "REPO_URL",
+				ValueSource:       domain.TemplateParamValueSourceBuiltin,
+				SourceParamKey:    "repo_url",
+				Required:          true,
+			},
+		},
+		nil,
+		"prod",
+		"release/v1",
+		"payment-service",
+		"20260523.1",
+		"支付服务发布",
+	)
+	if err != nil {
+		t.Fatalf("materializeCreateTemplateParams failed: %v", err)
+	}
+	if len(resolved) != 1 {
+		t.Fatalf("resolved params length = %d, want 1", len(resolved))
+	}
+	if got := resolved[0].ParamValue; got != "https://git.example.com/team/payment-service.git" {
+		t.Fatalf("repo_url = %q, want application repo url", got)
+	}
+	if got := resolved[0].ValueSource; got != domain.ValueSourceBuiltin {
+		t.Fatalf("repo_url value source = %q, want %q", got, domain.ValueSourceBuiltin)
+	}
+}
+
 // TestResolveStandardFieldValueUsesCIOnlyForGOSArtifactURL GOS 制品地址只能从 CI 单元取值。
 func TestResolveStandardFieldValueUsesCIOnlyForGOSArtifactURL(t *testing.T) {
 	t.Parallel()
@@ -560,7 +603,7 @@ func TestResolveStandardFieldValueUsesCIOnlyForGOSArtifactURL(t *testing.T) {
 			ParamKey:      "gos_artifact_url",
 			ParamValue:    "https://ci.example.com/app.jar",
 		},
-	}, nil, "", nil, "gos_artifact_url")
+	}, nil, "", "", nil, "gos_artifact_url")
 	if got != "https://ci.example.com/app.jar" {
 		t.Fatalf("gos_artifact_url = %q, want CI value", got)
 	}
@@ -582,9 +625,26 @@ func TestResolveStandardFieldValueUsesApplicationForGOSArtifactPath(t *testing.T
 			ParamKey:      "gos_artifact_path",
 			ParamValue:    "release/from-ci-param",
 		},
-	}, nil, "", map[string]string{"gos_artifact_path": "release/pay-center"}, "gos_artifact_path")
+	}, nil, "", "", map[string]string{"gos_artifact_path": "release/pay-center"}, "gos_artifact_path")
 	if got != "release/pay-center" {
 		t.Fatalf("gos_artifact_path = %q, want app artifact directory", got)
+	}
+}
+
+// TestResolveStandardFieldValueUsesApplicationForRepoURL 应用 Git 地址不应被发布参数覆盖。
+func TestResolveStandardFieldValueUsesApplicationForRepoURL(t *testing.T) {
+	t.Parallel()
+
+	manager := &ReleaseOrderManager{}
+	got := manager.resolveStandardFieldValue(domain.ReleaseOrder{}, []domain.ReleaseOrderParam{
+		{
+			PipelineScope: domain.PipelineScopeCD,
+			ParamKey:      "repo_url",
+			ParamValue:    "https://cd.example.com/should-not-use.git",
+		},
+	}, nil, "", "https://git.example.com/team/payment-service.git", nil, "repo_url")
+	if got != "https://git.example.com/team/payment-service.git" {
+		t.Fatalf("repo_url = %q, want application repo url", got)
 	}
 }
 
@@ -617,6 +677,7 @@ func TestResolveTemplateExecutionParamValueUsesCIOnlyForGOSArtifactURL(t *testin
 		},
 		nil,
 		"",
+		"",
 		nil,
 	)
 	if got != "https://ci.example.com/app.jar" {
@@ -647,6 +708,7 @@ func TestResolveTemplateExecutionParamValueUsesApplicationForGOSArtifactPath(t *
 			},
 		},
 		nil,
+		"",
 		"",
 		map[string]string{"gos_artifact_path": "release/pay-center"},
 	)

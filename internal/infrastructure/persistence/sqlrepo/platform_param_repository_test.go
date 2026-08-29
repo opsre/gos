@@ -71,6 +71,42 @@ func TestPlatformParamRepositoryInitSchemaSeedsBuiltinReleaseName(t *testing.T) 
 	}
 }
 
+func TestPlatformParamRepositoryInitSchemaSeedsBuiltinCIArtifactLinkParams(t *testing.T) {
+	t.Parallel()
+
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite failed: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+
+	repo := NewPlatformParamRepository(db, "sqlite")
+	if err := repo.InitSchema(context.Background()); err != nil {
+		t.Fatalf("InitSchema failed: %v", err)
+	}
+
+	for _, tc := range []struct {
+		key          string
+		jenkinsParam string
+	}{
+		{key: "ci_job", jenkinsParam: "CI_JOB"},
+		{key: "ci_build", jenkinsParam: "CI_BUILD"},
+	} {
+		item, err := repo.GetByParamKey(context.Background(), tc.key)
+		if err != nil {
+			t.Fatalf("GetByParamKey %s failed: %v", tc.key, err)
+		}
+		if !item.Builtin || item.Status != domain.StatusEnabled {
+			t.Fatalf("%s builtin/status = %v/%d, want true/%d", tc.key, item.Builtin, item.Status, domain.StatusEnabled)
+		}
+		if !strings.Contains(item.Description, tc.jenkinsParam) {
+			t.Fatalf("%s description = %q, want %q", tc.key, item.Description, tc.jenkinsParam)
+		}
+	}
+}
+
 // TestPlatformParamRepositoryInitSchemaSeedsBuiltinOSSParams 同步制品库 OSS 内置字段。
 func TestPlatformParamRepositoryInitSchemaSeedsBuiltinOSSParams(t *testing.T) {
 	t.Parallel()
@@ -199,6 +235,37 @@ func TestPlatformParamRepositoryInitSchemaSeedsBuiltinGOSArtifactPath(t *testing
 	}
 	if !strings.Contains(item.Description, "应用基础信息") {
 		t.Fatalf("gos_artifact_path description = %q, want application metadata source", item.Description)
+	}
+}
+
+func TestPlatformParamRepositoryInitSchemaSeedsBuiltinRepoURL(t *testing.T) {
+	t.Parallel()
+
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite failed: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+
+	repo := NewPlatformParamRepository(db, "sqlite")
+	if err := repo.InitSchema(context.Background()); err != nil {
+		t.Fatalf("InitSchema failed: %v", err)
+	}
+
+	item, err := repo.GetByParamKey(context.Background(), "repo_url")
+	if err != nil {
+		t.Fatalf("GetByParamKey repo_url failed: %v", err)
+	}
+	if !item.Builtin {
+		t.Fatal("repo_url builtin = false, want true")
+	}
+	if item.Name != "Git 仓库地址" {
+		t.Fatalf("repo_url name = %q, want Git 仓库地址", item.Name)
+	}
+	if !strings.Contains(item.Description, "应用基础信息") {
+		t.Fatalf("repo_url description = %q, want application metadata source", item.Description)
 	}
 }
 

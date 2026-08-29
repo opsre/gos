@@ -88,7 +88,7 @@ func (uc *SyncExecutorParamDefs) Execute(ctx context.Context) (SyncExecutorParam
 				PipelineID:        pipelineID,
 				ExecutorType:      domain.ExecutorTypeJenkins,
 				ExecutorParamName: paramName,
-				ParamKey:          "",
+				ParamKey:          defaultJenkinsExecutorParamKey(paramName),
 				ParamType:         paramType,
 				SingleSelect:      snapshot.SingleSelect,
 				Required:          snapshot.Required,

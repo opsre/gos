@@ -97,6 +97,49 @@ func TestExecutorParamRepositoryListByApplicationsHonorsApplicationScope(t *test
 	}
 }
 
+func TestExecutorParamRepositoryUpsertBackfillsEmptyParamKeyWithoutOverwritingMapping(t *testing.T) {
+	t.Parallel()
+
+	bundle := newTestExecutorParamRepositoryBundle(t)
+	ctx := context.Background()
+	now := time.Unix(1_710_000_000, 0).UTC()
+	base := executordomain.ExecutorParamDef{
+		ID: "param-ci-job", PipelineID: "pipeline-cd", ExecutorType: executordomain.ExecutorTypeJenkins,
+		ExecutorParamName: "CI_JOB", ParamType: executordomain.ParamTypeString, Visible: true, Editable: true,
+		SourceFrom: executordomain.SourceFromSyncJenkins, Status: executordomain.StatusActive, CreatedAt: now, UpdatedAt: now,
+	}
+	if _, _, err := bundle.executorParams.Upsert(ctx, []executordomain.ExecutorParamDef{base}); err != nil {
+		t.Fatalf("initial Upsert failed: %v", err)
+	}
+	base.ParamKey = "ci_job"
+	base.UpdatedAt = now.Add(time.Minute)
+	if _, _, err := bundle.executorParams.Upsert(ctx, []executordomain.ExecutorParamDef{base}); err != nil {
+		t.Fatalf("backfill Upsert failed: %v", err)
+	}
+	item, err := bundle.executorParams.GetByID(ctx, base.ID)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	if item.ParamKey != "ci_job" {
+		t.Fatalf("param_key = %q, want ci_job", item.ParamKey)
+	}
+
+	if _, err := bundle.executorParams.UpdateParamKey(ctx, base.ID, "custom_ci_job", now.Add(2*time.Minute)); err != nil {
+		t.Fatalf("UpdateParamKey failed: %v", err)
+	}
+	base.UpdatedAt = now.Add(3 * time.Minute)
+	if _, _, err := bundle.executorParams.Upsert(ctx, []executordomain.ExecutorParamDef{base}); err != nil {
+		t.Fatalf("preserving Upsert failed: %v", err)
+	}
+	item, err = bundle.executorParams.GetByID(ctx, base.ID)
+	if err != nil {
+		t.Fatalf("GetByID after preserving Upsert failed: %v", err)
+	}
+	if item.ParamKey != "custom_ci_job" {
+		t.Fatalf("param_key = %q, want custom_ci_job", item.ParamKey)
+	}
+}
+
 type executorParamRepositoryTestBundle struct {
 	applications   *ApplicationRepository
 	pipelines      *PipelineRepository
