@@ -326,14 +326,9 @@ func (uc *TrackReleaseExecution) syncOrder(ctx context.Context, order domain.Rel
 		if uc.now().Sub(order.UpdatedAt) < 2*time.Minute {
 			return false, true, nil
 		}
-		updated, finishErr := uc.finishStep(
-			ctx,
-			order.ID,
-			scopeStepCode(runningExecution.PipelineScope, "pipeline_running"),
-			domain.StepStatusFailed,
-			"未记录 Jenkins 队列/构建地址，无法追踪执行结果",
-		)
-		return updated, false, finishErr
+		message := "未记录 Jenkins 队列/构建地址，无法追踪执行结果"
+		uc.manager.markExecutionStartFailed(ctx, order, *runningExecution, message)
+		return true, false, nil
 	}
 
 	if buildURL == "" && queueURL != "" {
@@ -870,7 +865,10 @@ func (uc *TrackReleaseExecution) syncNextStepAfterExecution(ctx context.Context,
 	if !buildHookFinished {
 		return buildHookUpdated, nil
 	}
-	if order.Status == domain.OrderStatusBuilding {
+	// Normal deploy orders deliberately pause between CI and CD. Replay orders
+	// are one continuous retry chain, so even a replay left in the legacy
+	// building state must continue directly to its pending CD execution.
+	if order.Status == domain.OrderStatusBuilding && order.OperationType != domain.OperationTypeReplay {
 		if findExecutionByScopeAndStatus(executions, domain.PipelineScopeCD, domain.ExecutionStatusPending) != nil {
 			now := uc.now()
 			if _, err := uc.manager.repo.UpdateStatus(

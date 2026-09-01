@@ -1599,6 +1599,16 @@ function supportsStagedDispatch(record: ReleaseOrder) {
   );
 }
 
+function supportsDeployDispatch(record: ReleaseOrder) {
+  return (
+    ["deploy", "replay"].includes(
+      String(record.operation_type || "").trim(),
+    ) &&
+    Boolean(record.has_ci_execution) &&
+    Boolean(record.has_cd_execution)
+  );
+}
+
 function canBuild(record: ReleaseOrder) {
   return (
     supportsStagedDispatch(record) &&
@@ -1613,7 +1623,7 @@ function canBuild(record: ReleaseOrder) {
 
 function canDeploy(record: ReleaseOrder) {
   return (
-    supportsStagedDispatch(record) &&
+    supportsDeployDispatch(record) &&
     authStore.hasApplicationPermission(
       "release.execute",
       record.application_id,

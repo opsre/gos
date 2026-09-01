@@ -172,6 +172,175 @@ func TestTrackerDoesNotAutoDeployAfterBuildSuccess(t *testing.T) {
 	}
 }
 
+func TestNextRunningOrderStatusKeepsReplayCIChainDeploying(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	executions := []domain.ReleaseOrderExecution{
+		testReleaseExecution("ro-replay-running-status", "exec-replay-ci", domain.PipelineScopeCI, domain.ExecutionStatusPending, now),
+		testReleaseExecution("ro-replay-running-status", "exec-replay-cd", domain.PipelineScopeCD, domain.ExecutionStatusPending, now),
+	}
+
+	if got := nextRunningOrderStatus(
+		domain.OrderStatusDeploying,
+		domain.OperationTypeReplay,
+		executions[0],
+		executions,
+	); got != domain.OrderStatusDeploying {
+		t.Fatalf("replay running status=%s, want %s", got, domain.OrderStatusDeploying)
+	}
+	if got := nextRunningOrderStatus(
+		domain.OrderStatusDeploying,
+		domain.OperationTypeDeploy,
+		executions[0],
+		executions,
+	); got != domain.OrderStatusBuilding {
+		t.Fatalf("normal deploy running status=%s, want %s", got, domain.OrderStatusBuilding)
+	}
+}
+
+func TestReplayContinuesToCDWithNewCIJenkinsRuntimeParams(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	startedAt := now.Add(-2 * time.Minute)
+	manager.now = func() time.Time { return now }
+	manager.pipelineRepo = segmentedReleasePipelineRepo{}
+	jenkins := &segmentedReleaseCapturingJenkinsExecutor{}
+	manager.jenkins = jenkins
+
+	templateID := "rt-replay-continue-cd"
+	if err := repo.CreateTemplate(ctx, domain.ReleaseTemplate{
+		ID: templateID, Name: "Replay Continue CD", Status: domain.TemplateStatusActive, CreatedAt: now, UpdatedAt: now,
+	}, nil, []domain.ReleaseTemplateParam{
+		{
+			ID: "rtp-replay-ci-job", TemplateID: templateID, PipelineScope: domain.PipelineScopeCD,
+			ExecutorParamDefID: "epd-replay-ci-job",
+			ParamKey:           standardParamCIJob, ExecutorParamName: "CI_JOB", ValueSource: domain.TemplateParamValueSourceBuiltin,
+			SourceParamKey: standardParamCIJob, Required: true, SortNo: 1, CreatedAt: now, UpdatedAt: now,
+		},
+		{
+			ID: "rtp-replay-ci-build", TemplateID: templateID, PipelineScope: domain.PipelineScopeCD,
+			ExecutorParamDefID: "epd-replay-ci-build",
+			ParamKey:           standardParamCIBuild, ExecutorParamName: "CI_BUILD", ValueSource: domain.TemplateParamValueSourceBuiltin,
+			SourceParamKey: standardParamCIBuild, Required: true, SortNo: 2, CreatedAt: now, UpdatedAt: now,
+		},
+	}, nil, nil); err != nil {
+		t.Fatalf("CreateTemplate failed: %v", err)
+	}
+
+	// Building models replay orders created before the running-status fix. The
+	// tracker must heal that state by continuing directly to CD rather than
+	// transitioning to built_waiting_deploy.
+	order := testReleaseOrder("ro-replay-continue-cd", "RO-REPLAY-CONTINUE-CD", domain.OrderStatusBuilding, now)
+	order.OperationType = domain.OperationTypeReplay
+	order.TemplateID = templateID
+	order.StartedAt = &startedAt
+	ciExecution := testReleaseExecution(order.ID, "exec-replay-ci-success", domain.PipelineScopeCI, domain.ExecutionStatusSuccess, now)
+	ciExecution.BuildURL = "https://jenkins.example/job/CI_FRONT/10/"
+	cdExecution := testReleaseExecution(order.ID, "exec-replay-cd-pending", domain.PipelineScopeCD, domain.ExecutionStatusPending, now)
+	executions := []domain.ReleaseOrderExecution{ciExecution, cdExecution}
+	params := []domain.ReleaseOrderParam{
+		{ID: "rop-replay-ci-job", ReleaseOrderID: order.ID, PipelineScope: domain.PipelineScopeCD, BindingID: cdExecution.BindingID, ParamKey: standardParamCIJob, ExecutorParamName: "CI_JOB", ParamValue: "CI_FRONT", ValueSource: domain.ValueSourceBuiltin, CreatedAt: now},
+		{ID: "rop-replay-ci-build", ReleaseOrderID: order.ID, PipelineScope: domain.PipelineScopeCD, BindingID: cdExecution.BindingID, ParamKey: standardParamCIBuild, ExecutorParamName: "CI_BUILD", ParamValue: "8", ValueSource: domain.ValueSourceBuiltin, CreatedAt: now},
+	}
+	steps := defaultReleaseOrderSteps(order.ID, executions, now, "", nil, order.EnvCode)
+	if err := repo.Create(ctx, order, executions, params, steps); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	tracker := NewTrackReleaseExecution(manager, nil)
+	tracker.now = func() time.Time { return now }
+	updated, err := tracker.syncNextStepAfterExecution(ctx, order)
+	if err != nil {
+		t.Fatalf("syncNextStepAfterExecution failed: %v", err)
+	}
+	if !updated {
+		t.Fatal("updated = false, want true")
+	}
+	if jenkins.triggerCount != 1 || jenkins.params["CI_JOB"] != "CI_FRONT" || jenkins.params["CI_BUILD"] != "10" {
+		t.Fatalf("jenkins trigger count=%d params=%#v, want new CI_FRONT build 10", jenkins.triggerCount, jenkins.params)
+	}
+	storedOrder, err := repo.GetByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	if storedOrder.Status != domain.OrderStatusDeploying {
+		t.Fatalf("stored status=%s, want deploying", storedOrder.Status)
+	}
+	storedExecutions, err := repo.ListExecutions(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("ListExecutions failed: %v", err)
+	}
+	runningCD := findExecutionByScopeAndStatus(storedExecutions, domain.PipelineScopeCD, domain.ExecutionStatusRunning)
+	if runningCD == nil || runningCD.QueueURL != "queue-replay-cd" {
+		t.Fatalf("stored executions=%#v, want running CD with queue URL", storedExecutions)
+	}
+}
+
+func TestTrackerFinalizesJenkinsExecutionWithoutTrackingURLs(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	startedAt := now.Add(-3 * time.Minute)
+	manager.now = func() time.Time { return now }
+
+	order := testReleaseOrder("ro-jenkins-missing-urls", "RO-JENKINS-MISSING-URLS", domain.OrderStatusDeploying, startedAt)
+	order.StartedAt = &startedAt
+	execution := testReleaseExecution(order.ID, "exec-cd-missing-urls", domain.PipelineScopeCD, domain.ExecutionStatusRunning, startedAt)
+	execution.Provider = "jenkins"
+	execution.QueueURL = ""
+	execution.BuildURL = ""
+	steps := []domain.ReleaseOrderStep{
+		testReleaseStep(order.ID, "step-trigger-missing-urls", domain.StepScopeCD, "cd:trigger_pipeline", domain.StepStatusPending, 1, startedAt),
+		testReleaseStep(order.ID, "step-running-missing-urls", domain.StepScopeCD, "cd:pipeline_running", domain.StepStatusRunning, 2, startedAt),
+		testReleaseStep(order.ID, "step-success-missing-urls", domain.StepScopeCD, "cd:pipeline_success", domain.StepStatusPending, 3, startedAt),
+		testReleaseStep(order.ID, "step-finish-missing-urls", domain.StepScopeGlobal, "global:release_finish", domain.StepStatusPending, 4, startedAt),
+	}
+	if err := repo.Create(ctx, order, []domain.ReleaseOrderExecution{execution}, nil, steps); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	tracker := NewTrackReleaseExecution(manager, &realtimeTrackJenkinsFake{})
+	tracker.now = func() time.Time { return now }
+	updated, skipped, err := tracker.syncOrder(ctx, order)
+	if err != nil {
+		t.Fatalf("syncOrder failed: %v", err)
+	}
+	if !updated || skipped {
+		t.Fatalf("syncOrder updated=%v skipped=%v, want updated terminal failure", updated, skipped)
+	}
+
+	storedOrder, err := repo.GetByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	if storedOrder.Status != domain.OrderStatusFailed || storedOrder.FinishedAt == nil {
+		t.Fatalf("stored order status=%s finished_at=%v, want failed with finish time", storedOrder.Status, storedOrder.FinishedAt)
+	}
+	storedExecutions, err := repo.ListExecutions(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("ListExecutions failed: %v", err)
+	}
+	if len(storedExecutions) != 1 || storedExecutions[0].Status != domain.ExecutionStatusFailed {
+		t.Fatalf("stored executions=%#v, want failed", storedExecutions)
+	}
+	storedSteps, err := repo.ListSteps(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("ListSteps failed: %v", err)
+	}
+	for _, code := range []string{"cd:trigger_pipeline", "cd:pipeline_running", "cd:pipeline_success", "global:release_finish"} {
+		step := findStepByCode(storedSteps, code)
+		if step == nil || step.Status != domain.StepStatusFailed {
+			t.Fatalf("step %s=%#v, want failed", code, step)
+		}
+	}
+}
+
 // TestSyncFailedOrderClosesRunningCDAndKeepsHooksPending 同步外部或内部状态数据。
 func TestSyncFailedOrderClosesRunningCDAndKeepsHooksPending(t *testing.T) {
 	t.Parallel()
@@ -1145,6 +1314,13 @@ type segmentedReleaseCountingJenkinsExecutor struct {
 	triggerCount int
 }
 
+type segmentedReleaseCapturingJenkinsExecutor struct {
+	segmentedReleaseNoopJenkinsExecutor
+	triggerCount int
+	jobName      string
+	params       map[string]string
+}
+
 type releaseExecutionChoiceMismatchJenkinsFake struct {
 	triggerCount int
 	jobSets      map[string]executorparamdomain.JenkinsJobParamSet
@@ -1282,6 +1458,16 @@ func (segmentedReleaseNoopJenkinsExecutor) TriggerBuild(context.Context, string,
 func (e *segmentedReleaseCountingJenkinsExecutor) TriggerBuild(context.Context, string, map[string]string) (string, error) {
 	e.triggerCount++
 	return "queue-1", nil
+}
+
+func (e *segmentedReleaseCapturingJenkinsExecutor) TriggerBuild(_ context.Context, jobName string, params map[string]string) (string, error) {
+	e.triggerCount++
+	e.jobName = jobName
+	e.params = make(map[string]string, len(params))
+	for key, value := range params {
+		e.params[key] = value
+	}
+	return "queue-replay-cd", nil
 }
 
 // TriggerBuild 组装业务执行所需的输入数据。

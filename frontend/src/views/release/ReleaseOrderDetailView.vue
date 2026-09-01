@@ -553,6 +553,24 @@ const supportsStagedDispatch = computed(() => {
     hasCD
   );
 });
+const supportsDeployDispatch = computed(() => {
+  if (!order.value) {
+    return false;
+  }
+  const hasCI =
+    Boolean(order.value.has_ci_execution) ||
+    Boolean(executions.value.find((item) => item.pipeline_scope === "ci"));
+  const hasCD =
+    Boolean(order.value.has_cd_execution) ||
+    Boolean(executions.value.find((item) => item.pipeline_scope === "cd"));
+  return (
+    ["deploy", "replay"].includes(
+      String(order.value.operation_type || "").trim(),
+    ) &&
+    hasCI &&
+    hasCD
+  );
+});
 const canBuild = computed(
   () =>
     supportsStagedDispatch.value &&
@@ -563,7 +581,7 @@ const canBuild = computed(
 );
 const canDeploy = computed(
   () =>
-    supportsStagedDispatch.value &&
+    supportsDeployDispatch.value &&
     canExecutePermission.value &&
     currentBusinessStatus.value === "built_waiting_deploy" &&
     !executeLocked.value,

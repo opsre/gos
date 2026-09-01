@@ -4050,7 +4050,7 @@ onUnmounted(() => {
 
 .workbench-card-header-actions {
   position: absolute;
-  top: 14px;
+  top: 0;
   right: var(--workbench-action-right-offset);
   display: flex;
   align-items: center;

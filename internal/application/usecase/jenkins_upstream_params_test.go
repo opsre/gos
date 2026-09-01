@@ -116,6 +116,59 @@ func TestBuildJenkinsExecutionParamsRejectsMissingUpstreamBuildURL(t *testing.T)
 	}
 }
 
+func TestBuildJenkinsExecutionParamsUsesSuccessfulSourceCIForCDOnlyReplay(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Unix(1_780_000_000, 0).UTC()
+	templateID := "rt-ci-copy-artifact-cd-replay"
+	if err := repo.CreateTemplate(ctx, domain.ReleaseTemplate{
+		ID: templateID, Name: "CI Copy Artifact CD Replay", Status: domain.TemplateStatusActive, CreatedAt: now, UpdatedAt: now,
+	}, nil, []domain.ReleaseTemplateParam{
+		{
+			ID: "rtp-ci-job-cd-replay", TemplateID: templateID, PipelineScope: domain.PipelineScopeCD,
+			ExecutorParamDefID: "epd-ci-job-cd-replay",
+			ParamKey:           standardParamCIJob, ExecutorParamName: "CI_JOB", ValueSource: domain.TemplateParamValueSourceBuiltin,
+			SourceParamKey: standardParamCIJob, Required: true, SortNo: 1, CreatedAt: now, UpdatedAt: now,
+		},
+		{
+			ID: "rtp-ci-build-cd-replay", TemplateID: templateID, PipelineScope: domain.PipelineScopeCD,
+			ExecutorParamDefID: "epd-ci-build-cd-replay",
+			ParamKey:           standardParamCIBuild, ExecutorParamName: "CI_BUILD", ValueSource: domain.TemplateParamValueSourceBuiltin,
+			SourceParamKey: standardParamCIBuild, Required: true, SortNo: 2, CreatedAt: now, UpdatedAt: now,
+		},
+	}, nil, nil); err != nil {
+		t.Fatalf("CreateTemplate failed: %v", err)
+	}
+
+	sourceOrder := testReleaseOrder("ro-source-ci-for-cd-replay", "RO-SOURCE-CI-FOR-CD-REPLAY", domain.OrderStatusDeployFailed, now)
+	sourceCI := testReleaseExecution(sourceOrder.ID, "exec-source-ci-for-cd-replay", domain.PipelineScopeCI, domain.ExecutionStatusSuccess, now)
+	sourceCI.BuildURL = "https://jenkins.example/job/team/job/CI_FRONT/8/"
+	sourceCD := testReleaseExecution(sourceOrder.ID, "exec-source-cd-for-cd-replay", domain.PipelineScopeCD, domain.ExecutionStatusFailed, now)
+	if err := repo.Create(ctx, sourceOrder, []domain.ReleaseOrderExecution{sourceCI, sourceCD}, nil, nil); err != nil {
+		t.Fatalf("Create source order failed: %v", err)
+	}
+
+	replayOrder := testReleaseOrder("ro-cd-only-replay", "RO-CD-ONLY-REPLAY", domain.OrderStatusDeploying, now)
+	replayOrder.TemplateID = templateID
+	replayOrder.OperationType = domain.OperationTypeReplay
+	replayOrder.SourceOrderID = sourceOrder.ID
+	replayCD := testReleaseExecution(replayOrder.ID, "exec-cd-only-replay", domain.PipelineScopeCD, domain.ExecutionStatusPending, now)
+	staleParams := []domain.ReleaseOrderParam{
+		{PipelineScope: domain.PipelineScopeCD, ParamKey: standardParamCIJob, ExecutorParamName: "CI_JOB", ParamValue: "stale-job"},
+		{PipelineScope: domain.PipelineScopeCD, ParamKey: standardParamCIBuild, ExecutorParamName: "CI_BUILD", ParamValue: "1"},
+	}
+
+	got, err := manager.buildJenkinsExecutionParams(ctx, replayOrder, replayCD, staleParams, []domain.ReleaseOrderExecution{replayCD})
+	if err != nil {
+		t.Fatalf("buildJenkinsExecutionParams failed: %v", err)
+	}
+	if got["CI_JOB"] != "team/CI_FRONT" || got["CI_BUILD"] != "8" {
+		t.Fatalf("upstream params=%#v, want source CI_JOB=team/CI_FRONT CI_BUILD=8", got)
+	}
+}
+
 func TestBuildJenkinsExecutionParamsInjectsApplicationRepoURL(t *testing.T) {
 	t.Parallel()
 

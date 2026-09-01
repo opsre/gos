@@ -824,7 +824,7 @@ func (uc *ReleaseOrderManager) CreateStandardRollbackByOrder(
 		sourceParams,
 		template,
 		templateHooks,
-		cdBinding,
+		[]domain.ReleaseTemplateBinding{cdBinding},
 		domain.PipelineScopeCD,
 		nil,
 		domain.OperationTypeRollback,
@@ -902,26 +902,31 @@ func (uc *ReleaseOrderManager) CreatePipelineReplayByOrder(
 	if err != nil {
 		return domain.ReleaseOrder{}, err
 	}
-	replayBinding, ok := selectRecoveryTemplateBinding(templateBindings, replayScope)
-	if !ok {
+	replayBindings := selectReplayTemplateBindings(templateBindings, replayScope)
+	if len(replayBindings) == 0 {
 		return domain.ReleaseOrder{}, fmt.Errorf("%w: 当前模板未配置可用的 %s 执行器", ErrInvalidInput, strings.ToUpper(string(replayScope)))
 	}
-	if strings.EqualFold(strings.TrimSpace(replayBinding.Provider), string(pipelinedomain.ProviderArgoCD)) {
-		return domain.ReleaseOrder{}, fmt.Errorf("%w: 当前模板的 %s 方式不是管线，无法执行参数重放", ErrInvalidInput, strings.ToUpper(string(replayScope)))
-	}
-	if err := ensureReplayParamsMatchTemplate(templateParams, replayParamsFromSource, replayScope); err != nil {
-		return domain.ReleaseOrder{}, err
+	for _, binding := range replayBindings {
+		if strings.EqualFold(strings.TrimSpace(binding.Provider), string(pipelinedomain.ProviderArgoCD)) {
+			return domain.ReleaseOrder{}, fmt.Errorf("%w: 当前模板的 %s 方式不是管线，无法执行参数重放", ErrInvalidInput, strings.ToUpper(string(binding.PipelineScope)))
+		}
 	}
 
-	replayParams := make([]CreateReleaseOrderParamInput, 0, len(replayParamsFromSource))
-	for _, item := range replayParamsFromSource {
-		replayParams = append(replayParams, CreateReleaseOrderParamInput{
-			PipelineScope:     replayScope,
-			ParamKey:          strings.TrimSpace(item.ParamKey),
-			ExecutorParamName: strings.TrimSpace(item.ExecutorParamName),
-			ParamValue:        strings.TrimSpace(item.ParamValue),
-			ValueSource:       item.ValueSource,
-		})
+	replayParams := make([]CreateReleaseOrderParamInput, 0, len(sourceParams))
+	for _, binding := range replayBindings {
+		scopeParams := filterReleaseOrderParamsByScope(sourceParams, binding.PipelineScope)
+		if err := ensureReplayParamsMatchTemplate(templateParams, scopeParams, binding.PipelineScope); err != nil {
+			return domain.ReleaseOrder{}, err
+		}
+		for _, item := range scopeParams {
+			replayParams = append(replayParams, CreateReleaseOrderParamInput{
+				PipelineScope:     binding.PipelineScope,
+				ParamKey:          strings.TrimSpace(item.ParamKey),
+				ExecutorParamName: strings.TrimSpace(item.ExecutorParamName),
+				ParamValue:        strings.TrimSpace(item.ParamValue),
+				ValueSource:       item.ValueSource,
+			})
+		}
 	}
 	order, err := uc.createRecoveryOrder(
 		ctx,
@@ -929,7 +934,7 @@ func (uc *ReleaseOrderManager) CreatePipelineReplayByOrder(
 		sourceParams,
 		template,
 		templateHooks,
-		replayBinding,
+		replayBindings,
 		replayScope,
 		replayParams,
 		domain.OperationTypeReplay,
@@ -1661,7 +1666,7 @@ func (uc *ReleaseOrderManager) createRecoveryOrder(
 	sourceParams []domain.ReleaseOrderParam,
 	template domain.ReleaseTemplate,
 	templateHooks []domain.ReleaseTemplateHook,
-	targetBinding domain.ReleaseTemplateBinding,
+	targetBindings []domain.ReleaseTemplateBinding,
 	targetScope domain.PipelineScope,
 	paramsInput []CreateReleaseOrderParamInput,
 	operationType domain.OperationType,
@@ -1670,7 +1675,7 @@ func (uc *ReleaseOrderManager) createRecoveryOrder(
 	triggeredBy string,
 ) (domain.ReleaseOrder, error) {
 	now := uc.now()
-	executions := uc.buildCreateExecutions("", now, []domain.ReleaseTemplateBinding{targetBinding})
+	executions := uc.buildCreateExecutions("", now, targetBindings)
 	primaryExecution, ok := pickPrimaryExecution(executions)
 	if !ok {
 		return domain.ReleaseOrder{}, fmt.Errorf("%w: 当前模板未配置可用执行单元", ErrInvalidInput)
@@ -1717,7 +1722,7 @@ func (uc *ReleaseOrderManager) createRecoveryOrder(
 		UpdatedAt:             now,
 	}
 
-	executions = uc.buildCreateExecutions(order.ID, now, []domain.ReleaseTemplateBinding{targetBinding})
+	executions = uc.buildCreateExecutions(order.ID, now, targetBindings)
 	paramsInput, err := uc.buildRecoveryParamsInput(ctx, sourceOrder, sourceParams, targetScope, paramsInput)
 	if err != nil {
 		return domain.ReleaseOrder{}, err
@@ -1870,6 +1875,26 @@ func selectRecoveryTemplateBinding(
 	return domain.ReleaseTemplateBinding{}, false
 }
 
+// selectReplayTemplateBindings returns the execution chain starting at the
+// failed replay scope. Replaying CI must also recreate the downstream CD
+// execution; replaying CD must not rebuild an already successful CI.
+func selectReplayTemplateBindings(
+	bindings []domain.ReleaseTemplateBinding,
+	startScope domain.PipelineScope,
+) []domain.ReleaseTemplateBinding {
+	startBinding, ok := selectRecoveryTemplateBinding(bindings, startScope)
+	if !ok {
+		return nil
+	}
+	result := []domain.ReleaseTemplateBinding{startBinding}
+	if startScope == domain.PipelineScopeCI {
+		if cdBinding, ok := selectRecoveryTemplateBinding(bindings, domain.PipelineScopeCD); ok {
+			result = append(result, cdBinding)
+		}
+	}
+	return result
+}
+
 // resolveCDExecution 解析上下文数据，得到后续流程需要的结果。
 func resolveCDExecution(items []domain.ReleaseOrderExecution) (domain.ReleaseOrderExecution, error) {
 	for _, item := range items {
@@ -1882,14 +1907,27 @@ func resolveCDExecution(items []domain.ReleaseOrderExecution) (domain.ReleaseOrd
 
 // resolveReplayExecution 解析上下文数据，得到后续流程需要的结果。
 func resolveReplayExecution(items []domain.ReleaseOrderExecution) (domain.ReleaseOrderExecution, error) {
-	for _, item := range items {
-		if item.PipelineScope == domain.PipelineScopeCD {
-			return item, nil
+	// A failed order can contain a failed CI execution followed by a skipped CD
+	// execution. Replaying the skipped CD would lose the runtime-owned CI_JOB and
+	// CI_BUILD linkage, so select the execution that actually failed first.
+	for _, status := range []domain.ExecutionStatus{
+		domain.ExecutionStatusFailed,
+		domain.ExecutionStatusCancelled,
+		domain.ExecutionStatusSuccess,
+	} {
+		for _, scope := range []domain.PipelineScope{domain.PipelineScopeCD, domain.PipelineScopeCI} {
+			for _, item := range items {
+				if item.PipelineScope == scope && item.Status == status {
+					return item, nil
+				}
+			}
 		}
 	}
-	for _, item := range items {
-		if item.PipelineScope == domain.PipelineScopeCI {
-			return item, nil
+	for _, scope := range []domain.PipelineScope{domain.PipelineScopeCD, domain.PipelineScopeCI} {
+		for _, item := range items {
+			if item.PipelineScope == scope && item.Status != domain.ExecutionStatusSkipped {
+				return item, nil
+			}
 		}
 	}
 	return domain.ReleaseOrderExecution{}, fmt.Errorf("%w: 来源发布单缺少可重放执行单元", ErrInvalidInput)
@@ -2751,7 +2789,7 @@ func (uc *ReleaseOrderManager) startNextPendingExecution(
 			return nil
 		}
 		execution = claimedExecution
-		runningStatus := nextRunningOrderStatus(order.Status, execution, executions)
+		runningStatus := nextRunningOrderStatus(order.Status, order.OperationType, execution, executions)
 		if order.Status != runningStatus {
 			startedAt := order.StartedAt
 			now := claimTime
@@ -2871,6 +2909,7 @@ func (uc *ReleaseOrderManager) startNextPendingExecution(
 
 		buildParams, err := uc.buildJenkinsExecutionParams(ctx, order, execution, orderParams, executions)
 		if err != nil {
+			uc.markExecutionStartFailed(ctx, order, execution, err.Error())
 			logx.Error("release_order", "execution_start_failed", err,
 				logx.F("order_id", order.ID),
 				logx.F("order_no", order.OrderNo),
@@ -3080,6 +3119,24 @@ func (uc *ReleaseOrderManager) buildJenkinsExecutionParams(
 		return buildParams, nil
 	}
 
+	jenkinsUpstreamExecutions := executions
+	if execution.PipelineScope == domain.PipelineScopeCD &&
+		order.OperationType == domain.OperationTypeReplay &&
+		strings.TrimSpace(order.SourceOrderID) != "" &&
+		!hasExecutionForScope(executions, domain.PipelineScopeCI) &&
+		templateParamsNeedJenkinsUpstream(templateParams, execution.PipelineScope) {
+		sourceExecutions, sourceErr := uc.repo.ListExecutions(ctx, strings.TrimSpace(order.SourceOrderID))
+		if sourceErr != nil {
+			return nil, sourceErr
+		}
+		jenkinsUpstreamExecutions = make([]domain.ReleaseOrderExecution, 0, len(sourceExecutions))
+		for _, sourceExecution := range sourceExecutions {
+			if sourceExecution.PipelineScope == domain.PipelineScopeCI && sourceExecution.Status == domain.ExecutionStatusSuccess {
+				jenkinsUpstreamExecutions = append(jenkinsUpstreamExecutions, sourceExecution)
+			}
+		}
+	}
+
 	appKey := ""
 	appRepoURL := ""
 	artifactValues := map[string]string{}
@@ -3105,7 +3162,7 @@ func (uc *ReleaseOrderManager) buildJenkinsExecutionParams(
 		}
 		if execution.PipelineScope == domain.PipelineScopeCD {
 			if upstreamKey := jenkinsUpstreamTemplateParamKey(item); upstreamKey != "" {
-				value := strings.TrimSpace(resolveCIJenkinsRuntimeValue(executions, upstreamKey))
+				value := strings.TrimSpace(resolveCIJenkinsRuntimeValue(jenkinsUpstreamExecutions, upstreamKey))
 				if value == "" {
 					return nil, fmt.Errorf(
 						"%w: 未解析到上游 Jenkins CI 的 %s，无法继续执行 CD 管线",
@@ -3132,6 +3189,15 @@ func (uc *ReleaseOrderManager) buildJenkinsExecutionParams(
 		buildParams[executorParamName] = value
 	}
 	return buildParams, nil
+}
+
+func templateParamsNeedJenkinsUpstream(items []domain.ReleaseTemplateParam, scope domain.PipelineScope) bool {
+	for _, item := range items {
+		if item.PipelineScope == scope && jenkinsUpstreamTemplateParamKey(item) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveTemplateExecutionParamValue 解析上下文数据，得到后续流程需要的结果。
@@ -4076,9 +4142,16 @@ func nextQueuedOrderStatus(current domain.OrderStatus) domain.OrderStatus {
 // nextRunningOrderStatus 封装当前模块的业务处理逻辑。
 func nextRunningOrderStatus(
 	current domain.OrderStatus,
+	operationType domain.OperationType,
 	execution domain.ReleaseOrderExecution,
 	executions []domain.ReleaseOrderExecution,
 ) domain.OrderStatus {
+	// Replay is a single continuous dispatch. A CI replay that also recreated a
+	// downstream CD execution must not be reclassified as a staged build, or the
+	// tracker will stop at built_waiting_deploy instead of continuing to CD.
+	if operationType == domain.OperationTypeReplay {
+		return domain.OrderStatusDeploying
+	}
 	if current == domain.OrderStatusBuilding ||
 		(execution.PipelineScope == domain.PipelineScopeCI && hasExecutionForScope(executions, domain.PipelineScopeCD)) {
 		return domain.OrderStatusBuilding
