@@ -91,6 +91,49 @@ func TestAuthSessionManagerLoginInvalidatesPreviousSession(t *testing.T) {
 	}
 }
 
+type authLoginIdentifierRepoFake struct {
+	*authSessionUserRepoFake
+}
+
+func (r *authLoginIdentifierRepoFake) GetUserByLoginIdentifier(_ context.Context, identifier string) (userdomain.User, error) {
+	if item, ok := r.usersByUsername[identifier]; ok {
+		return item, nil
+	}
+	var matched userdomain.User
+	matches := 0
+	for _, item := range r.usersByUsername {
+		if item.DisplayName == identifier {
+			matched = item
+			matches++
+		}
+	}
+	if matches != 1 {
+		return userdomain.User{}, userdomain.ErrUserNotFound
+	}
+	return matched, nil
+}
+
+func TestAuthSessionManagerAllowsUniqueDisplayNameLogin(t *testing.T) {
+	t.Parallel()
+	passwordHash, err := HashPassword("secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1_710_000_000, 0).UTC()
+	user := userdomain.User{ID: "usr-liwen", Username: "李雯", DisplayName: "liwen", Role: userdomain.RoleNormal, Status: userdomain.StatusActive, PasswordHash: passwordHash, CreatedAt: now, UpdatedAt: now}
+	base := &authSessionUserRepoFake{
+		usersByUsername: map[string]userdomain.User{user.Username: user},
+		usersByID:       map[string]userdomain.User{user.ID: user},
+		sessions:        map[string]userdomain.UserSession{},
+	}
+	manager := NewAuthSessionManager(&authLoginIdentifierRepoFake{base}, nil, time.Hour)
+	manager.now = func() time.Time { return now }
+	result, err := manager.Login(context.Background(), LoginInput{Username: "liwen", Password: "secret"})
+	if err != nil || result.User.ID != user.ID {
+		t.Fatalf("display-name login result=%#v err=%v", result, err)
+	}
+}
+
 func TestUserManagementRejectsManagerHierarchyCycle(t *testing.T) {
 	t.Parallel()
 

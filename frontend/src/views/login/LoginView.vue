@@ -65,8 +65,8 @@ async function handleSubmit() {
           class="login-form"
           @keyup.enter="handleSubmit"
         >
-          <a-form-item label="用户名" name="username">
-            <a-input v-model:value="formState.username" placeholder="请输入用户名">
+          <a-form-item label="登录账号" name="username">
+            <a-input v-model:value="formState.username" placeholder="请输入用户名或姓名">
               <template #prefix>
                 <UserOutlined />
               </template>

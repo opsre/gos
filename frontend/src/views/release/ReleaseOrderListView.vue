@@ -10,6 +10,7 @@ import {
   FilterOutlined,
   CloseCircleFilled,
   LoadingOutlined,
+  MessageOutlined,
   PlusOutlined,
   SearchOutlined,
   SyncOutlined,
@@ -234,7 +235,7 @@ const activeQuery = reactive({
 
 const initialColumns: TableColumnsType<ReleaseOrder> = [
   { title: "发布单号", dataIndex: "order_no", key: "order_no", width: 190 },
-  { title: "状态", key: "status", width: 100 },
+  { title: "状态", key: "status", width: 140 },
   { title: "发布名称", dataIndex: "release_name", key: "release_name", width: 100 },
   { title: "发起人", dataIndex: "triggered_by", key: "triggered_by", width: 100 },
   { title: "创建时间", dataIndex: "created_at", key: "created_at", width: 145 },
@@ -627,31 +628,6 @@ function orderBusinessStatus(record: Pick<ReleaseOrder, "business_status" | "sta
   return record.business_status || fallbackBusinessStatus(record.status);
 }
 
-function businessStatusColor(status: ReleaseOrderBusinessStatus) {
-  switch (status) {
-    case "deploy_success":
-      return "green";
-    case "deploy_failed":
-    case "rejected":
-      return "red";
-    case "deploying":
-      return "blue";
-    case "building":
-      return "blue";
-    case "built_waiting_deploy":
-      return "gold";
-    case "queued":
-    case "pending_execution":
-    case "pending_approval":
-    case "approving":
-      return "gold";
-    case "cancelled":
-      return "default";
-    default:
-      return "cyan";
-  }
-}
-
 function businessStatusText(status: ReleaseOrderBusinessStatus) {
   switch (status) {
     case "draft":
@@ -713,6 +689,10 @@ function businessStatusIcon(status: ReleaseOrderBusinessStatus) {
     default:
       return ClockCircleFilled;
   }
+}
+
+function businessStatusTagClass(status: ReleaseOrderBusinessStatus) {
+  return `release-status-tag release-status-tag--${businessStatusTone(status)}`;
 }
 
 function isRunningBusinessStatus(status: ReleaseOrderBusinessStatus) {
@@ -3217,8 +3197,12 @@ function handleOverviewChartResize() {
                 <div class="approval-flow-kicker">审批流程</div>
                 <div class="approval-flow-title">{{ record.order_no }}</div>
               </div>
-              <a-tag :color="businessStatusColor(orderBusinessStatus(record))" class="status-tag approval-flow-status-tag">
-                <LoadingOutlined v-if="isRunningBusinessStatus(orderBusinessStatus(record))" spin />
+              <a-tag :class="[businessStatusTagClass(orderBusinessStatus(record)), 'approval-flow-status-tag']">
+                <component
+                  :is="businessStatusIcon(orderBusinessStatus(record))"
+                  :spin="isRunningBusinessStatus(orderBusinessStatus(record))"
+                  aria-hidden="true"
+                />
                 <span>{{ businessStatusText(orderBusinessStatus(record)) }}</span>
               </a-tag>
             </div>
@@ -3247,8 +3231,12 @@ function handleOverviewChartResize() {
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'status'">
             <div class="status-cell">
-              <a-tag :color="businessStatusColor(orderBusinessStatus(record))" class="status-tag">
-                <LoadingOutlined v-if="isRunningBusinessStatus(orderBusinessStatus(record))" spin />
+              <a-tag :class="businessStatusTagClass(orderBusinessStatus(record))">
+                <component
+                  :is="businessStatusIcon(orderBusinessStatus(record))"
+                  :spin="isRunningBusinessStatus(orderBusinessStatus(record))"
+                  aria-hidden="true"
+                />
                 <span>{{ businessStatusText(orderBusinessStatus(record)) }}</span>
               </a-tag>
               <div
@@ -3283,27 +3271,56 @@ function handleOverviewChartResize() {
                   {{ isOrderSelected(record) ? "已选" : "选择" }}
                 </span>
               </button>
-              <button
-                class="release-order-no-trigger"
-                type="button"
-                @click.stop="copyReleaseOrderNo(record.order_no)"
-              >
-                <span class="release-order-no-text">
-                  <span class="release-order-no-text-value">{{ record.order_no }}</span>
-                </span>
-              </button>
+              <div class="release-order-no-main">
+                <button
+                  class="release-order-no-trigger"
+                  type="button"
+                  @click.stop="copyReleaseOrderNo(record.order_no)"
+                >
+                  <span class="release-order-no-text">
+                    <span class="release-order-no-text-value">{{ record.order_no }}</span>
+                  </span>
+                </button>
+                <a-popover
+                  v-if="String(record.remark || '').trim()"
+                  trigger="click"
+                  placement="rightTop"
+                  overlay-class-name="release-order-remark-popover"
+                >
+                  <template #content>
+                    <div class="release-order-remark-content">
+                      <div class="release-order-remark-heading">
+                        <MessageOutlined aria-hidden="true" />
+                        <span>发布备注</span>
+                      </div>
+                      <p>{{ record.remark }}</p>
+                    </div>
+                  </template>
+                  <button
+                    class="release-order-remark-trigger"
+                    type="button"
+                    aria-label="查看发布备注"
+                    @click.stop
+                  >
+                    <MessageOutlined aria-hidden="true" />
+                    <span>备注</span>
+                  </button>
+                </a-popover>
+              </div>
               <div class="release-order-no-tags">
                 <a-tag
                   v-if="record.live_state_status === 'pending_confirm' && record.live_state_can_confirm"
-                  class="dashboard-chip dashboard-chip-warning"
+                  class="release-live-status-tag release-live-status-tag--pending"
                 >
-                  待确认生效
+                  <ClockCircleFilled aria-hidden="true" />
+                  <span>待确认生效</span>
                 </a-tag>
                 <a-tag
                   v-else-if="record.live_state_is_current"
-                  class="dashboard-chip dashboard-chip-running"
+                  class="release-live-status-tag release-live-status-tag--current"
                 >
-                  当前生效
+                  <CheckCircleFilled aria-hidden="true" />
+                  <span>当前生效</span>
                 </a-tag>
                 <a-tag
                   v-if="record.is_concurrent"
@@ -3578,8 +3595,12 @@ function handleOverviewChartResize() {
                 <a-tag class="dashboard-chip dashboard-chip-neutral">
                   {{ triggerTypeText(item.order.trigger_type) }}
                 </a-tag>
-                <a-tag :color="businessStatusColor(orderBusinessStatus(item.order))" class="status-tag">
-                  <LoadingOutlined v-if="isRunningBusinessStatus(orderBusinessStatus(item.order))" spin />
+                <a-tag :class="businessStatusTagClass(orderBusinessStatus(item.order))">
+                  <component
+                    :is="businessStatusIcon(orderBusinessStatus(item.order))"
+                    :spin="isRunningBusinessStatus(orderBusinessStatus(item.order))"
+                    aria-hidden="true"
+                  />
                   <span>{{ businessStatusText(orderBusinessStatus(item.order)) }}</span>
                 </a-tag>
               </a-space>
@@ -4480,6 +4501,98 @@ function handleOverviewChartResize() {
   overflow: hidden;
 }
 
+.release-status-tag {
+  box-sizing: border-box;
+  display: inline-flex;
+  min-width: 84px;
+  min-height: 26px;
+  max-width: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  margin-inline-end: 0;
+  padding: 3px 9px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.release-status-tag > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.release-status-tag :deep(.anticon) {
+  flex: 0 0 auto;
+  color: currentColor;
+  font-size: 13px;
+}
+
+.release-status-tag--success {
+  border-color: #86efac;
+  background: #ecfdf3;
+  color: #15803d;
+}
+
+.release-status-tag--failed {
+  border-color: #fca5a5;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.release-status-tag--running {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.release-status-tag--pending {
+  border-color: #fdba74;
+  background: #fff7ed;
+  color: #b45309;
+}
+
+.release-live-status-tag {
+  box-sizing: border-box;
+  display: inline-flex;
+  min-height: 24px;
+  max-width: 100%;
+  align-items: center;
+  gap: 5px;
+  margin-inline-end: 0;
+  padding: 2px 8px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.release-live-status-tag :deep(.anticon) {
+  flex: 0 0 auto;
+  color: currentColor;
+  font-size: 12px;
+}
+
+.release-live-status-tag--pending {
+  border-color: #fdba74;
+  background: #fff7ed;
+  color: #b45309;
+}
+
+.release-live-status-tag--current {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
 .release-order-table :deep(.ant-table-container) {
   overflow: hidden;
   border: 1px solid rgba(148, 163, 184, 0.16);
@@ -4822,6 +4935,7 @@ function handleOverviewChartResize() {
 
 .release-order-no-trigger {
   display: block;
+  flex: 1 1 auto;
   min-width: 0;
   width: 100%;
   max-width: 100%;
@@ -4830,6 +4944,83 @@ function handleOverviewChartResize() {
   background: transparent;
   cursor: pointer;
   text-align: left;
+}
+
+.release-order-no-main {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+}
+
+.release-order-remark-trigger {
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #475569;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 22px;
+  white-space: nowrap;
+}
+
+.release-order-remark-trigger:hover,
+.release-order-remark-trigger:focus-visible {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+  outline: none;
+}
+
+.release-order-remark-trigger :deep(.anticon) {
+  color: currentColor;
+  font-size: 12px;
+}
+
+.release-order-remark-content {
+  width: min(280px, calc(100vw - 48px));
+}
+
+.release-order-remark-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.release-order-remark-heading :deep(.anticon) {
+  color: #2563eb;
+  font-size: 14px;
+}
+
+.release-order-remark-content p {
+  margin: 8px 0 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+:global(.release-order-remark-popover .ant-popover-inner) {
+  padding: 14px 16px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.14);
 }
 
 .release-order-no-text {

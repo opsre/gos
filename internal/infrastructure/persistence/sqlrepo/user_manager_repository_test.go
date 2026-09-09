@@ -69,3 +69,42 @@ func TestUserRepositoryResolvesManagerHierarchy(t *testing.T) {
 		t.Fatalf("staff manager after delete err=%v, want ErrUserManagerNotFound", err)
 	}
 }
+
+func TestUserRepositoryResolvesUniqueDisplayNameForLogin(t *testing.T) {
+	t.Parallel()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("sql.Open failed: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+	repo := NewUserRepository(db, "sqlite")
+	ctx := context.Background()
+	if err := repo.InitSchema(ctx); err != nil {
+		t.Fatalf("InitSchema failed: %v", err)
+	}
+	now := time.Now().UTC()
+	create := func(item domain.User) {
+		t.Helper()
+		if err := repo.CreateUser(ctx, item); err != nil {
+			t.Fatalf("CreateUser(%s) failed: %v", item.ID, err)
+		}
+	}
+	create(domain.User{ID: "u-liwen", Username: "李雯", DisplayName: "liwen", Role: domain.RoleNormal, Status: domain.StatusActive, PasswordHash: "x", CreatedAt: now, UpdatedAt: now})
+
+	resolved, err := repo.GetUserByLoginIdentifier(ctx, "liwen")
+	if err != nil || resolved.ID != "u-liwen" {
+		t.Fatalf("unique display-name login = %#v err=%v", resolved, err)
+	}
+
+	create(domain.User{ID: "u-duplicate", Username: "another", DisplayName: "liwen", Role: domain.RoleNormal, Status: domain.StatusActive, PasswordHash: "x", CreatedAt: now, UpdatedAt: now})
+	if _, err := repo.GetUserByLoginIdentifier(ctx, "liwen"); err != domain.ErrUserNotFound {
+		t.Fatalf("ambiguous display-name login err=%v, want ErrUserNotFound", err)
+	}
+
+	create(domain.User{ID: "u-exact", Username: "liwen", DisplayName: "李雯二", Role: domain.RoleNormal, Status: domain.StatusActive, PasswordHash: "x", CreatedAt: now, UpdatedAt: now})
+	resolved, err = repo.GetUserByLoginIdentifier(ctx, "liwen")
+	if err != nil || resolved.ID != "u-exact" {
+		t.Fatalf("exact username should win = %#v err=%v", resolved, err)
+	}
+}

@@ -43,6 +43,10 @@ type AuthSessionManager struct {
 	now             func() time.Time
 }
 
+type userLoginIdentifierRepository interface {
+	GetUserByLoginIdentifier(ctx context.Context, identifier string) (userdomain.User, error)
+}
+
 type CreateUserInput struct {
 	Username    string
 	DisplayName string
@@ -540,6 +544,9 @@ func (uc *AuthSessionManager) Login(ctx context.Context, input LoginInput) (Logi
 		return LoginOutput{}, err
 	}
 	user, err := uc.repo.GetUserByUsername(ctx, username)
+	if resolver, ok := uc.repo.(userLoginIdentifierRepository); ok {
+		user, err = resolver.GetUserByLoginIdentifier(ctx, username)
+	}
 	if err != nil {
 		logx.Error("auth", "login_failed", err,
 			logx.F("username", username),

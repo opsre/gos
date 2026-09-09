@@ -428,7 +428,7 @@ docker run -d \
   -e GOS_AUTH_ADMIN_USERNAME='admin' \
   -e GOS_AUTH_ADMIN_PASSWORD='your-admin-password' \
   -e GOS_SECURITY_ENCRYPTION_KEY='replace-with-a-strong-key' \
-  yl10115658529/gos-release:v1.3.2
+  yl10115658529/gos-release:v1.3.3
 ```
 
 > **说明**：GOS_SECURITY_ENCRYPTION_KEY 用于加密数据，请自定义 。
@@ -528,6 +528,8 @@ Docker 单容器运行时由 `docker/entrypoint.sh` 根据环境变量生成：
 | 入口 | 登录 | `/login` |
 | 应用管理 | 我的应用 | `/applications` |
 | 应用管理 | 新增应用 | `/applications/new` |
+| 应用管理 | 应用接入向导（首次 / 后续新增） | `/system/quick-start` |
+| 应用管理 | 继续接入任务 | `/onboarding/:sessionId` |
 | 应用管理 | 编辑应用 | `/applications/:id/edit` |
 | 应用管理 | 管线绑定 | `/applications/:id/pipeline-bindings` |
 | 应用管理 | 项目管理 | `/projects` |
@@ -562,21 +564,18 @@ Docker 单容器运行时由 `docker/entrypoint.sh` 根据环境变量生成：
 
 ## 🧪 初始化顺序
 
-第一次落地建议按这个顺序做：
+已有 Jenkins 管线的应用，建议从“应用管理 → 应用接入向导”开始，不需要提前维护完整标准字库：
 
-1. 启动后端和前端
-2. 登录管理员账号
-3. 配置发布环境和并发策略
-4. 创建用户、维护直属主管关系并授权
-5. 创建项目和应用
-6. 按需接入 Jenkins / ArgoCD / GitOps / Agent / 制品库 / AI 模型 / 通知源
-7. 绑定应用与 CI/CD 执行器
-8. 维护标准字库、执行器参数和管线规范
-9. 创建审批流并绑定应用
-10. 创建发布模板，配置 Hook 和执行参数
-11. 创建发布单，执行并查看详情
+1. 完成安装：数据库、管理员、执行端连接，启动后端和前端并登录；确认发布环境与管理权限。
+2. 新增接入任务，在同一页面选择或创建项目，填写应用名称、Key 和负责人。
+3. 选择已有 CI/CD 管线，按实际参数复用标准映射；缺少的标准字段当场补建，并选择发布时填写、固定值或自动来源。
+4. 创建该应用的独立发布模板；如需审批，显式选择应用审批流程。
+5. 通过配置检查后创建首个发布单。创建不会自动执行，后续构建、部署和审批沿用现有发布流程。
+6. 后续新增应用仍使用同一入口，或点击“继续接入下一个应用”。只预选项目，复用公共字段，不复制旧应用绑定、模板和固定值。
 
-完整说明见：`docs/使用手册/GOS从0到1初始化使用指南.md`
+草稿会自动保存，可在接入中心继续。已有应用也可从列表或详情的“接入检查 / 继续配置”进入。语言、制品类型不再是纯管线应用的必填项；应用访问地址不属于接入条件。仓库与分支只在选择了对应参数来源时补齐。
+
+向导使用说明与 API 契约：[应用接入向导](docs/first-release-onboarding.md)。ArgoCD、GitOps、动态/敏感插件参数及 Hook 等仍使用原高级配置，详见 [完整初始化指南](docs/使用手册/GOS从0到1初始化使用指南.md)。
 
 ---
 
@@ -605,6 +604,7 @@ gos/
 
 - Docker 部署：`docs/部署/Docker部署说明.md`
 - 初始化使用指南：`docs/使用手册/GOS从0到1初始化使用指南.md`
+- 可复用应用接入向导：`docs/first-release-onboarding.md`
 - Swagger：`docs/swagger.yaml`
 - 后端需求：`docs/后端/`
 - 前端需求：`docs/前端/`

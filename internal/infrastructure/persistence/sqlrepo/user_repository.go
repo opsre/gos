@@ -493,6 +493,44 @@ WHERE username = ?;`
 	return item, nil
 }
 
+// GetUserByLoginIdentifier resolves an exact username first, then a unique display name.
+// Display names are not globally unique, so an ambiguous match is deliberately rejected.
+func (r *UserRepository) GetUserByLoginIdentifier(ctx context.Context, identifier string) (domain.User, error) {
+	identifier = strings.TrimSpace(identifier)
+	item, err := r.GetUserByUsername(ctx, identifier)
+	if err == nil || !errors.Is(err, domain.ErrUserNotFound) {
+		return item, err
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+SELECT id, username, display_name, email, phone, role, status, password_hash, created_at, updated_at
+FROM sys_user
+WHERE display_name = ?
+ORDER BY id ASC
+LIMIT 2;`, identifier)
+	if err != nil {
+		return domain.User{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if rowsErr := rows.Err(); rowsErr != nil {
+			return domain.User{}, rowsErr
+		}
+		return domain.User{}, domain.ErrUserNotFound
+	}
+	item, err = scanUser(rows)
+	if err != nil {
+		return domain.User{}, err
+	}
+	if rows.Next() {
+		return domain.User{}, domain.ErrUserNotFound
+	}
+	if err := rows.Err(); err != nil {
+		return domain.User{}, err
+	}
+	return item, nil
+}
+
 // ListUsers 查询并返回列表数据。
 func (r *UserRepository) ListUsers(ctx context.Context, filter domain.UserListFilter) ([]domain.User, int64, error) {
 	args := make([]any, 0, 4)

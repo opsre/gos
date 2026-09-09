@@ -231,6 +231,7 @@ func TestReleaseRepositoryInitSchemaUpgradesRecordedLegacyApprovalFlow(t *testin
 	}
 	assertSchemaMigrationCount(t, db, "20260717_02_release_approval_flow", 1)
 	assertSchemaMigrationCount(t, db, "20260718_01_release_approval_flow_runtime_columns", 1)
+	assertSchemaMigrationCount(t, db, "20260907_01_release_approval_flow_collation", 1)
 }
 
 func TestPlatformParamRepositoryInitSchemaUpgradesLegacyColumns(t *testing.T) {

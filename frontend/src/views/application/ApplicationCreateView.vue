@@ -95,7 +95,7 @@ async function handleSubmit(payload: ApplicationPayload) {
 }
 
 function goBack() {
-  void router.push('/applications')
+  router.back()
 }
 
 function handleSubmitFromToolbar() {

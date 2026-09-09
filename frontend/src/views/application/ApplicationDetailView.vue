@@ -6,9 +6,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { getApplicationByID } from '../../api/application'
 import type { Application } from '../../types/application'
 import { extractHTTPErrorMessage } from '../../utils/http-error'
+import { useAuthStore } from '../../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 
 const applicationId = computed(() => String(route.params.id || ''))
 const application = ref<Application | null>(null)
@@ -97,6 +99,7 @@ onMounted(() => {
         </div>
       </div>
       <div class="page-header-actions">
+        <a-button v-if="auth.hasPermission('application.manage')" @click="router.push({path: '/system/quick-start', query: {application_id: applicationId}})">接入检查 / 继续配置</a-button>
         <a-button type="primary" @click="goEdit">
           <template #icon><EditOutlined /></template>
           编辑应用

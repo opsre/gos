@@ -210,7 +210,7 @@ function formatTime(value: string | null) {
 }
 
 function goBack() {
-  void router.push('/applications')
+  router.back()
 }
 
 function providerLabel(provider: PipelineProvider) {

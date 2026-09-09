@@ -433,7 +433,7 @@ func (uc *ReleaseOrderManager) Create(
 		approvedBy = firstNonEmpty(strings.TrimSpace(input.TriggeredBy), strings.TrimSpace(input.CreatorUserID))
 	}
 	order := domain.ReleaseOrder{
-		ID:                    generateID("ro"),
+		ID:                    creationID(ctx, "ro"),
 		OrderNo:               generateOrderNo(now),
 		ReleaseName:           strings.TrimSpace(input.ReleaseName),
 		PreviousOrderNo:       strings.TrimSpace(input.PreviousOrderNo),
@@ -2488,6 +2488,7 @@ func (uc *ReleaseOrderManager) dispatchOrder(
 
 	var dispatchStartedAt *time.Time
 	var dispatchGuard releaseDispatchGuard
+	dispatchWaitingForLock := false
 	if pendingExecution != nil {
 		var acquired bool
 		var guardErr error
@@ -2505,8 +2506,10 @@ func (uc *ReleaseOrderManager) dispatchOrder(
 			dispatchStartedAt = firstNonNilTime(order.StartedAt, &startedAt)
 		} else {
 			dispatchStartedAt = order.StartedAt
-			// 未取得锁时统一使用明确的 queued 状态。tracker 真正领取 CI 后会切回 building。
-			dispatchStatus = domain.OrderStatusQueued
+			// 保留 dispatch action 已解析出的执行模式。building 表示显式“仅构建”，
+			// deploying 表示 CI -> CD 连续发布；若统一落成 queued，tracker 后续
+			// 领取 CI 时将无法判断是否应该在 CI 成功后暂停。
+			dispatchWaitingForLock = true
 		}
 	}
 	updatedAt := uc.now()
@@ -2568,7 +2571,7 @@ func (uc *ReleaseOrderManager) dispatchOrder(
 
 	_ = uc.markStepRunning(ctx, order.ID, "global:param_resolve", "开始解析发布参数")
 	paramResolveMessage := currentDispatchResolveMessage(action, len(orderParams))
-	if (dispatchStatus == domain.OrderStatusQueued || (action == ReleaseOrderDispatchActionBuild && strings.TrimSpace(dispatchGuard.Message) != "")) &&
+	if (dispatchWaitingForLock || (action == ReleaseOrderDispatchActionBuild && strings.TrimSpace(dispatchGuard.Message) != "")) &&
 		strings.TrimSpace(dispatchGuard.Message) != "" {
 		paramResolveMessage = strings.TrimSpace(dispatchGuard.Message)
 	}
@@ -2747,12 +2750,6 @@ func (uc *ReleaseOrderManager) startNextPendingExecution(
 			return guardErr
 		}
 		if !acquired {
-			queuedStatus := nextQueuedOrderStatus(order.Status)
-			if order.Status != queuedStatus {
-				if _, updateErr := uc.repo.UpdateStatus(ctx, order.ID, queuedStatus, order.StartedAt, nil, uc.now()); updateErr != nil {
-					return updateErr
-				}
-			}
 			if strings.TrimSpace(guard.Message) != "" {
 				_ = uc.markStepFinished(ctx, order.ID, "global:param_resolve", domain.StepStatusSuccess, guard.Message)
 			}
@@ -4134,11 +4131,6 @@ func isEditableOrderStatus(status domain.OrderStatus) bool {
 	return normalized == "pending" || normalized == "pengding"
 }
 
-// nextQueuedOrderStatus 封装当前模块的业务处理逻辑。
-func nextQueuedOrderStatus(current domain.OrderStatus) domain.OrderStatus {
-	return domain.OrderStatusQueued
-}
-
 // nextRunningOrderStatus 封装当前模块的业务处理逻辑。
 func nextRunningOrderStatus(
 	current domain.OrderStatus,
@@ -4146,14 +4138,21 @@ func nextRunningOrderStatus(
 	execution domain.ReleaseOrderExecution,
 	executions []domain.ReleaseOrderExecution,
 ) domain.OrderStatus {
-	// Replay is a single continuous dispatch. A CI replay that also recreated a
-	// downstream CD execution must not be reclassified as a staged build, or the
-	// tracker will stop at built_waiting_deploy instead of continuing to CD.
+	// The dispatch action has already encoded its intent in the order status:
+	// building is the explicit staged-build path, while deploying is a continuous
+	// CI -> CD release. Do not infer staged mode merely because CI and CD coexist.
 	if operationType == domain.OperationTypeReplay {
 		return domain.OrderStatusDeploying
 	}
-	if current == domain.OrderStatusBuilding ||
-		(execution.PipelineScope == domain.PipelineScopeCI && hasExecutionForScope(executions, domain.PipelineScopeCD)) {
+	if current == domain.OrderStatusBuilding {
+		return domain.OrderStatusBuilding
+	}
+	// queued is retained only for orders persisted by older versions, where the
+	// original action was not stored. Preserve the historical staged inference so
+	// an old build-only order cannot unexpectedly deploy.
+	if current == domain.OrderStatusQueued &&
+		execution.PipelineScope == domain.PipelineScopeCI &&
+		hasExecutionForScope(executions, domain.PipelineScopeCD) {
 		return domain.OrderStatusBuilding
 	}
 	return domain.OrderStatusDeploying

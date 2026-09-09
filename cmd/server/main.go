@@ -285,6 +285,16 @@ func main() {
 	releaseOrderManager.SetStageDiagnosisRepository(stageDiagnosisRepo)
 	releaseOrderManager.SetAIClientFactory(aiClientFactory)
 	releaseTemplateManager.SetPipelineScanRepository(pipelineScanRepo)
+	onboardingRepo := sqlrepo.NewOnboardingRepository(db, cfg.Database.Driver)
+	if err := bootstrap.InitSchema(onboardingRepo); err != nil {
+		log.Fatalf("init onboarding schema: %v", err)
+	}
+	onboardingManager := usecase.NewOnboardingManager(onboardingRepo, usecase.OnboardingDependencies{
+		Apps: repo, Projects: projectRepo, Pipelines: pipelineRepo, Params: executorParamRepo,
+		Fields: platformParamRepo, Orders: releaseOrderManager, Templates: releaseTemplateManager,
+		Jenkins: jenkinsClient, Users: userManagement, Settings: releaseSettingsQuery, JenkinsEnabled: cfg.Jenkins.Enabled,
+	})
+	handler.SetOnboardingHandler(httpapi.NewOnboardingHandler(onboardingManager, authSessionManager))
 	releaseOrderLogStreamer := usecase.NewReleaseOrderLogStreamer(releaseRepo, pipelineRepo, jenkinsClient)
 	releaseOrderHandler := httpapi.NewReleaseOrderHandler(
 		releaseOrderManager,

@@ -198,18 +198,24 @@ func (uc *ReleaseOrderManager) getStoredConcurrentBatchProgress(
 		Items:        make([]ReleaseOrderConcurrentBatchProgressItem, 0),
 	}
 	if !order.IsConcurrent || strings.TrimSpace(order.ConcurrentBatchNo) == "" {
+		executions, execErr := uc.repo.ListExecutions(ctx, order.ID)
+		if execErr != nil {
+			return ReleaseOrderConcurrentBatchProgressOutput{}, execErr
+		}
+		hasRunning := hasRunningExecution(executions)
 		output.Items = append(output.Items, ReleaseOrderConcurrentBatchProgressItem{
-			OrderID:            order.ID,
-			OrderNo:            order.OrderNo,
-			ApplicationID:      order.ApplicationID,
-			ApplicationName:    order.ApplicationName,
-			EnvCode:            order.EnvCode,
-			Status:             order.Status,
-			OperationType:      order.OperationType,
-			ConcurrentBatchSeq: order.ConcurrentBatchSeq,
-			QueueState:         resolveConcurrentBatchQueueState(order.Status, false),
-			StartedAt:          order.StartedAt,
-			FinishedAt:         order.FinishedAt,
+			OrderID:             order.ID,
+			OrderNo:             order.OrderNo,
+			ApplicationID:       order.ApplicationID,
+			ApplicationName:     order.ApplicationName,
+			EnvCode:             order.EnvCode,
+			Status:              order.Status,
+			OperationType:       order.OperationType,
+			ConcurrentBatchSeq:  order.ConcurrentBatchSeq,
+			QueueState:          resolveConcurrentBatchQueueState(order.Status, hasRunning),
+			HasRunningExecution: hasRunning,
+			StartedAt:           order.StartedAt,
+			FinishedAt:          order.FinishedAt,
 		})
 		output.Total = 1
 		return output, nil
@@ -394,7 +400,10 @@ func resolveConcurrentBatchQueueState(
 		}
 		return ReleaseOrderConcurrentBatchQueueStateQueued
 	case domain.OrderStatusDeploying:
-		return ReleaseOrderConcurrentBatchQueueStateExecuting
+		if hasRunningExecution {
+			return ReleaseOrderConcurrentBatchQueueStateExecuting
+		}
+		return ReleaseOrderConcurrentBatchQueueStateQueued
 	case domain.OrderStatusBuiltWaitingDeploy:
 		return ReleaseOrderConcurrentBatchQueueStatePending
 	case domain.OrderStatusPending, domain.OrderStatusApproved:

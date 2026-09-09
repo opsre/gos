@@ -293,7 +293,15 @@ export const router = createRouter({
         },
         {
           path: '/system/quick-start',
-          redirect: '/system/settings',
+          name: 'application-onboarding-center',
+          component: () => import('../views/onboarding/OnboardingCenterView.vue'),
+          meta: { title: '应用接入向导', permission: 'application.manage' },
+        },
+        {
+          path: '/onboarding/:sessionId',
+          name: 'application-onboarding',
+          component: () => import('../views/onboarding/ApplicationOnboardingView.vue'),
+          meta: { title: '应用接入向导', permission: 'application.manage' },
         },
         {
           path: '/system/users',

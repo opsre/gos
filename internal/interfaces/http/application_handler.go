@@ -19,6 +19,7 @@ import (
 )
 
 type ApplicationHandler struct {
+	onboarding          *OnboardingHandler
 	creator             *usecase.CreateApplication
 	query               *usecase.QueryApplication
 	updater             *usecase.UpdateApplication
@@ -28,6 +29,8 @@ type ApplicationHandler struct {
 	users               ApplicationUserReader
 	authz               RequestAuthorizer
 }
+
+func (h *ApplicationHandler) SetOnboardingHandler(handler *OnboardingHandler) { h.onboarding = handler }
 
 func (h *ApplicationHandler) SetApprovalFlowManager(manager *usecase.ReleaseOrderManager) {
 	if h != nil {
@@ -67,6 +70,9 @@ func NewApplicationHandler(
 
 // RegisterRoutes 封装当前模块的业务处理逻辑。
 func (h *ApplicationHandler) RegisterRoutes(router gin.IRouter) {
+	if h.onboarding != nil {
+		h.onboarding.RegisterRoutes(router)
+	}
 	router.POST("/applications", h.Create)
 	router.GET("/applications/options", h.ListOptions)
 	router.GET("/applications/workbench", h.Workbench)

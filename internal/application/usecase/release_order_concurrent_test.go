@@ -150,3 +150,88 @@ func TestConcurrentBatchConflictIsAcceptedIntoQueueEvenWithRejectStrategy(t *tes
 		t.Fatalf("message=%q, want queue confirmation", guard.Message)
 	}
 }
+
+func TestQueuedFullReleaseRetainsContinuousCIDispatchMode(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 7, 20, 0, 0, 0, time.UTC)
+	manager.now = func() time.Time { return now }
+	manager.pipelineRepo = segmentedReleasePipelineRepo{}
+	jenkins := &segmentedReleaseCapturingJenkinsExecutor{}
+	manager.jenkins = jenkins
+
+	owner := testReleaseOrder("ro-full-release-owner", "RO-FULL-RELEASE-OWNER", domain.OrderStatusDeploying, now)
+	owner.IsConcurrent = true
+	owner.ConcurrentBatchNo = "CB-FULL-RELEASE"
+	owner.ConcurrentBatchName = "Full release batch"
+	owner.ConcurrentBatchSeq = 1
+	waiting := testReleaseOrder("ro-full-release-waiting", "RO-FULL-RELEASE-WAITING", domain.OrderStatusPending, now.Add(time.Second))
+	waiting.TemplateID = ""
+	waiting.IsConcurrent = true
+	waiting.ConcurrentBatchNo = owner.ConcurrentBatchNo
+	waiting.ConcurrentBatchName = owner.ConcurrentBatchName
+	waiting.ConcurrentBatchSeq = 2
+	executions := []domain.ReleaseOrderExecution{
+		testReleaseExecution(waiting.ID, "exec-waiting-ci", domain.PipelineScopeCI, domain.ExecutionStatusPending, now),
+		testReleaseExecution(waiting.ID, "exec-waiting-cd", domain.PipelineScopeCD, domain.ExecutionStatusPending, now),
+	}
+	steps := defaultReleaseOrderSteps(waiting.ID, executions, now, "", nil, waiting.EnvCode)
+	if err := repo.Create(ctx, owner, nil, nil, nil); err != nil {
+		t.Fatalf("Create owner failed: %v", err)
+	}
+	if err := repo.Create(ctx, waiting, executions, nil, steps); err != nil {
+		t.Fatalf("Create waiting order failed: %v", err)
+	}
+
+	dispatched, err := manager.Execute(ctx, waiting.ID, "tester", "Tester")
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if dispatched.Status != domain.OrderStatusDeploying {
+		t.Fatalf("queued full release status=%s, want %s to retain continuous mode", dispatched.Status, domain.OrderStatusDeploying)
+	}
+	if jenkins.triggerCount != 0 {
+		t.Fatalf("jenkins trigger count=%d, want 0 while the order is queued", jenkins.triggerCount)
+	}
+
+	if _, err := repo.UpdateStatus(ctx, owner.ID, domain.OrderStatusSuccess, nil, &now, now); err != nil {
+		t.Fatalf("finish owner failed: %v", err)
+	}
+	storedExecutions, err := repo.ListExecutions(ctx, waiting.ID)
+	if err != nil {
+		t.Fatalf("ListExecutions failed: %v", err)
+	}
+	if err := manager.startNextPendingExecution(ctx, dispatched, storedExecutions, nil); err != nil {
+		t.Fatalf("startNextPendingExecution failed: %v", err)
+	}
+	if jenkins.triggerCount != 1 {
+		t.Fatalf("jenkins trigger count=%d, want 1 CI trigger after queue clears", jenkins.triggerCount)
+	}
+	storedOrder, err := repo.GetByID(ctx, waiting.ID)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	if storedOrder.Status != domain.OrderStatusDeploying {
+		t.Fatalf("running full release status=%s, want %s", storedOrder.Status, domain.OrderStatusDeploying)
+	}
+	storedExecutions, err = repo.ListExecutions(ctx, waiting.ID)
+	if err != nil {
+		t.Fatalf("ListExecutions after start failed: %v", err)
+	}
+	if runningCI := findExecutionByScopeAndStatus(storedExecutions, domain.PipelineScopeCI, domain.ExecutionStatusRunning); runningCI == nil {
+		t.Fatalf("stored executions=%#v, want running CI", storedExecutions)
+	}
+}
+
+func TestConcurrentBatchQueueStateTreatsUnstartedFullReleaseAsQueued(t *testing.T) {
+	t.Parallel()
+
+	if got := resolveConcurrentBatchQueueState(domain.OrderStatusDeploying, false); got != ReleaseOrderConcurrentBatchQueueStateQueued {
+		t.Fatalf("queue state=%s, want %s", got, ReleaseOrderConcurrentBatchQueueStateQueued)
+	}
+	if got := resolveConcurrentBatchQueueState(domain.OrderStatusDeploying, true); got != ReleaseOrderConcurrentBatchQueueStateExecuting {
+		t.Fatalf("running state=%s, want %s", got, ReleaseOrderConcurrentBatchQueueStateExecuting)
+	}
+}

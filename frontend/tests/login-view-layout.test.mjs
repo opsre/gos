@@ -19,6 +19,7 @@ test('login form hides required markers but keeps required validation', () => {
   )
   assert.match(source, /username: \[\{ required: true, message: '请输入用户名'/, 'username should remain required')
   assert.match(source, /password: \[\{ required: true, message: '请输入密码'/, 'password should remain required')
+  assert.match(source, /label="登录账号"[\s\S]*placeholder="请输入用户名或姓名"/, 'login should accept an account or unique display name')
 })
 
 test('login card uses the standardized release platform footnote', () => {

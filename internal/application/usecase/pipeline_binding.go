@@ -92,7 +92,7 @@ func (uc *PipelineBindingManager) Create(ctx context.Context, applicationID stri
 
 	now := uc.now()
 	binding := domain.PipelineBinding{
-		ID:              generateID("pb"),
+		ID:              creationID(ctx, "pb"),
 		Name:            name,
 		ApplicationID:   applicationID,
 		ApplicationName: app.Name,

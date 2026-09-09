@@ -1295,7 +1295,11 @@ function closeIntroDrawer() {
 }
 
 function toCreate() {
-  void router.push('/applications/new')
+  void router.push('/system/quick-start')
+}
+
+function toOnboarding(id: string) {
+  void router.push({ path: '/system/quick-start', query: { application_id: id } })
 }
 
 function toEdit(id: string) {
@@ -1995,7 +1999,7 @@ onUnmounted(() => {
           <template #icon>
             <PlusOutlined />
           </template>
-          新增应用
+          新增应用（引导）
         </a-button>
       </div>
     </div>
@@ -2192,6 +2196,7 @@ onUnmounted(() => {
                     >
                       <template #content>
                         <div class="workbench-manage-actions">
+                          <a-button v-if="canManageApplication" class="workbench-secondary-action" @click="toOnboarding(card.application.id)">接入检查 / 继续配置</a-button>
                           <a-button class="workbench-secondary-action" @click="toTemplates(card.application.id)">查看模版</a-button>
                           <a-button
                             v-if="canViewPipeline || canManageApplication"
@@ -2383,6 +2388,7 @@ onUnmounted(() => {
             >
               <template #content>
                 <div class="workbench-manage-actions">
+                  <a-button v-if="canManageApplication" class="workbench-secondary-action" @click="toOnboarding(card.application.id)">接入检查 / 继续配置</a-button>
                   <a-button class="workbench-secondary-action" @click="toTemplates(card.application.id)">查看模版</a-button>
                   <a-button
                     v-if="canViewPipeline || canManageApplication"
@@ -2483,6 +2489,9 @@ onUnmounted(() => {
     </transition>
     <a-card v-if="!initialWorkbenchLoading && workbenchCards.length === 0" class="table-card" :bordered="true">
       <a-empty description="当前没有符合条件的应用" />
+      <a-alert v-if="canManageApplication" type="info" show-icon message="第一次接入应用？从这里串起项目、管线、标准字段和发布模板。">
+        <template #action><a-button type="primary" @click="toCreate">开始接入</a-button></template>
+      </a-alert>
     </a-card>
 
     <div class="pagination-area">

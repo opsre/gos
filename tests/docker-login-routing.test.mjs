@@ -14,6 +14,11 @@ test('production frontend uses same-origin API regardless of published port', ()
 
 test('both Docker frontend modes proxy login and non-HTML API requests', () => {
   for (const source of [splitNginxSource, unifiedNginxSource]) {
+    assert.match(
+      source,
+      /location = \/logo-mark\.svg \{\s*try_files \$uri =404;\s*\}/,
+      'the product logo must be served as a static asset for image Accept headers',
+    )
     assert.match(source, /if \(\$request_method != GET\)/)
     assert.match(source, /if \(\$gos_spa_request = 0\)/)
     assert.match(source, /proxy_pass http:\/\/(?:backend|127\.0\.0\.1):8081;/)

@@ -46,7 +46,7 @@ func (uc *ProjectManager) Create(ctx context.Context, input CreateProjectInput) 
 	}
 	now := uc.now()
 	item := projectdomain.Project{
-		ID:          generateID("prj"),
+		ID:          creationID(ctx, "prj"),
 		Name:        strings.TrimSpace(input.Name),
 		Key:         strings.TrimSpace(input.Key),
 		Description: strings.TrimSpace(input.Description),

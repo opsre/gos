@@ -394,7 +394,7 @@ async function handleSubmit() {
     } else {
       const response = await createUser(payload)
       await updateUserManager(response.data.id, formState.role === 'admin' ? '' : formState.manager_user_id)
-      message.success('用户创建成功')
+      message.success(`用户创建成功，登录账号：${response.data.username}`)
     }
     closeModal()
     await Promise.all([loadUsers(), loadManagerUsers()])
@@ -618,17 +618,17 @@ onBeforeUnmount(() => {
           <a-form-item v-if="!isEdit" name="username">
             <template #label>
               <span class="user-form-label">
-                用户名
+                登录账号
                 <a-tag class="user-form-required-tag">必填</a-tag>
               </span>
             </template>
-            <a-input v-model:value="formState.username" placeholder="请输入用户名" />
+            <a-input v-model:value="formState.username" placeholder="例如 liwen，用于登录且保存后不可修改" />
           </a-form-item>
 
           <a-form-item name="display_name">
             <template #label>
               <span class="user-form-label">
-                姓名
+                姓名（显示名称）
                 <a-tag class="user-form-required-tag">必填</a-tag>
               </span>
             </template>

@@ -603,16 +603,20 @@ func (uc *ReleaseOrderManager) continueReleaseAfterApproval(ctx context.Context,
 	if err != nil {
 		return err
 	}
-	if order.Status != domain.OrderStatusApproved {
+	action, ok := approvalFlowContinuationAction(instance)
+	if !ok {
+		return nil
+	}
+	// Initial approvals continue from approved. A before-CD approval is reached
+	// after CI has already completed, so the order intentionally remains in
+	// built_waiting_deploy and must resume with the deploy action from there.
+	if order.Status != domain.OrderStatusApproved &&
+		!(action == ReleaseOrderDispatchActionDeploy && order.Status == domain.OrderStatusBuiltWaitingDeploy) {
 		return nil
 	}
 	// Isolated flow tests and maintenance tools may intentionally omit all
 	// executors. Production dispatch always has at least one configured backend.
 	if uc.jenkins == nil && uc.argocdFactory == nil {
-		return nil
-	}
-	action, ok := approvalFlowContinuationAction(instance)
-	if !ok {
 		return nil
 	}
 	executorUserID := firstNonEmpty(strings.TrimSpace(order.ExecutorUserID), strings.TrimSpace(order.TriggeredBy), strings.TrimSpace(order.CreatorUserID))

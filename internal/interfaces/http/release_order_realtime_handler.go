@@ -705,11 +705,7 @@ func enrichRealtimeReleaseOrder(
 	executions []domain.ReleaseOrderExecution,
 	progress *usecase.ReleaseOrderConcurrentBatchProgressOutput,
 ) domain.ReleaseOrder {
-	hasRunningExecution := false
 	for _, execution := range executions {
-		if execution.Status == domain.ExecutionStatusRunning {
-			hasRunningExecution = true
-		}
 		if execution.PipelineScope == domain.PipelineScopeCI {
 			order.HasCIExecution = true
 		}
@@ -718,7 +714,7 @@ func enrichRealtimeReleaseOrder(
 			order.CDProvider = strings.TrimSpace(execution.Provider)
 		}
 	}
-	order.BusinessStatus = deriveReleaseBusinessStatus(order.Status, hasRunningExecution)
+	order.BusinessStatus = deriveReleaseBusinessStatus(order.Status, executions)
 	if progress == nil {
 		return order
 	}
@@ -728,7 +724,8 @@ func enrichRealtimeReleaseOrder(
 		}
 		switch item.QueueState {
 		case usecase.ReleaseOrderConcurrentBatchQueueStateQueued:
-			if order.BusinessStatus != domain.ReleaseBusinessStatusBuilding {
+			if order.BusinessStatus != domain.ReleaseBusinessStatusBuilding &&
+				order.BusinessStatus != domain.ReleaseBusinessStatusDeploying {
 				order.BusinessStatus = domain.ReleaseBusinessStatusQueued
 			}
 			order.QueuePosition = item.QueuePosition
@@ -736,7 +733,8 @@ func enrichRealtimeReleaseOrder(
 				order.QueuedReason = fmt.Sprintf("并发批次排队中，当前位次 %d", item.QueuePosition)
 			}
 		case usecase.ReleaseOrderConcurrentBatchQueueStateExecuting:
-			if order.BusinessStatus != domain.ReleaseBusinessStatusBuilding {
+			if order.BusinessStatus != domain.ReleaseBusinessStatusBuilding &&
+				order.BusinessStatus != domain.ReleaseBusinessStatusQueued {
 				order.BusinessStatus = domain.ReleaseBusinessStatusDeploying
 			}
 		case usecase.ReleaseOrderConcurrentBatchQueueStateSuccess:

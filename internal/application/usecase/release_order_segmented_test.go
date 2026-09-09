@@ -172,7 +172,7 @@ func TestTrackerDoesNotAutoDeployAfterBuildSuccess(t *testing.T) {
 	}
 }
 
-func TestNextRunningOrderStatusKeepsReplayCIChainDeploying(t *testing.T) {
+func TestNextRunningOrderStatusKeepsFullReleaseCIChainDeploying(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now().UTC()
@@ -194,8 +194,68 @@ func TestNextRunningOrderStatusKeepsReplayCIChainDeploying(t *testing.T) {
 		domain.OperationTypeDeploy,
 		executions[0],
 		executions,
+	); got != domain.OrderStatusDeploying {
+		t.Fatalf("normal deploy running status=%s, want %s", got, domain.OrderStatusDeploying)
+	}
+	if got := nextRunningOrderStatus(
+		domain.OrderStatusBuilding,
+		domain.OperationTypeDeploy,
+		executions[0],
+		executions,
 	); got != domain.OrderStatusBuilding {
-		t.Fatalf("normal deploy running status=%s, want %s", got, domain.OrderStatusBuilding)
+		t.Fatalf("explicit build running status=%s, want %s", got, domain.OrderStatusBuilding)
+	}
+}
+
+func TestFullReleaseContinuesToCDAfterBuildSuccess(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	startedAt := now.Add(-2 * time.Minute)
+	manager.now = func() time.Time { return now }
+	manager.pipelineRepo = segmentedReleasePipelineRepo{}
+	jenkins := &segmentedReleaseCapturingJenkinsExecutor{}
+	manager.jenkins = jenkins
+
+	order := testReleaseOrder("ro-full-release-auto-cd", "RO-FULL-RELEASE-AUTO-CD", domain.OrderStatusDeploying, now)
+	order.TemplateID = ""
+	order.StartedAt = &startedAt
+	executions := []domain.ReleaseOrderExecution{
+		testReleaseExecution(order.ID, "exec-full-ci-success", domain.PipelineScopeCI, domain.ExecutionStatusSuccess, now),
+		testReleaseExecution(order.ID, "exec-full-cd-pending", domain.PipelineScopeCD, domain.ExecutionStatusPending, now),
+	}
+	steps := defaultReleaseOrderSteps(order.ID, executions, now, "", nil, order.EnvCode)
+	if err := repo.Create(ctx, order, executions, nil, steps); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	tracker := NewTrackReleaseExecution(manager, nil)
+	tracker.now = func() time.Time { return now }
+	updated, err := tracker.syncNextStepAfterExecution(ctx, order)
+	if err != nil {
+		t.Fatalf("syncNextStepAfterExecution failed: %v", err)
+	}
+	if !updated {
+		t.Fatal("updated = false, want true")
+	}
+	if jenkins.triggerCount != 1 {
+		t.Fatalf("jenkins trigger count=%d, want 1 CD trigger", jenkins.triggerCount)
+	}
+	storedOrder, err := repo.GetByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	if storedOrder.Status != domain.OrderStatusDeploying {
+		t.Fatalf("stored status=%s, want %s", storedOrder.Status, domain.OrderStatusDeploying)
+	}
+	storedExecutions, err := repo.ListExecutions(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("ListExecutions failed: %v", err)
+	}
+	if runningCD := findExecutionByScopeAndStatus(storedExecutions, domain.PipelineScopeCD, domain.ExecutionStatusRunning); runningCD == nil {
+		t.Fatalf("stored executions=%#v, want running CD", storedExecutions)
 	}
 }
 

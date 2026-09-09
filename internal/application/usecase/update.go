@@ -49,9 +49,6 @@ func (uc *UpdateApplication) Execute(ctx context.Context, id string, input domai
 	if strings.TrimSpace(input.ProjectID) == "" {
 		return domain.Application{}, fmt.Errorf("%w: project_id is required", ErrInvalidInput)
 	}
-	if strings.TrimSpace(input.ArtifactType) == "" || strings.TrimSpace(input.Language) == "" {
-		return domain.Application{}, fmt.Errorf("%w: artifact_type and language are required", ErrInvalidInput)
-	}
 	if strings.TrimSpace(input.OwnerUserID) == "" {
 		return domain.Application{}, fmt.Errorf("%w: owner_user_id is required", ErrInvalidInput)
 	}

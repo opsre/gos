@@ -318,6 +318,93 @@ func TestApprovalFlowContinuationActionUsesCurrentExecutionBoundary(t *testing.T
 	}
 }
 
+func TestBeforeCDApprovalAutomaticallyContinuesDeployment(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	startedAt := now.Add(-2 * time.Minute)
+	manager.now = func() time.Time { return now }
+	manager.pipelineRepo = segmentedReleasePipelineRepo{}
+	jenkins := &segmentedReleaseCapturingJenkinsExecutor{}
+	manager.jenkins = jenkins
+
+	order := testReleaseOrder("order-before-cd-auto-continue", "RO-BEFORE-CD-AUTO-CONTINUE", domain.OrderStatusBuiltWaitingDeploy, now)
+	order.TemplateID = ""
+	order.StartedAt = &startedAt
+	executions := []domain.ReleaseOrderExecution{
+		testReleaseExecution(order.ID, "exec-approved-ci", domain.PipelineScopeCI, domain.ExecutionStatusSuccess, now),
+		testReleaseExecution(order.ID, "exec-approved-cd", domain.PipelineScopeCD, domain.ExecutionStatusPending, now),
+	}
+	steps := defaultReleaseOrderSteps(order.ID, executions, now, "", nil, order.EnvCode)
+	if err := repo.Create(ctx, order, executions, nil, steps); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	flow, err := manager.CreateApprovalFlowDefinition(ctx, SaveApprovalFlowDefinitionInput{
+		Name:   "CD approval auto continuation",
+		Status: domain.ApprovalFlowStatusActive,
+		Nodes: []domain.ApprovalFlowNode{{
+			Code: "cd-approval", Name: "CD Approval", Gate: domain.ApprovalFlowGateBeforeCD,
+			ApprovalMode: domain.TemplateApprovalModeAny, ApproverIDs: []string{"u-cd"},
+		}},
+		Links: []domain.ApprovalFlowLink{
+			{FromCode: "start", ToCode: "cd-approval", ExecutionScopes: []string{string(domain.ApprovalFlowExecutionScopeFullRelease)}},
+			{FromCode: "cd-approval", ToCode: "end", ExecutionScopes: []string{string(domain.ApprovalFlowExecutionScopeFullRelease)}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateApprovalFlowDefinition failed: %v", err)
+	}
+	if err := manager.initializeApprovalFlow(ctx, order.ID, flow.ID); err != nil {
+		t.Fatalf("initializeApprovalFlow failed: %v", err)
+	}
+
+	beforeBuildExecutions := append([]domain.ReleaseOrderExecution(nil), executions...)
+	beforeBuildExecutions[0].Status = domain.ExecutionStatusPending
+	if err := manager.ensureApprovalFlowDispatchAllowedForExecutions(ctx, order.ID, ReleaseOrderDispatchActionExecute, beforeBuildExecutions); err != nil {
+		t.Fatalf("full release should wait for the later CD gate without blocking CI: %v", err)
+	}
+	if err := manager.markApprovalFlowDispatched(ctx, order.ID, ReleaseOrderDispatchActionExecute); err != nil {
+		t.Fatalf("markApprovalFlowDispatched failed: %v", err)
+	}
+	if err := manager.activateApprovalFlowGate(ctx, order.ID, domain.ApprovalFlowGateBeforeCD); err != nil {
+		t.Fatalf("activateApprovalFlowGate failed: %v", err)
+	}
+
+	_, tasks, err := manager.GetApprovalFlowInstance(ctx, order.ID)
+	if err != nil || len(tasks) != 1 {
+		t.Fatalf("GetApprovalFlowInstance tasks=%#v err=%v, want one CD approval", tasks, err)
+	}
+	if _, err := manager.ApproveApprovalFlowTask(ctx, order.ID, tasks[0].ID, "u-cd", "CD Approver", "ok"); err != nil {
+		t.Fatalf("ApproveApprovalFlowTask failed: %v", err)
+	}
+
+	storedOrder, err := repo.GetByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	if storedOrder.Status != domain.OrderStatusDeploying {
+		t.Fatalf("stored status=%s, want %s", storedOrder.Status, domain.OrderStatusDeploying)
+	}
+	tracker := NewTrackReleaseExecution(manager, nil)
+	tracker.now = func() time.Time { return now }
+	if updated, err := tracker.syncNextStepAfterExecution(ctx, storedOrder); err != nil || !updated {
+		t.Fatalf("tracker should start approved CD: updated=%t err=%v", updated, err)
+	}
+	if jenkins.triggerCount != 1 {
+		t.Fatalf("jenkins trigger count=%d, want 1 CD trigger", jenkins.triggerCount)
+	}
+	storedExecutions, err := repo.ListExecutions(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("ListExecutions failed: %v", err)
+	}
+	if runningCD := findExecutionByScopeAndStatus(storedExecutions, domain.PipelineScopeCD, domain.ExecutionStatusRunning); runningCD == nil {
+		t.Fatalf("stored executions=%#v, want running CD", storedExecutions)
+	}
+}
+
 func TestUnstartedApprovalFlowFollowsLatestApplicationBinding(t *testing.T) {
 	t.Parallel()
 

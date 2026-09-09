@@ -22,6 +22,83 @@ func TestNormalizeReleaseOrderErrorMessageStripsInvalidInputPrefix(t *testing.T)
 	}
 }
 
+func TestDeriveReleaseBusinessStatusUsesActiveExecutionPhase(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		status     domain.OrderStatus
+		executions []domain.ReleaseOrderExecution
+		want       domain.ReleaseBusinessStatus
+	}{
+		{
+			name:   "jenkins ci waiting in queue",
+			status: domain.OrderStatusDeploying,
+			executions: []domain.ReleaseOrderExecution{{
+				PipelineScope: domain.PipelineScopeCI,
+				Provider:      "jenkins",
+				Status:        domain.ExecutionStatusRunning,
+				QueueURL:      "https://jenkins.example/queue/item/1/",
+			}},
+			want: domain.ReleaseBusinessStatusQueued,
+		},
+		{
+			name:   "jenkins ci build started",
+			status: domain.OrderStatusDeploying,
+			executions: []domain.ReleaseOrderExecution{{
+				PipelineScope: domain.PipelineScopeCI,
+				Provider:      "jenkins",
+				Status:        domain.ExecutionStatusRunning,
+				QueueURL:      "https://jenkins.example/queue/item/1/",
+				BuildURL:      "https://jenkins.example/job/ci/12/",
+			}},
+			want: domain.ReleaseBusinessStatusBuilding,
+		},
+		{
+			name:   "legacy queued order with active ci build",
+			status: domain.OrderStatusQueued,
+			executions: []domain.ReleaseOrderExecution{{
+				PipelineScope: domain.PipelineScopeCI,
+				Provider:      "jenkins",
+				Status:        domain.ExecutionStatusRunning,
+				BuildURL:      "https://jenkins.example/job/ci/13/",
+			}},
+			want: domain.ReleaseBusinessStatusBuilding,
+		},
+		{
+			name:   "jenkins cd deployment started",
+			status: domain.OrderStatusDeploying,
+			executions: []domain.ReleaseOrderExecution{{
+				PipelineScope: domain.PipelineScopeCD,
+				Provider:      "jenkins",
+				Status:        domain.ExecutionStatusRunning,
+				BuildURL:      "https://jenkins.example/job/cd/7/",
+			}},
+			want: domain.ReleaseBusinessStatusDeploying,
+		},
+		{
+			name:   "terminal order wins over stale execution",
+			status: domain.OrderStatusDeploySuccess,
+			executions: []domain.ReleaseOrderExecution{{
+				PipelineScope: domain.PipelineScopeCI,
+				Provider:      "jenkins",
+				Status:        domain.ExecutionStatusRunning,
+				BuildURL:      "https://jenkins.example/job/ci/14/",
+			}},
+			want: domain.ReleaseBusinessStatusDeploySuccess,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := deriveReleaseBusinessStatus(tt.status, tt.executions); got != tt.want {
+				t.Fatalf("deriveReleaseBusinessStatus() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestReleaseOrderApprovalFlowResponseIncludesFrozenGraphSnapshot(t *testing.T) {
 	now := time.Date(2026, 7, 17, 12, 0, 0, 0, time.UTC)
 	instance := domain.ReleaseOrderApprovalFlowInstance{

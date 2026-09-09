@@ -38,9 +38,6 @@ func (uc *CreateApplication) Execute(ctx context.Context, input CreateInput) (do
 	if strings.TrimSpace(input.ProjectID) == "" {
 		return domain.Application{}, fmt.Errorf("%w: project_id is required", ErrInvalidInput)
 	}
-	if strings.TrimSpace(input.ArtifactType) == "" || strings.TrimSpace(input.Language) == "" {
-		return domain.Application{}, fmt.Errorf("%w: artifact_type and language are required", ErrInvalidInput)
-	}
 	if strings.TrimSpace(input.OwnerUserID) == "" {
 		return domain.Application{}, fmt.Errorf("%w: owner_user_id is required", ErrInvalidInput)
 	}
@@ -63,7 +60,7 @@ func (uc *CreateApplication) Execute(ctx context.Context, input CreateInput) (do
 
 	now := uc.now()
 	app := domain.Application{
-		ID:                   generateID("app"),
+		ID:                   creationID(ctx, "app"),
 		Name:                 strings.TrimSpace(input.Name),
 		Key:                  strings.TrimSpace(input.Key),
 		ProjectID:            project.ID,

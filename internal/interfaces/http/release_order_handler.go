@@ -3176,11 +3176,7 @@ func (h *ReleaseOrderHandler) enrichReleaseOrderResponseMeta(ctx context.Context
 	if err != nil {
 		return item
 	}
-	hasRunningExecution := false
 	for _, execution := range executions {
-		if execution.Status == domain.ExecutionStatusRunning {
-			hasRunningExecution = true
-		}
 		if execution.PipelineScope == domain.PipelineScopeCI {
 			item.HasCIExecution = true
 		}
@@ -3190,7 +3186,7 @@ func (h *ReleaseOrderHandler) enrichReleaseOrderResponseMeta(ctx context.Context
 		item.HasCDExecution = true
 		item.CDProvider = strings.TrimSpace(execution.Provider)
 	}
-	item.BusinessStatus = deriveReleaseBusinessStatus(item.Status, hasRunningExecution)
+	item.BusinessStatus = deriveReleaseBusinessStatus(item.Status, executions)
 	if item.BusinessStatus == domain.ReleaseBusinessStatusDeploying ||
 		item.BusinessStatus == domain.ReleaseBusinessStatusQueued ||
 		item.BusinessStatus == domain.ReleaseBusinessStatusBuilding {
@@ -3201,7 +3197,8 @@ func (h *ReleaseOrderHandler) enrichReleaseOrderResponseMeta(ctx context.Context
 				}
 				switch current.QueueState {
 				case usecase.ReleaseOrderConcurrentBatchQueueStateQueued:
-					if item.BusinessStatus != domain.ReleaseBusinessStatusBuilding {
+					if item.BusinessStatus != domain.ReleaseBusinessStatusBuilding &&
+						item.BusinessStatus != domain.ReleaseBusinessStatusDeploying {
 						item.BusinessStatus = domain.ReleaseBusinessStatusQueued
 					}
 					item.QueuePosition = current.QueuePosition
@@ -3209,7 +3206,8 @@ func (h *ReleaseOrderHandler) enrichReleaseOrderResponseMeta(ctx context.Context
 						item.QueuedReason = fmt.Sprintf("并发批次排队中，当前位次 %d", item.QueuePosition)
 					}
 				case usecase.ReleaseOrderConcurrentBatchQueueStateExecuting:
-					if item.BusinessStatus != domain.ReleaseBusinessStatusBuilding {
+					if item.BusinessStatus != domain.ReleaseBusinessStatusBuilding &&
+						item.BusinessStatus != domain.ReleaseBusinessStatusQueued {
 						item.BusinessStatus = domain.ReleaseBusinessStatusDeploying
 					}
 				case usecase.ReleaseOrderConcurrentBatchQueueStateSuccess:
@@ -3239,7 +3237,10 @@ func (h *ReleaseOrderHandler) enrichReleaseOrderResponseMeta(ctx context.Context
 }
 
 // deriveReleaseBusinessStatus 封装当前模块的业务处理逻辑。
-func deriveReleaseBusinessStatus(status domain.OrderStatus, hasRunningExecution bool) domain.ReleaseBusinessStatus {
+func deriveReleaseBusinessStatus(
+	status domain.OrderStatus,
+	executions []domain.ReleaseOrderExecution,
+) domain.ReleaseBusinessStatus {
 	switch status {
 	case domain.OrderStatusDraft:
 		return domain.ReleaseBusinessStatusDraft
@@ -3249,16 +3250,10 @@ func deriveReleaseBusinessStatus(status domain.OrderStatus, hasRunningExecution 
 		return domain.ReleaseBusinessStatusApproving
 	case domain.OrderStatusApproved:
 		return domain.ReleaseBusinessStatusApproved
-	case domain.OrderStatusBuilding:
-		return domain.ReleaseBusinessStatusBuilding
 	case domain.OrderStatusBuiltWaitingDeploy:
 		return domain.ReleaseBusinessStatusBuiltWaitingDeploy
 	case domain.OrderStatusRejected:
 		return domain.ReleaseBusinessStatusRejected
-	case domain.OrderStatusQueued:
-		return domain.ReleaseBusinessStatusQueued
-	case domain.OrderStatusDeploying:
-		return domain.ReleaseBusinessStatusDeploying
 	case domain.OrderStatusDeploySuccess:
 		return domain.ReleaseBusinessStatusDeploySuccess
 	case domain.OrderStatusDeployFailed:
@@ -3269,16 +3264,60 @@ func deriveReleaseBusinessStatus(status domain.OrderStatus, hasRunningExecution 
 		return domain.ReleaseBusinessStatusDeploySuccess
 	case domain.OrderStatusFailed:
 		return domain.ReleaseBusinessStatusDeployFailed
-	case domain.OrderStatusRunning:
-		if hasRunningExecution {
-			return domain.ReleaseBusinessStatusDeploying
-		}
-		return domain.ReleaseBusinessStatusQueued
 	case domain.OrderStatusPending:
 		return domain.ReleaseBusinessStatusPendingExecution
+	}
+
+	// The persisted order status represents the overall release intent. A full
+	// CI -> CD release therefore remains "deploying" while its CI execution is
+	// actually building. Project the user-facing phase from the active execution
+	// so the list can distinguish Jenkins queueing, CI building and CD deploying.
+	if runningStatus, ok := deriveRunningExecutionBusinessStatus(executions); ok {
+		return runningStatus
+	}
+
+	switch status {
+	case domain.OrderStatusBuilding:
+		return domain.ReleaseBusinessStatusBuilding
+	case domain.OrderStatusQueued:
+		return domain.ReleaseBusinessStatusQueued
+	case domain.OrderStatusDeploying:
+		return domain.ReleaseBusinessStatusDeploying
+	case domain.OrderStatusRunning:
+		return domain.ReleaseBusinessStatusQueued
 	default:
 		return domain.ReleaseBusinessStatusPendingExecution
 	}
+}
+
+func deriveRunningExecutionBusinessStatus(
+	executions []domain.ReleaseOrderExecution,
+) (domain.ReleaseBusinessStatus, bool) {
+	hasJenkinsQueueItem := false
+	hasRunningCI := false
+	for _, execution := range executions {
+		if execution.Status != domain.ExecutionStatusRunning {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(execution.Provider), string(pipelinedomain.ProviderJenkins)) &&
+			strings.TrimSpace(execution.BuildURL) == "" {
+			hasJenkinsQueueItem = true
+			continue
+		}
+		switch execution.PipelineScope {
+		case domain.PipelineScopeCD:
+			return domain.ReleaseBusinessStatusDeploying, true
+		case domain.PipelineScopeCI:
+			hasRunningCI = true
+		}
+	}
+	if hasRunningCI {
+		return domain.ReleaseBusinessStatusBuilding, true
+	}
+	if hasJenkinsQueueItem {
+		return domain.ReleaseBusinessStatusQueued, true
+	}
+	return "", false
 }
 
 // toReleaseOrderParamResponse 将领域对象转换为接口响应结构。
@@ -3402,7 +3441,7 @@ func toReleaseOrderApprovalRecordSummaryResponse(item domain.ReleaseOrderApprova
 		ReleaseOrderID:  item.ReleaseOrderID,
 		OrderNo:         item.OrderNo,
 		OrderStatus:     string(item.OrderStatus),
-		BusinessStatus:  string(deriveReleaseBusinessStatus(item.OrderStatus, false)),
+		BusinessStatus:  string(deriveReleaseBusinessStatus(item.OrderStatus, nil)),
 		ApplicationID:   item.ApplicationID,
 		ApplicationName: item.ApplicationName,
 		EnvCode:         item.EnvCode,

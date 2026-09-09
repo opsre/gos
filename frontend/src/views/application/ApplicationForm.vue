@@ -123,6 +123,7 @@ const languageOptions = [
   { label: 'java', value: 'java' },
   { label: 'nodejs', value: 'nodejs' },
   { label: 'python', value: 'python' },
+  { label: 'c#', value: 'c#' },
 ]
 
 const statusOptions = [
@@ -152,9 +153,7 @@ const rules: Record<string, Rule[]> = {
   project_id: [{ required: true, message: '请选择归属项目', trigger: 'change' }],
   owner_user_id: [{ required: true, message: '请选择负责人', trigger: 'change' }],
   status: [{ required: true, message: '请选择状态', trigger: 'change' }],
-  artifact_type: [{ required: true, message: '请选择制品类型', trigger: 'change' }],
   artifact_directory: [{ validator: validateArtifactDirectory, trigger: 'blur' }],
-  language: [{ required: true, message: '请选择语言', trigger: 'change' }],
 }
 
 function validateArtifactDirectory(_rule: Rule, value: string) {
@@ -356,7 +355,7 @@ function removeReleaseBranch(index: number) {
         <a-col :xs="24" :md="12">
           <a-form-item name="artifact_type" class="form-item-compact form-item-artifact">
             <template #label>
-              <span class="field-label-with-hint">制品类型 <span class="field-required-hint">必填</span></span>
+              <span class="field-label-with-hint">制品类型（可选）</span>
             </template>
             <a-select
               v-model:value="model.artifact_type"
@@ -367,7 +366,7 @@ function removeReleaseBranch(index: number) {
         <a-col :xs="24" :md="12">
           <a-form-item name="language" class="form-item-compact form-item-language">
             <template #label>
-              <span class="field-label-with-hint">语言 <span class="field-required-hint">必填</span></span>
+              <span class="field-label-with-hint">语言（可选）</span>
             </template>
             <a-select v-model:value="model.language" :options="languageOptions" />
           </a-form-item>

@@ -64,6 +64,11 @@ func (r *ReleaseRepository) InitSchema(ctx context.Context) error {
 			Description: "ensure approval flow runtime columns after early v1.3 builds",
 			Up:          r.initApprovalFlowSchema,
 		},
+		schemaMigration{
+			Version:     "20260907_01_release_approval_flow_collation",
+			Description: "align approval flow table collations with release orders",
+			Up:          r.alignApprovalFlowCollation,
+		},
 	)
 }
 

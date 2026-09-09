@@ -251,7 +251,7 @@ func (uc *ReleaseTemplateManager) Create(
 	now := uc.now()
 	summaryName, summaryType := summarizeTemplateBindings(templateBindings)
 	template := releasedomain.ReleaseTemplate{
-		ID:                    generateID("rt"),
+		ID:                    creationID(ctx, "rt"),
 		Name:                  name,
 		ApplicationID:         applicationID,
 		ApplicationName:       appName,

@@ -3,6 +3,7 @@ import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons-vu
 import { message, Modal } from 'ant-design-vue'
 import type { FormInstance } from 'ant-design-vue'
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { createProject, deleteProject, listProjects, updateProject } from '../../api/project'
 import type { Project, ProjectPayload, ProjectStatus } from '../../types/project'
 import { extractHTTPErrorMessage } from '../../utils/http-error'
@@ -20,6 +21,7 @@ interface ReadonlyFieldItem {
 }
 
 const loading = ref(false)
+const router = useRouter()
 const saving = ref(false)
 const modalOpen = ref(false)
 const editingId = ref('')
@@ -275,9 +277,10 @@ onBeforeUnmount(() => {
         <a-table-column title="项目 Key" data-index="key" key="key" />
         <a-table-column title="状态" data-index="status" key="status" width="120" />
         <a-table-column title="描述" data-index="description" key="description" />
-        <a-table-column title="操作" key="action" width="180">
+        <a-table-column title="操作" key="action" width="280">
           <template #default="{ record }">
             <a-space>
+              <a-button type="link" :disabled="record.status !== 'active'" @click="router.push({ path: '/system/quick-start', query: { project_id: record.id } })">新增应用</a-button>
               <a-button type="link" @click="openEdit(record)">
                 <template #icon><EditOutlined /></template>
                 编辑

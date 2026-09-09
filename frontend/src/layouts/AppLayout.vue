@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   AppstoreOutlined,
+  ArrowLeftOutlined,
   ClusterOutlined,
   DatabaseOutlined,
   HomeOutlined,
@@ -26,9 +27,22 @@ const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 14
 const hasPendingApprovalTasks = ref(false)
 let pendingApprovalRefreshTimer: ReturnType<typeof window.setInterval> | null = null
 
+const routesWithOwnBackButton = new Set([
+  'application-create',
+  'application-edit',
+  'application-pipeline-bindings',
+  'release-order-create',
+  'release-order-edit',
+  'release-order-detail',
+])
+const showLayoutBackButton = computed(() => !routesWithOwnBackButton.has(String(route.name || '')))
+
 const activeMenuKey = computed(() => {
   if (route.path.startsWith('/system/users')) {
     return ['system-users']
+  }
+  if (route.path.startsWith('/onboarding/') || route.path === '/system/quick-start') {
+    return ['application-onboarding']
   }
   if (route.path.startsWith('/system/permissions')) {
     return ['system-permissions']
@@ -146,6 +160,8 @@ const openMenuKeys = computed(() => {
   }
   if (
     route.path.startsWith('/applications') ||
+    route.path.startsWith('/onboarding/') ||
+    route.path === '/system/quick-start' ||
     route.path.startsWith('/projects') ||
     route.path.startsWith('/platform-param-dicts')
   ) {
@@ -355,6 +371,10 @@ function toggleSider() {
   siderCollapsed.value = !siderCollapsed.value
 }
 
+function goBack() {
+  router.back()
+}
+
 async function refreshPendingApprovalIndicator() {
   try {
     const response = await listReleaseApprovalWorkbenchTasks({ page: 1, page_size: 1 })
@@ -434,6 +454,9 @@ onUnmounted(() => {
 
           <a-menu-item key="my-applications" @click="goToApplications">
             我的应用
+          </a-menu-item>
+          <a-menu-item v-if="canManageApplications" key="application-onboarding" @click="router.push('/system/quick-start')">
+            应用接入向导
           </a-menu-item>
           <a-menu-item v-if="canViewPipeline" key="pipeline-bindings" @click="goToPipelineBindings">
             管线绑定
@@ -553,7 +576,7 @@ onUnmounted(() => {
       <div class="sider-footer">
         <div class="sider-footer-row">
           <div class="sider-footer-version">
-            <span>v1.3.2</span>
+            <span>v1.3.3</span>
             <a href="https://github.com/yl1664907302/gos" target="_blank" class="github-link" title="访问 GitHub">
               <svg class="github-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" fill="currentColor"/>
@@ -585,6 +608,14 @@ onUnmounted(() => {
 
     <a-layout>
       <a-layout-content class="app-content">
+        <div v-if="showLayoutBackButton" class="layout-page-toolbar">
+          <a-button class="layout-page-back-btn" aria-label="返回上个页面" @click="goBack">
+            <template #icon>
+              <ArrowLeftOutlined />
+            </template>
+            返回
+          </a-button>
+        </div>
         <router-view v-slot="{ Component, route }">
           <Transition name="layout-route-switch" mode="out-in">
             <component :is="Component" :key="route.fullPath" class="layout-route-view" />
@@ -682,8 +713,45 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+.layout-page-toolbar {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 42px;
+  margin-bottom: 16px;
+}
+
+.layout-page-back-btn.ant-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 42px;
+  padding-inline: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.28) !important;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.42) !important;
+  color: #0f172a !important;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.68),
+    0 10px 22px rgba(15, 23, 42, 0.05) !important;
+  backdrop-filter: blur(14px) saturate(135%);
+}
+
+.layout-page-back-btn.ant-btn:hover,
+.layout-page-back-btn.ant-btn:focus,
+.layout-page-back-btn.ant-btn:focus-visible,
+.layout-page-back-btn.ant-btn:active {
+  border-color: rgba(96, 165, 250, 0.34) !important;
+  background: rgba(255, 255, 255, 0.56) !important;
+  color: #0f172a !important;
+}
+
 .layout-route-view {
-  min-height: calc(100vh - 60px);
+  min-height: calc(100vh - 118px);
 }
 
 .layout-route-switch-enter-active,
@@ -1052,6 +1120,14 @@ onUnmounted(() => {
 
   .app-content {
     padding: 16px;
+  }
+
+  .layout-page-toolbar {
+    margin-bottom: 12px;
+  }
+
+  .layout-route-view {
+    min-height: calc(100vh - 86px);
   }
 }
 

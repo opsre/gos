@@ -31,6 +31,36 @@ type releaseOrderRealtimeSyncFake struct {
 	changeOnce *sync.Once
 }
 
+func TestEnrichRealtimeReleaseOrderPreservesExecutionPhaseOverBatchProjection(t *testing.T) {
+	t.Parallel()
+
+	order := domain.ReleaseOrder{ID: "ro-building", Status: domain.OrderStatusDeploying}
+	executions := []domain.ReleaseOrderExecution{{
+		PipelineScope: domain.PipelineScopeCI,
+		Provider:      "jenkins",
+		Status:        domain.ExecutionStatusRunning,
+		BuildURL:      "https://jenkins.example/job/ci/21/",
+	}}
+	progress := &usecase.ReleaseOrderConcurrentBatchProgressOutput{
+		Items: []usecase.ReleaseOrderConcurrentBatchProgressItem{{
+			OrderID:    order.ID,
+			QueueState: usecase.ReleaseOrderConcurrentBatchQueueStateQueued,
+		}},
+	}
+
+	got := enrichRealtimeReleaseOrder(order, executions, progress)
+	if got.BusinessStatus != domain.ReleaseBusinessStatusBuilding {
+		t.Fatalf("business status = %q, want %q", got.BusinessStatus, domain.ReleaseBusinessStatusBuilding)
+	}
+
+	executions[0].BuildURL = ""
+	progress.Items[0].QueueState = usecase.ReleaseOrderConcurrentBatchQueueStateExecuting
+	got = enrichRealtimeReleaseOrder(order, executions, progress)
+	if got.BusinessStatus != domain.ReleaseBusinessStatusQueued {
+		t.Fatalf("queued Jenkins execution status = %q, want %q", got.BusinessStatus, domain.ReleaseBusinessStatusQueued)
+	}
+}
+
 type dynamicRealtimePermissionAuthorizer struct {
 	valueProgress atomic.Bool
 }

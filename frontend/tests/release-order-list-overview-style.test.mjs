@@ -180,21 +180,21 @@ test('release order list uses publish label to continue cd after only-build', ()
 test('release order list shows order number before status', () => {
   assert.match(
     source,
-    /const initialColumns:[\s\S]*\{ title: "发布单号", dataIndex: "order_no", key: "order_no", width: 190 \}[\s\S]*\{ title: "状态", key: "status", width: 100 \}/,
+    /const initialColumns:[\s\S]*\{ title: "发布单号", dataIndex: "order_no", key: "order_no", width: 190 \}[\s\S]*\{ title: "状态", key: "status", width: 140 \}/,
     'release order number column should render before status',
   )
   assert.doesNotMatch(
     source,
-    /const initialColumns:[\s\S]*\{ title: "状态", key: "status", width: 100 \}[\s\S]*\{ title: "发布单号", dataIndex: "order_no", key: "order_no", width: 190 \}/,
+    /const initialColumns:[\s\S]*\{ title: "状态", key: "status", width: 140 \}[\s\S]*\{ title: "发布单号", dataIndex: "order_no", key: "order_no", width: 190 \}/,
     'status should not stay before release order number',
   )
 })
 
-test('release order list renders status directly without realtime progress column', () => {
+test('release order list renders a semantic status badge without realtime progress column', () => {
   assert.match(
     source,
-    /<template v-if="column.key === 'status'">[\s\S]*<a-tag[\s\S]*businessStatusColor\(orderBusinessStatus\(record\)\)/,
-    'status column should render a business-status tag directly',
+    /<template v-if="column.key === 'status'">[\s\S]*<a-tag :class="businessStatusTagClass\(orderBusinessStatus\(record\)\)">[\s\S]*businessStatusIcon\(orderBusinessStatus\(record\)\)/,
+    'status column should render an icon-and-text business-status badge directly',
   )
   assert.doesNotMatch(
     source,
@@ -234,7 +234,7 @@ test('release realtime progress badge stays compact instead of stretching across
 test('release order list uses standalone status column without realtime progress', () => {
   assert.match(
     source,
-    /const initialColumns:[\s\S]*\{ title: "状态", key: "status", width: 100 \}[\s\S]*\{ title: "发布名称", dataIndex: "release_name", key: "release_name", width: 100 \}/,
+    /const initialColumns:[\s\S]*\{ title: "状态", key: "status", width: 140 \}[\s\S]*\{ title: "发布名称", dataIndex: "release_name", key: "release_name", width: 100 \}/,
     'release order list should place status column before release name',
   )
   assert.doesNotMatch(
@@ -244,8 +244,8 @@ test('release order list uses standalone status column without realtime progress
   )
   assert.match(
     source,
-    /<template v-if="column.key === 'status'">[\s\S]*<a-tag :color="businessStatusColor/,
-    'status cell should render a simple business status tag',
+    /<template v-if="column.key === 'status'">[\s\S]*<a-tag :class="businessStatusTagClass/,
+    'status cell should render the shared semantic business status badge',
   )
   assert.match(
     source,
@@ -261,6 +261,43 @@ test('release order list uses standalone status column without realtime progress
     source,
     /<a-button v-else type="link" size="small" disabled>取消<\/a-button>/,
     'rows should not render a disabled cancel button just to fill the action area',
+  )
+})
+
+test('release status badges use readable soft colors, icons, and a separate live-state hierarchy', () => {
+  assert.match(
+    source,
+    /function businessStatusTagClass\(status: ReleaseOrderBusinessStatus\)[\s\S]*release-status-tag--\$\{businessStatusTone\(status\)\}/,
+    'business statuses should map to one shared visual badge system',
+  )
+  assert.match(
+    source,
+    /<component[\s\S]*:is="businessStatusIcon\(orderBusinessStatus\(record\)\)"[\s\S]*aria-hidden="true"/,
+    'the primary status badge should pair its text with a semantic icon',
+  )
+
+  const statusRule = extractStyleRule('.release-status-tag')
+  assert.match(statusRule, /min-height:\s*26px/, 'primary status badges should be tall enough to scan')
+  assert.match(statusRule, /border-radius:\s*8px/, 'primary status badges should read as labels instead of tiny pills')
+  assert.match(statusRule, /font-size:\s*12px/, 'primary status text should use the compact readable table size')
+
+  const successRule = extractStyleRule('.release-status-tag--success')
+  assert.match(successRule, /background:\s*#ecfdf3/, 'success should use the approved soft green background')
+  assert.match(successRule, /color:\s*#15803d/, 'success text should keep strong green contrast')
+
+  const failedRule = extractStyleRule('.release-status-tag--failed')
+  assert.match(failedRule, /background:\s*#fef2f2/, 'failure should use the approved soft red background')
+  assert.match(failedRule, /color:\s*#b91c1c/, 'failure text should keep strong red contrast')
+
+  assert.match(
+    source,
+    /class="release-live-status-tag release-live-status-tag--pending"[\s\S]*<ClockCircleFilled[\s\S]*<span>待确认生效<\/span>/,
+    'pending live confirmation should remain a visually secondary icon-and-text state',
+  )
+  assert.match(
+    source,
+    /class="release-live-status-tag release-live-status-tag--current"[\s\S]*<CheckCircleFilled[\s\S]*<span>当前生效<\/span>/,
+    'current live state should use its own quiet indigo treatment',
   )
 })
 
@@ -299,6 +336,37 @@ test('release order number truncates and copies on click', () => {
   const orderNoTagsRule = extractStyleRule('.release-order-no-tags')
   assert.match(orderNoTagsRule, /flex-wrap:\s*wrap/, 'order number tags should wrap instead of being hidden')
   assert.match(orderNoTagsRule, /overflow:\s*visible/, 'order number tags should remain visible below long order numbers')
+})
+
+test('release order remark uses a dedicated compact trigger and readable popover', () => {
+  assert.match(
+    source,
+    /class="release-order-no-main"[\s\S]*v-if="String\(record\.remark \|\| ''\)\.trim\(\)"[\s\S]*overlay-class-name="release-order-remark-popover"/,
+    'a non-empty release remark should expose its own popover next to the order number',
+  )
+  assert.match(
+    source,
+    /class="release-order-remark-heading"[\s\S]*<MessageOutlined aria-hidden="true"\s*\/>[\s\S]*<span>发布备注<\/span>[\s\S]*<p>\{\{ record\.remark \}\}<\/p>/,
+    'the popover should separate its heading from the complete remark text',
+  )
+  assert.match(
+    source,
+    /class="release-order-remark-trigger"[\s\S]*aria-label="查看发布备注"[\s\S]*<MessageOutlined aria-hidden="true"\s*\/>[\s\S]*<span>备注<\/span>/,
+    'the remark trigger should remain understandable without relying on color alone',
+  )
+
+  const orderNoMainRule = extractStyleRule('.release-order-no-main')
+  assert.match(orderNoMainRule, /display:\s*flex/, 'the order number and remark trigger should share one row')
+  assert.match(orderNoMainRule, /min-width:\s*0/, 'the order number should still be allowed to truncate')
+
+  const remarkTriggerRule = extractStyleRule('.release-order-remark-trigger')
+  assert.match(remarkTriggerRule, /height:\s*24px/, 'the remark trigger should remain secondary to the primary status badge')
+  assert.match(remarkTriggerRule, /border-radius:\s*8px/, 'the remark trigger should match the release badge shape language')
+  assert.match(remarkTriggerRule, /background:\s*#f8fafc/, 'the remark trigger should use a quiet neutral background')
+
+  const remarkContentRule = extractStyleRule('.release-order-remark-content p')
+  assert.match(remarkContentRule, /white-space:\s*pre-wrap/, 'multi-line release remarks should preserve their formatting')
+  assert.match(remarkContentRule, /overflow-wrap:\s*anywhere/, 'long unbroken remark text should not overflow the popover')
 })
 
 test('release order multi-select hover applies full-row glass background', () => {

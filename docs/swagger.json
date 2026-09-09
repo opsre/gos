@@ -2224,6 +2224,18 @@
                 }
             }
         },
+        "/applications/workbench": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "applications"
+                ],
+                "summary": "查询应用工作台聚合数据",
+                "responses": {}
+            }
+        },
         "/applications/{id}": {
             "get": {
                 "produces": [
@@ -2834,6 +2846,40 @@
                 }
             }
         },
+        "/applications/{id}/setup-status": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "按真实模板检查应用接入状态，不依赖引导任务存在",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "应用 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/argocd/applications": {
             "get": {
                 "description": "查询Applications列表，并按统一响应结构返回处理结果。",
@@ -3368,6 +3414,124 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/artifacts/release-order-metadata": {
+            "get": {
+                "description": "按项目、应用、发布单和制品字段聚合查询制品元信息。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "artifacts"
+                ],
+                "summary": "查询制品中心发布单制品列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project ID",
+                        "name": "project_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Application ID",
+                        "name": "application_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Release order ID",
+                        "name": "release_order_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Keyword",
+                        "name": "keyword",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Artifact name",
+                        "name": "artifact_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Artifact type",
+                        "name": "artifact_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Pipeline scope",
+                        "name": "pipeline_scope",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Repository ID",
+                        "name": "repository_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Created at from (RFC3339)",
+                        "name": "created_at_from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Created at to (RFC3339)",
+                        "name": "created_at_to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderArtifactMetadataSummaryListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
@@ -4914,6 +5078,59 @@
                 }
             }
         },
+        "/notification-sources/actions/test-webhook": {
+            "post": {
+                "description": "发送模拟通知验证通知源 Webhook 是否可达。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "测试通知源 Webhook",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/notification-sources/{id}": {
             "get": {
                 "description": "获取Source详情，并按统一响应结构返回处理结果。",
@@ -5083,6 +5300,395 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/onboarding/sessions": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "新增独立应用接入任务或补齐已有应用",
+                "parameters": [
+                    {
+                        "description": "接入模式及可选项目",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.OnboardingCreateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.OnboardingSessionResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/onboarding/sessions/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "读取或恢复接入任务",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "接入任务 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.OnboardingSessionResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/onboarding/sessions/{id}/abandon": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "放弃任务并保留已创建的所有业务资源",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "接入任务 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "预期版本",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.OnboardingVersionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.OnboardingSessionResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/onboarding/sessions/{id}/check": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "检查已有业务配置并刷新首单验证状态",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "接入任务 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.OnboardingSessionResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/onboarding/sessions/{id}/draft": {
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "按版本保存接入草稿，不创建业务资源",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "接入任务 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "版本及非敏感草稿",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.OnboardingDraftRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.OnboardingSessionResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/onboarding/sessions/{id}/first-release": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "幂等创建关联首单，不自动执行或绕过发布权限",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "接入任务 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "版本、幂等键与标准发布请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.OnboardingFirstReleaseRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.OnboardingSessionResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/onboarding/sessions/{id}/inspect": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "只读检查真实管线参数及标准字段建议",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "接入任务 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.OnboardingInspectionResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/onboarding/sessions/{id}/steps/{step}/apply": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "幂等保存一个接入步骤，不执行管线",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "接入任务 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "preflight",
+                            "identity",
+                            "pipelines",
+                            "parameters",
+                            "template_flow",
+                            "review"
+                        ],
+                        "type": "string",
+                        "description": "步骤",
+                        "name": "step",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "预期版本与幂等键",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.OnboardingApplyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.OnboardingSessionResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/onboarding/status": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "应用接入基础状态与我的任务",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
@@ -6433,6 +7039,18 @@
                     },
                     {
                         "type": "string",
+                        "description": "Concurrent batch no",
+                        "name": "concurrent_batch_no",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Concurrent batch name",
+                        "name": "concurrent_batch_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Triggered by",
                         "name": "triggered_by",
                         "in": "query"
@@ -6550,6 +7168,70 @@
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/batch-create": {
+            "post": {
+                "description": "Creates multiple independent release orders without starting approval or execution",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "Batch create independent release orders",
+                "parameters": [
+                    {
+                        "description": "Batch create release orders request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.BatchCreateReleaseOrdersRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderBatchCreateResponse"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderBatchCreateResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
                         }
@@ -6976,6 +7658,134 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/internal_interfaces_http.GenericResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/release-orders/{id}/artifact-metadata": {
+            "get": {
+                "description": "查询发布单制品元信息列表，并按统一响应结构返回处理结果。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "查询发布单制品元信息列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderArtifactMetadataListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "接收发布单制品元信息，并按统一响应结构返回处理结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "release-orders"
+                ],
+                "summary": "接收发布单制品元信息",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "资源 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "制品元信息",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.RecordReleaseOrderArtifactMetadataRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderArtifactMetadataDataResponse"
                         }
                     },
                     "400": {
@@ -9399,6 +10209,105 @@
         }
     },
     "definitions": {
+        "gos_internal_application_usecase.OnboardingField": {
+            "type": "object",
+            "properties": {
+                "builtin": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "gos_internal_application_usecase.OnboardingInspection": {
+            "type": "object",
+            "properties": {
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gos_internal_application_usecase.OnboardingField"
+                    }
+                },
+                "issues": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gos_internal_domain_onboarding.Issue"
+                    }
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gos_internal_application_usecase.OnboardingParamRow"
+                    }
+                }
+            }
+        },
+        "gos_internal_application_usecase.OnboardingParamRow": {
+            "type": "object",
+            "properties": {
+                "candidates": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "choices": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "default_value": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "mapped_key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "new_key": {
+                    "type": "string"
+                },
+                "pipeline_id": {
+                    "type": "string"
+                },
+                "problem": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
+                },
+                "runtime": {
+                    "type": "boolean"
+                },
+                "scope": {
+                    "type": "string"
+                },
+                "sensitive": {
+                    "type": "boolean"
+                },
+                "suggested_key": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
         "gos_internal_application_usecase.QueryGitOpsFieldCandidateOutput": {
             "type": "object",
             "properties": {
@@ -9527,6 +10436,198 @@
                 }
             }
         },
+        "gos_internal_domain_onboarding.Check": {
+            "type": "object",
+            "properties": {
+                "issues": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gos_internal_domain_onboarding.Issue"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "gos_internal_domain_onboarding.Draft": {
+            "type": "object",
+            "properties": {
+                "approval_flow_id": {
+                    "type": "string"
+                },
+                "branch": {
+                    "type": "string"
+                },
+                "cd_pipeline_id": {
+                    "type": "string"
+                },
+                "change_approval_flow": {
+                    "description": "Existing application policies are preserved unless this explicit switch is set.",
+                    "type": "boolean"
+                },
+                "ci_pipeline_id": {
+                    "type": "string"
+                },
+                "identity": {
+                    "$ref": "#/definitions/gos_internal_domain_onboarding.Identity"
+                },
+                "params": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gos_internal_domain_onboarding.Parameter"
+                    }
+                },
+                "repo_url": {
+                    "type": "string"
+                },
+                "save_app_sources": {
+                    "type": "boolean"
+                },
+                "template_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "gos_internal_domain_onboarding.Identity": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "owner_user_id": {
+                    "type": "string"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "project_key": {
+                    "type": "string"
+                },
+                "project_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "gos_internal_domain_onboarding.Issue": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "field_path": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "remedy": {
+                    "type": "string"
+                },
+                "severity": {
+                    "type": "string"
+                },
+                "step": {
+                    "type": "string"
+                }
+            }
+        },
+        "gos_internal_domain_onboarding.Parameter": {
+            "type": "object",
+            "properties": {
+                "fixed_value": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "new_field_name": {
+                    "type": "string"
+                },
+                "omit": {
+                    "type": "boolean"
+                },
+                "param_key": {
+                    "type": "string"
+                },
+                "scope": {
+                    "type": "string"
+                },
+                "source_param_key": {
+                    "type": "string"
+                },
+                "value_source": {
+                    "type": "string"
+                }
+            }
+        },
+        "gos_internal_domain_onboarding.References": {
+            "type": "object",
+            "properties": {
+                "application_id": {
+                    "type": "string"
+                },
+                "cd_binding_id": {
+                    "type": "string"
+                },
+                "ci_binding_id": {
+                    "type": "string"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "template_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "gos_internal_domain_onboarding.Session": {
+            "type": "object",
+            "properties": {
+                "check": {
+                    "$ref": "#/definitions/gos_internal_domain_onboarding.Check"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "current_step": {
+                    "type": "string"
+                },
+                "draft": {
+                    "$ref": "#/definitions/gos_internal_domain_onboarding.Draft"
+                },
+                "first_release_order_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "owner_user_id": {
+                    "type": "string"
+                },
+                "refs": {
+                    "$ref": "#/definitions/gos_internal_domain_onboarding.References"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
         "internal_interfaces_http.ApplicationDataResponse": {
             "type": "object",
             "properties": {
@@ -9558,6 +10659,12 @@
         "internal_interfaces_http.ApplicationResponse": {
             "type": "object",
             "properties": {
+                "artifact_directory": {
+                    "type": "string"
+                },
+                "artifact_repository_id": {
+                    "type": "string"
+                },
                 "artifact_type": {
                     "type": "string"
                 },
@@ -9617,9 +10724,40 @@
                 }
             }
         },
+        "internal_interfaces_http.BatchCreateReleaseOrderFailureResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "release_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_interfaces_http.BatchCreateReleaseOrdersRequest": {
+            "type": "object",
+            "properties": {
+                "orders": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_interfaces_http.CreateReleaseOrderRequest"
+                    }
+                }
+            }
+        },
         "internal_interfaces_http.CreateApplicationRequest": {
             "type": "object",
             "properties": {
+                "artifact_directory": {
+                    "type": "string"
+                },
+                "artifact_repository_id": {
+                    "type": "string"
+                },
                 "artifact_type": {
                     "type": "string"
                 },
@@ -9758,6 +10896,9 @@
                     }
                 },
                 "project_name": {
+                    "type": "string"
+                },
+                "release_name": {
                     "type": "string"
                 },
                 "remark": {
@@ -9960,6 +11101,84 @@
                     "items": {
                         "$ref": "#/definitions/gos_internal_application_usecase.QueryGitOpsValuesCandidateOutput"
                     }
+                }
+            }
+        },
+        "internal_interfaces_http.OnboardingApplyRequest": {
+            "type": "object",
+            "properties": {
+                "expected_version": {
+                    "type": "integer"
+                },
+                "request_key": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_interfaces_http.OnboardingCreateRequest": {
+            "type": "object",
+            "properties": {
+                "application_id": {
+                    "type": "string"
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": [
+                        "create_application",
+                        "complete_application"
+                    ]
+                },
+                "project_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_interfaces_http.OnboardingDraftRequest": {
+            "type": "object",
+            "properties": {
+                "draft": {
+                    "$ref": "#/definitions/gos_internal_domain_onboarding.Draft"
+                },
+                "expected_version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_interfaces_http.OnboardingFirstReleaseRequest": {
+            "type": "object",
+            "properties": {
+                "expected_version": {
+                    "type": "integer"
+                },
+                "order": {
+                    "$ref": "#/definitions/internal_interfaces_http.CreateReleaseOrderRequest"
+                },
+                "request_key": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_interfaces_http.OnboardingInspectionResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/gos_internal_application_usecase.OnboardingInspection"
+                }
+            }
+        },
+        "internal_interfaces_http.OnboardingSessionResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/gos_internal_domain_onboarding.Session"
+                }
+            }
+        },
+        "internal_interfaces_http.OnboardingVersionRequest": {
+            "type": "object",
+            "properties": {
+                "expected_version": {
+                    "type": "integer"
                 }
             }
         },
@@ -10204,11 +11423,326 @@
                 }
             }
         },
+        "internal_interfaces_http.RecordReleaseOrderArtifactMetadataRequest": {
+            "type": "object",
+            "properties": {
+                "artifact_name": {
+                    "type": "string"
+                },
+                "artifact_type": {
+                    "type": "string"
+                },
+                "artifact_url": {
+                    "type": "string"
+                },
+                "artifact_version": {
+                    "type": "string"
+                },
+                "bucket": {
+                    "type": "string"
+                },
+                "build_number": {
+                    "type": "string"
+                },
+                "checksum": {
+                    "type": "string"
+                },
+                "checksum_type": {
+                    "type": "string"
+                },
+                "execution_id": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "object_key": {
+                    "type": "string"
+                },
+                "pipeline_scope": {
+                    "type": "string"
+                },
+                "repository_id": {
+                    "type": "string"
+                },
+                "repository_name": {
+                    "type": "string"
+                },
+                "size_bytes": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_interfaces_http.ReleaseOrderArtifactMetadataDataResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderArtifactMetadataResponse"
+                }
+            }
+        },
+        "internal_interfaces_http.ReleaseOrderArtifactMetadataListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderArtifactMetadataResponse"
+                    }
+                }
+            }
+        },
+        "internal_interfaces_http.ReleaseOrderArtifactMetadataResponse": {
+            "type": "object",
+            "properties": {
+                "artifact_name": {
+                    "type": "string"
+                },
+                "artifact_type": {
+                    "type": "string"
+                },
+                "artifact_url": {
+                    "type": "string"
+                },
+                "artifact_version": {
+                    "type": "string"
+                },
+                "bucket": {
+                    "type": "string"
+                },
+                "build_number": {
+                    "type": "string"
+                },
+                "checksum": {
+                    "type": "string"
+                },
+                "checksum_type": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "execution_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "object_key": {
+                    "type": "string"
+                },
+                "pipeline_scope": {
+                    "type": "string"
+                },
+                "release_order_id": {
+                    "type": "string"
+                },
+                "repository_id": {
+                    "type": "string"
+                },
+                "repository_name": {
+                    "type": "string"
+                },
+                "size_bytes": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_interfaces_http.ReleaseOrderArtifactMetadataSummaryListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderArtifactMetadataSummaryResponse"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_interfaces_http.ReleaseOrderArtifactMetadataSummaryResponse": {
+            "type": "object",
+            "properties": {
+                "application_id": {
+                    "type": "string"
+                },
+                "application_name": {
+                    "type": "string"
+                },
+                "artifact_name": {
+                    "type": "string"
+                },
+                "artifact_type": {
+                    "type": "string"
+                },
+                "artifact_url": {
+                    "type": "string"
+                },
+                "artifact_version": {
+                    "type": "string"
+                },
+                "bucket": {
+                    "type": "string"
+                },
+                "build_number": {
+                    "type": "string"
+                },
+                "checksum": {
+                    "type": "string"
+                },
+                "checksum_type": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "env_code": {
+                    "type": "string"
+                },
+                "execution_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "object_key": {
+                    "type": "string"
+                },
+                "order_status": {
+                    "type": "string"
+                },
+                "pipeline_scope": {
+                    "type": "string"
+                },
+                "project_id": {
+                    "type": "string"
+                },
+                "project_key": {
+                    "type": "string"
+                },
+                "project_name": {
+                    "type": "string"
+                },
+                "release_display_name": {
+                    "type": "string"
+                },
+                "release_name": {
+                    "type": "string"
+                },
+                "release_order_id": {
+                    "type": "string"
+                },
+                "release_order_no": {
+                    "type": "string"
+                },
+                "repository_id": {
+                    "type": "string"
+                },
+                "repository_name": {
+                    "type": "string"
+                },
+                "size_bytes": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_interfaces_http.ReleaseOrderBatchCreateResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "failures": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/internal_interfaces_http.BatchCreateReleaseOrderFailureResponse"
+                            }
+                        },
+                        "orders": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderResponse"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "internal_interfaces_http.ReleaseOrderDataResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderResponse"
+                }
+            }
+        },
+        "internal_interfaces_http.ReleaseOrderDeploySnapshotResponse": {
+            "type": "object",
+            "properties": {
+                "argocd_app_name": {
+                    "type": "string"
+                },
+                "argocd_instance_id": {
+                    "type": "string"
+                },
+                "branch": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "env_code": {
+                    "type": "string"
+                },
+                "gitops_instance_id": {
+                    "type": "string"
+                },
+                "gitops_type": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "image_version": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "release_order_id": {
+                    "type": "string"
+                },
+                "repo_url": {
+                    "type": "string"
+                },
+                "rules_count": {
+                    "type": "integer"
+                },
+                "source_path": {
+                    "type": "string"
                 }
             }
         },
@@ -10406,6 +11940,9 @@
                 "cd_provider": {
                     "type": "string"
                 },
+                "concurrent_batch_name": {
+                    "type": "string"
+                },
                 "concurrent_batch_no": {
                     "type": "string"
                 },
@@ -10417,6 +11954,12 @@
                 },
                 "creator_user_id": {
                     "type": "string"
+                },
+                "deploy_snapshots": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_interfaces_http.ReleaseOrderDeploySnapshotResponse"
+                    }
                 },
                 "env_code": {
                     "type": "string"
@@ -10485,6 +12028,9 @@
                     "type": "string"
                 },
                 "rejected_reason": {
+                    "type": "string"
+                },
+                "release_name": {
                     "type": "string"
                 },
                 "remark": {
@@ -10628,6 +12174,9 @@
                 "param_name": {
                     "type": "string"
                 },
+                "pipeline_param": {
+                    "type": "boolean"
+                },
                 "pipeline_scope": {
                     "type": "string"
                 },
@@ -10644,6 +12193,9 @@
                     "type": "string"
                 },
                 "value": {
+                    "type": "string"
+                },
+                "value_kind": {
                     "type": "string"
                 },
                 "value_source": {
@@ -10678,6 +12230,12 @@
         "internal_interfaces_http.UpdateApplicationRequest": {
             "type": "object",
             "properties": {
+                "artifact_directory": {
+                    "type": "string"
+                },
+                "artifact_repository_id": {
+                    "type": "string"
+                },
                 "artifact_type": {
                     "type": "string"
                 },

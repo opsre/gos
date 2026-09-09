@@ -81,6 +81,71 @@ func (r *ReleaseRepository) initApprovalFlowSchema(ctx context.Context) error {
 	return r.ensureApprovalFlowTaskColumns(ctx)
 }
 
+func (r *ReleaseRepository) alignApprovalFlowCollation(ctx context.Context) error {
+	if r.dbDriver != "mysql" {
+		return nil
+	}
+
+	var charset, collation string
+	if err := r.db.QueryRowContext(ctx, `
+SELECT CHARACTER_SET_NAME, COLLATION_NAME
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = 'release_order'
+  AND COLUMN_NAME = 'id';`).Scan(&charset, &collation); err != nil {
+		return fmt.Errorf("read release order id collation: %w", err)
+	}
+	if !isSafeMySQLCharsetName(charset) || !isSafeMySQLCharsetName(collation) {
+		return fmt.Errorf("invalid release order character set or collation: %q/%q", charset, collation)
+	}
+
+	for _, table := range []string{
+		"release_approval_flow_definition",
+		"release_order_approval_flow_instance",
+		"release_order_approval_flow_task",
+		"release_order_approval_flow_task_record",
+		"release_application_approval_flow_binding",
+	} {
+		var currentCollation string
+		if err := r.db.QueryRowContext(ctx, `
+SELECT TABLE_COLLATION
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?;`, table).Scan(&currentCollation); err != nil {
+			return fmt.Errorf("read %s table collation: %w", table, err)
+		}
+		if strings.EqualFold(strings.TrimSpace(currentCollation), collation) {
+			continue
+		}
+		statement := fmt.Sprintf(
+			"ALTER TABLE `%s` CONVERT TO CHARACTER SET %s COLLATE %s;",
+			table,
+			charset,
+			collation,
+		)
+		if _, err := r.db.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("align %s table collation: %w", table, err)
+		}
+	}
+	return nil
+}
+
+func isSafeMySQLCharsetName(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	for _, character := range value {
+		if character >= 'a' && character <= 'z' ||
+			character >= 'A' && character <= 'Z' ||
+			character >= '0' && character <= '9' ||
+			character == '_' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func (r *ReleaseRepository) ensureApprovalFlowInstanceColumns(ctx context.Context) error {
 	columns := []struct {
 		name      string

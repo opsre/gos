@@ -62,7 +62,7 @@ func (uc *PlatformParamDictManager) Create(ctx context.Context, input CreatePlat
 
 	now := uc.now()
 	item := domain.PlatformParamDict{
-		ID:            generateID("ppd"),
+		ID:            creationID(ctx, "ppd"),
 		ParamKey:      paramKey,
 		Name:          name,
 		Description:   strings.TrimSpace(input.Description),

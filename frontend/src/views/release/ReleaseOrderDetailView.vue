@@ -1675,6 +1675,25 @@ function statusToneClass(
   }
 }
 
+function statusIconForTone(toneClass: string) {
+  switch (toneClass) {
+    case "status-pill-success":
+      return CheckCircleFilled;
+    case "status-pill-failed":
+      return CloseCircleFilled;
+    case "status-pill-running":
+      return LoadingOutlined;
+    case "status-pill-neutral":
+      return StopFilled;
+    default:
+      return ClockCircleFilled;
+  }
+}
+
+function statusIconSpins(toneClass: string) {
+  return toneClass === "status-pill-running";
+}
+
 function valueProgressStatusText(status: ReleaseOrderValueProgressStatus) {
   switch (status) {
     case "resolved":
@@ -3393,7 +3412,7 @@ async function executeCurrentOrder(
     message.success(
       options?.successMessage ||
         (approvalStarted
-          ? "审批流程已发起，审批通过后可继续执行发布"
+          ? "审批流程已发起，审批通过后将自动继续执行发布"
           : action === "build"
           ? "仅构建已提交，正在调度执行"
           : action === "deploy"
@@ -3555,10 +3574,7 @@ async function handleReplay() {
 }
 
 function goBack() {
-  void router.push({
-    path: "/releases",
-    query: buildReleaseListQuery(),
-  });
+  router.back();
 }
 
 function handleEdit() {
@@ -3892,7 +3908,20 @@ onBeforeUnmount(() => {
             <div class="release-spotlight-description">
               {{ spotlightDescription }}
             </div>
-            <div class="release-spotlight-meta">{{ spotlightMeta }}</div>
+            <div
+              :class="[
+                'release-spotlight-meta',
+                'status-tag',
+                statusToneClass(currentBusinessStatus),
+              ]"
+            >
+              <component
+                :is="statusIconForTone(statusToneClass(currentBusinessStatus))"
+                :spin="statusIconSpins(statusToneClass(currentBusinessStatus))"
+                aria-hidden="true"
+              />
+              <span>{{ spotlightMeta }}</span>
+            </div>
           </div>
           <div class="release-spotlight-icon-wrap">
             <div
@@ -4246,9 +4275,10 @@ onBeforeUnmount(() => {
                             statusToneClass(stage.status),
                           ]"
                         >
-                          <LoadingOutlined
-                            v-if="isRunningStatus(stage.status)"
-                            spin
+                          <component
+                            :is="statusIconForTone(statusToneClass(stage.status))"
+                            :spin="statusIconSpins(statusToneClass(stage.status))"
+                            aria-hidden="true"
                           />
                           <span>{{ statusText(stage.status) }}</span>
                         </a-tag>
@@ -4508,7 +4538,11 @@ onBeforeUnmount(() => {
                           valueProgressToneClass(item.status),
                         ]"
                       >
-                        <LoadingOutlined v-if="item.status === 'running'" spin />
+                        <component
+                          :is="statusIconForTone(valueProgressToneClass(item.status))"
+                          :spin="statusIconSpins(valueProgressToneClass(item.status))"
+                          aria-hidden="true"
+                        />
                         <span>{{ valueProgressStatusText(item.status) }}</span>
                       </a-tag>
                       <div v-if="item.message" class="value-progress-message">
@@ -4580,12 +4614,10 @@ onBeforeUnmount(() => {
                     concurrentQueueToneClass(item.queue_state),
                   ]"
                 >
-                  <LoadingOutlined
-                    v-if="
-                      item.queue_state === 'executing' ||
-                      item.queue_state === 'queued'
-                    "
-                    :spin="item.queue_state === 'executing'"
+                  <component
+                    :is="statusIconForTone(concurrentQueueToneClass(item.queue_state))"
+                    :spin="statusIconSpins(concurrentQueueToneClass(item.queue_state))"
+                    aria-hidden="true"
                   />
                   <span>{{ concurrentQueueStateText(item.queue_state) }}</span>
                 </a-tag>
@@ -4640,12 +4672,10 @@ onBeforeUnmount(() => {
                 <a-tag
                   :class="['status-tag', statusToneClass(currentBusinessStatus)]"
                 >
-                  <LoadingOutlined
-                    v-if="
-                      currentBusinessStatus === 'approving' ||
-                      currentBusinessStatus === 'pending_approval'
-                    "
-                    :spin="currentBusinessStatus === 'approving'"
+                  <component
+                    :is="statusIconForTone(statusToneClass(currentBusinessStatus))"
+                    :spin="statusIconSpins(statusToneClass(currentBusinessStatus))"
+                    aria-hidden="true"
                   />
                   <span>{{ statusText(currentBusinessStatus) }}</span>
                 </a-tag>
@@ -4703,7 +4733,12 @@ onBeforeUnmount(() => {
                     <span>{{ step.message || "等待执行" }}</span>
                   </div>
                   <a-tag :class="['status-tag', hookToneClass(step.status)]">
-                    {{ hookStatusText(step.status) }}
+                    <component
+                      :is="statusIconForTone(hookToneClass(step.status))"
+                      :spin="statusIconSpins(hookToneClass(step.status))"
+                      aria-hidden="true"
+                    />
+                    <span>{{ hookStatusText(step.status) }}</span>
                   </a-tag>
                 </div>
               </div>
@@ -4796,7 +4831,11 @@ onBeforeUnmount(() => {
                 </a-button>
               </div>
               <a-tag :class="['status-tag', precheckToneClass(item.status)]">
-                <LoadingOutlined v-if="item.status === 'warn'" spin />
+                <component
+                  :is="statusIconForTone(precheckToneClass(item.status))"
+                  :spin="statusIconSpins(precheckToneClass(item.status))"
+                  aria-hidden="true"
+                />
                 <span>{{ precheckStatusText(item.status) }}</span>
               </a-tag>
             </div>
@@ -4898,9 +4937,10 @@ onBeforeUnmount(() => {
                           statusToneClass(unit.execution.status),
                         ]"
                       >
-                        <LoadingOutlined
-                          v-if="isRunningStatus(unit.execution.status)"
-                          spin
+                        <component
+                          :is="statusIconForTone(statusToneClass(unit.execution.status))"
+                          :spin="statusIconSpins(statusToneClass(unit.execution.status))"
+                          aria-hidden="true"
                         />
                         <span>{{ statusText(unit.execution.status) }}</span>
                       </a-tag>
@@ -4960,9 +5000,10 @@ onBeforeUnmount(() => {
                           hookToneClass(unit.group.overallStatus),
                         ]"
                       >
-                        <LoadingOutlined
-                          v-if="unit.group.overallStatus === 'running'"
-                          spin
+                        <component
+                          :is="statusIconForTone(hookToneClass(unit.group.overallStatus))"
+                          :spin="statusIconSpins(hookToneClass(unit.group.overallStatus))"
+                          aria-hidden="true"
                         />
                         <span>{{ hookStatusText(unit.group.overallStatus) }}</span>
                       </a-tag>
@@ -4989,7 +5030,11 @@ onBeforeUnmount(() => {
                           <a-tag
                             :class="['status-tag', hookToneClass(item.status)]"
                           >
-                            <LoadingOutlined v-if="item.status === 'running'" spin />
+                            <component
+                              :is="statusIconForTone(hookToneClass(item.status))"
+                              :spin="statusIconSpins(hookToneClass(item.status))"
+                              aria-hidden="true"
+                            />
                             <span>{{ hookStatusText(item.status) }}</span>
                           </a-tag>
                         </div>
@@ -5071,7 +5116,12 @@ onBeforeUnmount(() => {
               statusToneClass(selectedPipelineStage.status),
             ]"
           >
-            {{ statusText(selectedPipelineStage.status) }}
+            <component
+              :is="statusIconForTone(statusToneClass(selectedPipelineStage.status))"
+              :spin="statusIconSpins(statusToneClass(selectedPipelineStage.status))"
+              aria-hidden="true"
+            />
+            <span>{{ statusText(selectedPipelineStage.status) }}</span>
           </a-tag>
           <a-button
             size="small"
@@ -6007,21 +6057,11 @@ onBeforeUnmount(() => {
 }
 
 .release-spotlight {
-  border-radius: 22px;
+  border-radius: 16px;
   align-self: stretch;
-  border: 1px solid rgba(96, 165, 250, 0.22);
-  background:
-    radial-gradient(
-      circle at top right,
-      rgba(96, 165, 250, 0.14),
-      transparent 42%
-    ),
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.98) 0%,
-      rgba(248, 250, 252, 0.94) 100%
-    );
-  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.08);
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
   padding: 24px 26px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 92px;
@@ -6032,65 +6072,25 @@ onBeforeUnmount(() => {
 }
 
 .release-spotlight-success {
-  border-color: rgba(74, 222, 128, 0.38);
-  background:
-    radial-gradient(
-      circle at top right,
-      rgba(74, 222, 128, 0.16),
-      transparent 40%
-    ),
-    linear-gradient(
-      180deg,
-      rgba(240, 253, 244, 0.98) 0%,
-      rgba(248, 250, 252, 0.94) 100%
-    );
+  border-color: #86efac;
+  background: #f0fdf4;
 }
 
 .release-spotlight-running {
-  border-color: rgba(96, 165, 250, 0.38);
-  background:
-    radial-gradient(
-      circle at top right,
-      rgba(96, 165, 250, 0.16),
-      transparent 40%
-    ),
-    linear-gradient(
-      180deg,
-      rgba(239, 246, 255, 0.98) 0%,
-      rgba(248, 250, 252, 0.94) 100%
-    );
+  border-color: #93c5fd;
+  background: #eff6ff;
 }
 
 .release-spotlight-failed {
-  border-color: rgba(251, 113, 133, 0.34);
-  background:
-    radial-gradient(
-      circle at top right,
-      rgba(251, 113, 133, 0.14),
-      transparent 40%
-    ),
-    linear-gradient(
-      180deg,
-      rgba(255, 241, 242, 0.98) 0%,
-      rgba(255, 250, 250, 0.94) 100%
-    );
+  border-color: #fca5a5;
+  background: #fef2f2;
 }
 
 .release-spotlight-queued,
 .release-spotlight-cancelled,
 .release-spotlight-pending {
-  border-color: rgba(251, 191, 36, 0.34);
-  background:
-    radial-gradient(
-      circle at top right,
-      rgba(251, 191, 36, 0.14),
-      transparent 40%
-    ),
-    linear-gradient(
-      180deg,
-      rgba(255, 247, 237, 0.98) 0%,
-      rgba(255, 251, 235, 0.94) 100%
-    );
+  border-color: #fdba74;
+  background: #fff7ed;
 }
 
 .release-spotlight-icon-wrap {
@@ -6102,58 +6102,39 @@ onBeforeUnmount(() => {
 .release-spotlight-icon-orb {
   width: 60px;
   height: 60px;
-  border-radius: 20px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: 1px solid rgba(148, 163, 184, 0.18);
   background: rgba(255, 255, 255, 0.72);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.82),
-    0 10px 24px rgba(15, 23, 42, 0.07);
-  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.05);
 }
 
 .release-spotlight-icon-orb-success {
   color: #15803d;
-  background: linear-gradient(
-    180deg,
-    rgba(240, 253, 244, 0.9) 0%,
-    rgba(255, 255, 255, 0.74) 100%
-  );
-  border-color: rgba(134, 239, 172, 0.4);
+  background: #ecfdf3;
+  border-color: #86efac;
 }
 
 .release-spotlight-icon-orb-running {
   color: #1d4ed8;
-  background: linear-gradient(
-    180deg,
-    rgba(239, 246, 255, 0.9) 0%,
-    rgba(255, 255, 255, 0.74) 100%
-  );
-  border-color: rgba(147, 197, 253, 0.4);
+  background: #ffffff;
+  border-color: #93c5fd;
 }
 
 .release-spotlight-icon-orb-failed {
   color: #b91c1c;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 241, 242, 0.9) 0%,
-    rgba(255, 255, 255, 0.74) 100%
-  );
-  border-color: rgba(253, 164, 175, 0.42);
+  background: #ffffff;
+  border-color: #fca5a5;
 }
 
 .release-spotlight-icon-orb-queued,
 .release-spotlight-icon-orb-cancelled,
 .release-spotlight-icon-orb-pending {
   color: #b45309;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 247, 237, 0.92) 0%,
-    rgba(255, 255, 255, 0.74) 100%
-  );
-  border-color: rgba(253, 186, 116, 0.42);
+  background: #ffffff;
+  border-color: #fdba74;
 }
 
 .release-spotlight-icon {
@@ -6201,10 +6182,8 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   width: fit-content;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.66);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 3px 9px;
+  border-radius: 8px;
 }
 
 .detail-dashboard {
@@ -6452,62 +6431,71 @@ onBeforeUnmount(() => {
 }
 
 .status-tag {
+  box-sizing: border-box;
   display: inline-flex;
+  min-height: 26px;
+  max-width: 100%;
   align-items: center;
+  justify-content: flex-start;
   gap: 6px;
-  border-radius: 999px;
-  padding: 5px 10px;
+  margin-inline-end: 0;
+  padding: 3px 9px;
+  overflow: hidden;
   border: 1px solid transparent;
+  border-radius: 8px;
   font-size: 12px;
   font-weight: 700;
-  line-height: 1;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.status-tag > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .status-tag :deep(.anticon),
 .status-chip :deep(.anticon) {
+  flex: 0 0 auto;
   color: currentColor;
+  font-size: 13px;
 }
 
 .status-pill-success {
   color: #15803d;
-  background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%);
+  background: #ecfdf3;
   border-color: #86efac;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .status-pill-running {
   color: #1d4ed8;
-  background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
+  background: #eff6ff;
   border-color: #93c5fd;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
 .status-pill-failed {
   color: #b91c1c;
-  background: linear-gradient(180deg, #fff1f2 0%, #ffe4e6 100%);
-  border-color: #fda4af;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  background: #fef2f2;
+  border-color: #fca5a5;
 }
 
 .status-pill-pending {
   color: #b45309;
-  background: linear-gradient(180deg, #fff7ed 0%, #ffedd5 100%);
+  background: #fff7ed;
   border-color: #fdba74;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
 .status-pill-warning {
-  color: #c2410c;
-  background: linear-gradient(180deg, #fff7ed 0%, #fed7aa 100%);
+  color: #b45309;
+  background: #fff7ed;
   border-color: #fdba74;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
 .status-pill-neutral {
   color: #475569;
-  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  background: #f8fafc;
   border-color: #cbd5e1;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 .status-chip {

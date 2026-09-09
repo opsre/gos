@@ -71,6 +71,70 @@ func TestPlatformParamRepositoryInitSchemaSeedsBuiltinReleaseName(t *testing.T) 
 	}
 }
 
+// TestPlatformParamRepositoryInitSchemaSeedsBuiltinEnvCode 确保发布环境可作为发布模板内置字段使用。
+func TestPlatformParamRepositoryInitSchemaSeedsBuiltinEnvCode(t *testing.T) {
+	t.Parallel()
+
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite failed: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+
+	repo := NewPlatformParamRepository(db, "sqlite")
+	if err := repo.InitSchema(context.Background()); err != nil {
+		t.Fatalf("InitSchema failed: %v", err)
+	}
+
+	item, err := repo.GetByParamKey(context.Background(), "env_code")
+	if err != nil {
+		t.Fatalf("GetByParamKey env_code failed: %v", err)
+	}
+	if !item.Builtin || item.Status != domain.StatusEnabled {
+		t.Fatalf("env_code builtin/status = %v/%d, want true/%d", item.Builtin, item.Status, domain.StatusEnabled)
+	}
+	if item.Name != "发布环境" {
+		t.Fatalf("env_code name = %q, want 发布环境", item.Name)
+	}
+	if item.ParamType != domain.ParamTypeString {
+		t.Fatalf("env_code param_type = %q, want %q", item.ParamType, domain.ParamTypeString)
+	}
+}
+
+// TestPlatformParamRepositoryInitSchemaPromotesExistingEnvCode verifies startup repairs a legacy custom row.
+func TestPlatformParamRepositoryInitSchemaPromotesExistingEnvCode(t *testing.T) {
+	t.Parallel()
+
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite failed: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+
+	repo := NewPlatformParamRepository(db, "sqlite")
+	if err := repo.InitSchema(context.Background()); err != nil {
+		t.Fatalf("first InitSchema failed: %v", err)
+	}
+	if _, err := db.ExecContext(context.Background(), `UPDATE platform_param_dict SET name = '旧环境', builtin = 0, status = 0 WHERE param_key = 'env_code';`); err != nil {
+		t.Fatalf("prepare legacy env_code failed: %v", err)
+	}
+
+	if err := repo.InitSchema(context.Background()); err != nil {
+		t.Fatalf("second InitSchema failed: %v", err)
+	}
+	item, err := repo.GetByParamKey(context.Background(), "env_code")
+	if err != nil {
+		t.Fatalf("GetByParamKey env_code failed: %v", err)
+	}
+	if item.Name != "发布环境" || !item.Builtin || item.Status != domain.StatusEnabled {
+		t.Fatalf("env_code after repair = name:%q builtin:%v status:%d", item.Name, item.Builtin, item.Status)
+	}
+}
+
 func TestPlatformParamRepositoryInitSchemaSeedsBuiltinCIArtifactLinkParams(t *testing.T) {
 	t.Parallel()
 

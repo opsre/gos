@@ -34,3 +34,9 @@ test('administrator stays outside the business organization hierarchy', () => {
   assert.match(userViewSource, /v-if="formState\.role !== 'admin'" name="manager_user_id"/)
   assert.match(userViewSource, /formState\.role === 'admin' \? '' : formState\.manager_user_id/)
 })
+
+test('new user form distinguishes the immutable login account from the display name', () => {
+  assert.match(userViewSource, /登录账号[\s\S]*例如 liwen，用于登录且保存后不可修改/)
+  assert.match(userViewSource, /姓名（显示名称）/)
+  assert.match(userViewSource, /用户创建成功，登录账号：\$\{response\.data\.username\}/)
+})

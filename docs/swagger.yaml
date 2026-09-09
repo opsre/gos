@@ -1,5 +1,70 @@
 basePath: /
 definitions:
+  gos_internal_application_usecase.OnboardingField:
+    properties:
+      builtin:
+        type: boolean
+      key:
+        type: string
+      name:
+        type: string
+      type:
+        type: string
+    type: object
+  gos_internal_application_usecase.OnboardingInspection:
+    properties:
+      fields:
+        items:
+          $ref: '#/definitions/gos_internal_application_usecase.OnboardingField'
+        type: array
+      issues:
+        items:
+          $ref: '#/definitions/gos_internal_domain_onboarding.Issue'
+        type: array
+      rows:
+        items:
+          $ref: '#/definitions/gos_internal_application_usecase.OnboardingParamRow'
+        type: array
+    type: object
+  gos_internal_application_usecase.OnboardingParamRow:
+    properties:
+      candidates:
+        items:
+          type: string
+        type: array
+      choices:
+        items:
+          type: string
+        type: array
+      default_value:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      mapped_key:
+        type: string
+      name:
+        type: string
+      new_key:
+        type: string
+      pipeline_id:
+        type: string
+      problem:
+        type: string
+      required:
+        type: boolean
+      runtime:
+        type: boolean
+      scope:
+        type: string
+      sensitive:
+        type: boolean
+      suggested_key:
+        type: string
+      type:
+        type: string
+    type: object
   gos_internal_application_usecase.QueryGitOpsFieldCandidateOutput:
     properties:
       display_name:
@@ -83,6 +148,133 @@ definitions:
       name:
         type: string
     type: object
+  gos_internal_domain_onboarding.Check:
+    properties:
+      issues:
+        items:
+          $ref: '#/definitions/gos_internal_domain_onboarding.Issue'
+        type: array
+      status:
+        type: string
+    type: object
+  gos_internal_domain_onboarding.Draft:
+    properties:
+      approval_flow_id:
+        type: string
+      branch:
+        type: string
+      cd_pipeline_id:
+        type: string
+      change_approval_flow:
+        description: Existing application policies are preserved unless this explicit
+          switch is set.
+        type: boolean
+      ci_pipeline_id:
+        type: string
+      identity:
+        $ref: '#/definitions/gos_internal_domain_onboarding.Identity'
+      params:
+        items:
+          $ref: '#/definitions/gos_internal_domain_onboarding.Parameter'
+        type: array
+      repo_url:
+        type: string
+      save_app_sources:
+        type: boolean
+      template_name:
+        type: string
+    type: object
+  gos_internal_domain_onboarding.Identity:
+    properties:
+      description:
+        type: string
+      key:
+        type: string
+      name:
+        type: string
+      owner_user_id:
+        type: string
+      project_id:
+        type: string
+      project_key:
+        type: string
+      project_name:
+        type: string
+    type: object
+  gos_internal_domain_onboarding.Issue:
+    properties:
+      code:
+        type: string
+      field_path:
+        type: string
+      message:
+        type: string
+      remedy:
+        type: string
+      severity:
+        type: string
+      step:
+        type: string
+    type: object
+  gos_internal_domain_onboarding.Parameter:
+    properties:
+      fixed_value:
+        type: string
+      name:
+        type: string
+      new_field_name:
+        type: string
+      omit:
+        type: boolean
+      param_key:
+        type: string
+      scope:
+        type: string
+      source_param_key:
+        type: string
+      value_source:
+        type: string
+    type: object
+  gos_internal_domain_onboarding.References:
+    properties:
+      application_id:
+        type: string
+      cd_binding_id:
+        type: string
+      ci_binding_id:
+        type: string
+      project_id:
+        type: string
+      template_id:
+        type: string
+    type: object
+  gos_internal_domain_onboarding.Session:
+    properties:
+      check:
+        $ref: '#/definitions/gos_internal_domain_onboarding.Check'
+      created_at:
+        type: string
+      current_step:
+        type: string
+      draft:
+        $ref: '#/definitions/gos_internal_domain_onboarding.Draft'
+      first_release_order_id:
+        type: string
+      id:
+        type: string
+      mode:
+        type: string
+      owner_user_id:
+        type: string
+      refs:
+        $ref: '#/definitions/gos_internal_domain_onboarding.References'
+      status:
+        type: string
+      updated_at:
+        type: string
+      version:
+        type: integer
+    type: object
   internal_interfaces_http.ApplicationDataResponse:
     properties:
       data:
@@ -103,6 +295,10 @@ definitions:
     type: object
   internal_interfaces_http.ApplicationResponse:
     properties:
+      artifact_directory:
+        type: string
+      artifact_repository_id:
+        type: string
       artifact_type:
         type: string
       created_at:
@@ -142,8 +338,28 @@ definitions:
       updated_at:
         type: string
     type: object
+  internal_interfaces_http.BatchCreateReleaseOrderFailureResponse:
+    properties:
+      error:
+        type: string
+      index:
+        type: integer
+      release_name:
+        type: string
+    type: object
+  internal_interfaces_http.BatchCreateReleaseOrdersRequest:
+    properties:
+      orders:
+        items:
+          $ref: '#/definitions/internal_interfaces_http.CreateReleaseOrderRequest'
+        type: array
+    type: object
   internal_interfaces_http.CreateApplicationRequest:
     properties:
+      artifact_directory:
+        type: string
+      artifact_repository_id:
+        type: string
       artifact_type:
         type: string
       description:
@@ -235,6 +451,8 @@ definitions:
           $ref: '#/definitions/internal_interfaces_http.CreateReleaseOrderParamRequest'
         type: array
       project_name:
+        type: string
+      release_name:
         type: string
       remark:
         type: string
@@ -367,6 +585,56 @@ definitions:
         items:
           $ref: '#/definitions/gos_internal_application_usecase.QueryGitOpsValuesCandidateOutput'
         type: array
+    type: object
+  internal_interfaces_http.OnboardingApplyRequest:
+    properties:
+      expected_version:
+        type: integer
+      request_key:
+        type: string
+    type: object
+  internal_interfaces_http.OnboardingCreateRequest:
+    properties:
+      application_id:
+        type: string
+      mode:
+        enum:
+        - create_application
+        - complete_application
+        type: string
+      project_id:
+        type: string
+    type: object
+  internal_interfaces_http.OnboardingDraftRequest:
+    properties:
+      draft:
+        $ref: '#/definitions/gos_internal_domain_onboarding.Draft'
+      expected_version:
+        type: integer
+    type: object
+  internal_interfaces_http.OnboardingFirstReleaseRequest:
+    properties:
+      expected_version:
+        type: integer
+      order:
+        $ref: '#/definitions/internal_interfaces_http.CreateReleaseOrderRequest'
+      request_key:
+        type: string
+    type: object
+  internal_interfaces_http.OnboardingInspectionResponse:
+    properties:
+      data:
+        $ref: '#/definitions/gos_internal_application_usecase.OnboardingInspection'
+    type: object
+  internal_interfaces_http.OnboardingSessionResponse:
+    properties:
+      data:
+        $ref: '#/definitions/gos_internal_domain_onboarding.Session'
+    type: object
+  internal_interfaces_http.OnboardingVersionRequest:
+    properties:
+      expected_version:
+        type: integer
     type: object
   internal_interfaces_http.PipelineBindingDataResponse:
     properties:
@@ -525,10 +793,218 @@ definitions:
       updated_at:
         type: string
     type: object
+  internal_interfaces_http.RecordReleaseOrderArtifactMetadataRequest:
+    properties:
+      artifact_name:
+        type: string
+      artifact_type:
+        type: string
+      artifact_url:
+        type: string
+      artifact_version:
+        type: string
+      bucket:
+        type: string
+      build_number:
+        type: string
+      checksum:
+        type: string
+      checksum_type:
+        type: string
+      execution_id:
+        type: string
+      metadata:
+        additionalProperties: {}
+        type: object
+      object_key:
+        type: string
+      pipeline_scope:
+        type: string
+      repository_id:
+        type: string
+      repository_name:
+        type: string
+      size_bytes:
+        type: integer
+    type: object
+  internal_interfaces_http.ReleaseOrderArtifactMetadataDataResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_interfaces_http.ReleaseOrderArtifactMetadataResponse'
+    type: object
+  internal_interfaces_http.ReleaseOrderArtifactMetadataListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/internal_interfaces_http.ReleaseOrderArtifactMetadataResponse'
+        type: array
+    type: object
+  internal_interfaces_http.ReleaseOrderArtifactMetadataResponse:
+    properties:
+      artifact_name:
+        type: string
+      artifact_type:
+        type: string
+      artifact_url:
+        type: string
+      artifact_version:
+        type: string
+      bucket:
+        type: string
+      build_number:
+        type: string
+      checksum:
+        type: string
+      checksum_type:
+        type: string
+      created_at:
+        type: string
+      execution_id:
+        type: string
+      id:
+        type: string
+      metadata:
+        additionalProperties: {}
+        type: object
+      object_key:
+        type: string
+      pipeline_scope:
+        type: string
+      release_order_id:
+        type: string
+      repository_id:
+        type: string
+      repository_name:
+        type: string
+      size_bytes:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  internal_interfaces_http.ReleaseOrderArtifactMetadataSummaryListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/internal_interfaces_http.ReleaseOrderArtifactMetadataSummaryResponse'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_interfaces_http.ReleaseOrderArtifactMetadataSummaryResponse:
+    properties:
+      application_id:
+        type: string
+      application_name:
+        type: string
+      artifact_name:
+        type: string
+      artifact_type:
+        type: string
+      artifact_url:
+        type: string
+      artifact_version:
+        type: string
+      bucket:
+        type: string
+      build_number:
+        type: string
+      checksum:
+        type: string
+      checksum_type:
+        type: string
+      created_at:
+        type: string
+      env_code:
+        type: string
+      execution_id:
+        type: string
+      id:
+        type: string
+      metadata:
+        additionalProperties: {}
+        type: object
+      object_key:
+        type: string
+      order_status:
+        type: string
+      pipeline_scope:
+        type: string
+      project_id:
+        type: string
+      project_key:
+        type: string
+      project_name:
+        type: string
+      release_display_name:
+        type: string
+      release_name:
+        type: string
+      release_order_id:
+        type: string
+      release_order_no:
+        type: string
+      repository_id:
+        type: string
+      repository_name:
+        type: string
+      size_bytes:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  internal_interfaces_http.ReleaseOrderBatchCreateResponse:
+    properties:
+      data:
+        properties:
+          failures:
+            items:
+              $ref: '#/definitions/internal_interfaces_http.BatchCreateReleaseOrderFailureResponse'
+            type: array
+          orders:
+            items:
+              $ref: '#/definitions/internal_interfaces_http.ReleaseOrderResponse'
+            type: array
+        type: object
+    type: object
   internal_interfaces_http.ReleaseOrderDataResponse:
     properties:
       data:
         $ref: '#/definitions/internal_interfaces_http.ReleaseOrderResponse'
+    type: object
+  internal_interfaces_http.ReleaseOrderDeploySnapshotResponse:
+    properties:
+      argocd_app_name:
+        type: string
+      argocd_instance_id:
+        type: string
+      branch:
+        type: string
+      created_at:
+        type: string
+      env_code:
+        type: string
+      gitops_instance_id:
+        type: string
+      gitops_type:
+        type: string
+      id:
+        type: string
+      image_version:
+        type: string
+      provider:
+        type: string
+      release_order_id:
+        type: string
+      repo_url:
+        type: string
+      rules_count:
+        type: integer
+      source_path:
+        type: string
     type: object
   internal_interfaces_http.ReleaseOrderListResponse:
     properties:
@@ -657,6 +1133,8 @@ definitions:
         type: string
       cd_provider:
         type: string
+      concurrent_batch_name:
+        type: string
       concurrent_batch_no:
         type: string
       concurrent_batch_seq:
@@ -665,6 +1143,10 @@ definitions:
         type: string
       creator_user_id:
         type: string
+      deploy_snapshots:
+        items:
+          $ref: '#/definitions/internal_interfaces_http.ReleaseOrderDeploySnapshotResponse'
+        type: array
       env_code:
         type: string
       finished_at:
@@ -710,6 +1192,8 @@ definitions:
       rejected_by:
         type: string
       rejected_reason:
+        type: string
+      release_name:
         type: string
       remark:
         type: string
@@ -803,6 +1287,8 @@ definitions:
         type: string
       param_name:
         type: string
+      pipeline_param:
+        type: boolean
       pipeline_scope:
         type: string
       required:
@@ -814,6 +1300,8 @@ definitions:
       updated_at:
         type: string
       value:
+        type: string
+      value_kind:
         type: string
       value_source:
         type: string
@@ -835,6 +1323,10 @@ definitions:
     type: object
   internal_interfaces_http.UpdateApplicationRequest:
     properties:
+      artifact_directory:
+        type: string
+      artifact_repository_id:
+        type: string
       artifact_type:
         type: string
       description:
@@ -2756,6 +3248,28 @@ paths:
       summary: 获取Application Rollback Precheck详情
       tags:
       - release-orders
+  /applications/{id}/setup-status:
+    get:
+      parameters:
+      - description: 应用 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.GenericResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+      summary: 按真实模板检查应用接入状态，不依赖引导任务存在
+      tags:
+      - onboarding
   /applications/options:
     get:
       description: 查询Options列表，并按统一响应结构返回处理结果。
@@ -2787,6 +3301,14 @@ paths:
           schema:
             $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
       summary: 查询Options列表
+      tags:
+      - applications
+  /applications/workbench:
+    get:
+      produces:
+      - application/json
+      responses: {}
+      summary: 查询应用工作台聚合数据
       tags:
       - applications
   /argocd/applications:
@@ -3151,6 +3673,84 @@ paths:
       summary: 检查Instance
       tags:
       - argocd
+  /artifacts/release-order-metadata:
+    get:
+      description: 按项目、应用、发布单和制品字段聚合查询制品元信息。
+      parameters:
+      - description: Project ID
+        in: query
+        name: project_id
+        type: string
+      - description: Application ID
+        in: query
+        name: application_id
+        type: string
+      - description: Release order ID
+        in: query
+        name: release_order_id
+        type: string
+      - description: Keyword
+        in: query
+        name: keyword
+        type: string
+      - description: Artifact name
+        in: query
+        name: artifact_name
+        type: string
+      - description: Artifact type
+        in: query
+        name: artifact_type
+        type: string
+      - description: Pipeline scope
+        in: query
+        name: pipeline_scope
+        type: string
+      - description: Repository ID
+        in: query
+        name: repository_id
+        type: string
+      - description: Created at from (RFC3339)
+        in: query
+        name: created_at_from
+        type: string
+      - description: Created at to (RFC3339)
+        in: query
+        name: created_at_to
+        type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ReleaseOrderArtifactMetadataSummaryListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+      summary: 查询制品中心发布单制品列表
+      tags:
+      - artifacts
   /auth/login:
     post:
       consumes:
@@ -4280,6 +4880,296 @@ paths:
       summary: 更新Source
       tags:
       - notifications
+  /notification-sources/actions/test-webhook:
+    post:
+      consumes:
+      - application/json
+      description: 发送模拟通知验证通知源 Webhook 是否可达。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.GenericResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+      summary: 测试通知源 Webhook
+      tags:
+      - notifications
+  /onboarding/sessions:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 接入模式及可选项目
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_interfaces_http.OnboardingCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.OnboardingSessionResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+      summary: 新增独立应用接入任务或补齐已有应用
+      tags:
+      - onboarding
+  /onboarding/sessions/{id}:
+    get:
+      parameters:
+      - description: 接入任务 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.OnboardingSessionResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+      summary: 读取或恢复接入任务
+      tags:
+      - onboarding
+  /onboarding/sessions/{id}/abandon:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 接入任务 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 预期版本
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_interfaces_http.OnboardingVersionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.OnboardingSessionResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+      summary: 放弃任务并保留已创建的所有业务资源
+      tags:
+      - onboarding
+  /onboarding/sessions/{id}/check:
+    post:
+      parameters:
+      - description: 接入任务 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.OnboardingSessionResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+      summary: 检查已有业务配置并刷新首单验证状态
+      tags:
+      - onboarding
+  /onboarding/sessions/{id}/draft:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: 接入任务 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 版本及非敏感草稿
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_interfaces_http.OnboardingDraftRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.OnboardingSessionResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+      summary: 按版本保存接入草稿，不创建业务资源
+      tags:
+      - onboarding
+  /onboarding/sessions/{id}/first-release:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 接入任务 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 版本、幂等键与标准发布请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_interfaces_http.OnboardingFirstReleaseRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.OnboardingSessionResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+      summary: 幂等创建关联首单，不自动执行或绕过发布权限
+      tags:
+      - onboarding
+  /onboarding/sessions/{id}/inspect:
+    post:
+      parameters:
+      - description: 接入任务 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.OnboardingInspectionResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+      summary: 只读检查真实管线参数及标准字段建议
+      tags:
+      - onboarding
+  /onboarding/sessions/{id}/steps/{step}/apply:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 接入任务 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 步骤
+        enum:
+        - preflight
+        - identity
+        - pipelines
+        - parameters
+        - template_flow
+        - review
+        in: path
+        name: step
+        required: true
+        type: string
+      - description: 预期版本与幂等键
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_interfaces_http.OnboardingApplyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.OnboardingSessionResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+      summary: 幂等保存一个接入步骤，不执行管线
+      tags:
+      - onboarding
+  /onboarding/status:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.GenericResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+      summary: 应用接入基础状态与我的任务
+      tags:
+      - onboarding
   /permissions:
     get:
       description: 查询Permissions列表，并按统一响应结构返回处理结果。
@@ -5160,6 +6050,14 @@ paths:
         in: query
         name: keyword
         type: string
+      - description: Concurrent batch no
+        in: query
+        name: concurrent_batch_no
+        type: string
+      - description: Concurrent batch name
+        in: query
+        name: concurrent_batch_name
+        type: string
       - description: Triggered by
         in: query
         name: triggered_by
@@ -5441,6 +6339,91 @@ paths:
           schema:
             $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
       summary: 审批通过发布单
+      tags:
+      - release-orders
+  /release-orders/{id}/artifact-metadata:
+    get:
+      description: 查询发布单制品元信息列表，并按统一响应结构返回处理结果。
+      parameters:
+      - description: 资源 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ReleaseOrderArtifactMetadataListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+      summary: 查询发布单制品元信息列表
+      tags:
+      - release-orders
+    post:
+      consumes:
+      - application/json
+      description: 接收发布单制品元信息，并按统一响应结构返回处理结果。
+      parameters:
+      - description: 资源 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 制品元信息
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_interfaces_http.RecordReleaseOrderArtifactMetadataRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ReleaseOrderArtifactMetadataDataResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+      summary: 接收发布单制品元信息
       tags:
       - release-orders
   /release-orders/{id}/build:
@@ -6188,6 +7171,49 @@ paths:
           schema:
             $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
       summary: List release order value progress
+      tags:
+      - release-orders
+  /release-orders/batch-create:
+    post:
+      consumes:
+      - application/json
+      description: Creates multiple independent release orders without starting approval
+        or execution
+      parameters:
+      - description: Batch create release orders request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_interfaces_http.BatchCreateReleaseOrdersRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ReleaseOrderBatchCreateResponse'
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ReleaseOrderBatchCreateResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_interfaces_http.ErrorResponse'
+      summary: Batch create independent release orders
       tags:
       - release-orders
   /release-orders/batch-delete:

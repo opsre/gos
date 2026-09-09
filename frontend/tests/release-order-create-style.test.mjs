@@ -73,8 +73,8 @@ test('release order create page provides ci-only build submit action', () => {
   )
   assert.match(
     source,
-    /v-if="!isEditMode && !isBatchMode"[\s\S]*:loading="buildOnlySubmitting"[\s\S]*:aria-disabled="!canBuildOnlySubmitRelease"[\s\S]*@click="handleBuildOnlySubmit"[\s\S]*仅构建/,
-    'header should render the only-build button for single new release orders only',
+    /v-if="!isEditMode && !isBatchMode && !onboardingSessionID"[\s\S]*:loading="buildOnlySubmitting"[\s\S]*:aria-disabled="!canBuildOnlySubmitRelease"[\s\S]*@click="handleBuildOnlySubmit"[\s\S]*仅构建/,
+    'header should render only-build for ordinary single new orders, not onboarding first-order creation',
   )
 })
 

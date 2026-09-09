@@ -20,6 +20,7 @@ import { getApplicationApprovalFlowBinding, getApplicationByID, listApplications
 import { getExecutorParamDefByID, listApplicationExecutorParamDefs } from '../../api/pipeline'
 import { batchCreateReleaseOrders, createReleaseOrder, buildReleaseOrder, getReleaseOrderByID, getReleaseTemplateByID, listAllReleaseTemplates, listApprovalFlows, listReleaseOrderParams, updateReleaseOrder, syncTemplateExecutorParamDefs } from '../../api/release'
 import { getReleaseSettings } from '../../api/system'
+import { createOnboardingFirstRelease, getOnboardingSession } from '../../api/onboarding'
 import { useAuthStore } from '../../stores/auth'
 import type { Application } from '../../types/application'
 import type { ExecutorParamDef } from '../../types/pipeline'
@@ -133,7 +134,10 @@ const preferredBindingID = ref('')
 const currentUserID = computed(() => String(authStore.profile?.id || '').trim())
 const editingOrderID = computed(() => String(route.params.id || '').trim())
 const isEditMode = computed(() => Boolean(editingOrderID.value))
-const isBatchMode = computed(() => !isEditMode.value && String(route.query.batch || '').trim() === '1')
+const onboardingSessionID = computed(() => !isEditMode.value ? String(route.query.onboarding_session_id || '').trim() : '')
+const isBatchMode = computed(() => !isEditMode.value && !onboardingSessionID.value && String(route.query.batch || '').trim() === '1')
+let onboardingRequestKey = ''
+let onboardingRequestFingerprint = ''
 
 const formState = reactive<CreateFormState>({
   application_id: '',
@@ -899,11 +903,7 @@ async function handleTemplateChange(value: string | undefined) {
 }
 
 function goBack() {
-  if (isEditMode.value && editingOrderID.value) {
-    void router.push(`/releases/${editingOrderID.value}`)
-    return
-  }
-  void router.push('/releases')
+  router.back()
 }
 
 function resolveTemplateParamLabel(scope: ReleasePipelineScope, item: ExecutorParamDef) {
@@ -1451,6 +1451,18 @@ async function submitRelease(options?: { fast?: boolean; buildOnly?: boolean }) 
   submitting.value = true
   submittingMode.value = buildOnly ? 'build' : fast ? 'fast' : 'standard'
   try {
+    if (onboardingSessionID.value) {
+      const fingerprint = JSON.stringify(payload)
+      if (fingerprint !== onboardingRequestFingerprint) {
+        onboardingRequestFingerprint = fingerprint
+        onboardingRequestKey = `first-release-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      }
+      const current = await getOnboardingSession(onboardingSessionID.value)
+      const result = current.first_release_order_id ? current : await createOnboardingFirstRelease(current, payload, onboardingRequestKey)
+      message.success(current.first_release_order_id ? '此接入任务已创建首单，正在打开' : '首个发布单已创建，尚未执行')
+      void router.push(`/releases/${result.first_release_order_id}`)
+      return
+    }
     const response = isEditMode.value
       ? await updateReleaseOrder(editingOrderID.value, payload)
       : await createReleaseOrder(payload)
@@ -1632,6 +1644,9 @@ onMounted(async () => {
 
 <template>
   <div class="page-wrapper">
+    <a-alert v-if="onboardingSessionID" type="info" show-icon message="从应用接入向导创建首单：应用与模板已带入，仅创建，不自动执行。">
+      <template #action><a-button type="link" @click="router.push(`/onboarding/${onboardingSessionID}`)">返回接入向导</a-button></template>
+    </a-alert>
     <div class="page-header create-page-header">
       <div class="page-header-main">
         <div class="page-header-copy">
@@ -1664,7 +1679,7 @@ onMounted(async () => {
           批量创建（{{ batchDrafts.length }}）
         </a-button>
         <a-button
-          v-if="!isEditMode && !isBatchMode"
+          v-if="!isEditMode && !isBatchMode && !onboardingSessionID"
           class="application-toolbar-action-btn release-build-toolbar-btn"
           :class="{ 'release-build-toolbar-btn-disabled': !canBuildOnlySubmitRelease }"
           :loading="buildOnlySubmitting"
@@ -1730,8 +1745,8 @@ onMounted(async () => {
               <a-select
                 v-model:value="formState.application_id"
                 show-search
-                :allow-clear="!isEditMode"
-                :disabled="isEditMode"
+                :allow-clear="!isEditMode && !onboardingSessionID"
+                :disabled="isEditMode || !!onboardingSessionID"
                 option-filter-prop="label"
                 :placeholder="isEditMode ? '编辑模式下应用已锁定' : '请选择应用'"
                 :loading="loadingApplications"
@@ -1748,6 +1763,7 @@ onMounted(async () => {
               </template>
               <a-select
                 v-model:value="formState.template_id"
+                :disabled="!!onboardingSessionID"
                 show-search
                 allow-clear
                 option-filter-prop="label"
@@ -2105,7 +2121,7 @@ onMounted(async () => {
           </section>
 
             <a-button
-              v-if="!isEditMode && !isBatchMode"
+              v-if="!isEditMode && !isBatchMode && !onboardingSessionID"
               type="primary"
               block
               class="create-side-fast-btn"
