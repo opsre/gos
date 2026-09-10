@@ -160,6 +160,11 @@ type CreateReleaseOrderParamRequest struct {
 	ValueSource       string `json:"value_source"`
 }
 
+type ReplayReleaseOrderRequest struct {
+	OverrideCDParams bool                             `json:"override_cd_params"`
+	CDParams         []CreateReleaseOrderParamRequest `json:"cd_params"`
+}
+
 type CreateReleaseOrderStepRequest struct {
 	StepCode string `json:"step_code"`
 	StepName string `json:"step_name"`
@@ -1006,6 +1011,7 @@ func (h *ReleaseOrderHandler) CreateRollbackByApplication(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        id  path  string  true  "资源 ID"
+// @Param        request  body      ReplayReleaseOrderRequest  false  "Optional CD parameter overrides"
 // @Success      200  {object}  GenericResponse
 // @Failure      400  {object}  ErrorResponse
 // @Failure      401  {object}  ErrorResponse
@@ -1279,6 +1285,11 @@ func (h *ReleaseOrderHandler) CreateRollbackByOrder(c *gin.Context) {
 // @Failure      500  {object}  ErrorResponse
 // @Router       /release-orders/{id}/replay [post]
 func (h *ReleaseOrderHandler) CreateReplayByOrder(c *gin.Context) {
+	var req ReplayReleaseOrderRequest
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
 	sourceOrderID := strings.TrimSpace(c.Param("id"))
 	if !ensureAnyReleaseOrderDisplayPermission(c, h.authz) {
 		return
@@ -1296,11 +1307,25 @@ func (h *ReleaseOrderHandler) CreateReplayByOrder(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
-	order, err := h.manager.CreatePipelineReplayByOrder(
+	cdParams := make([]usecase.CreateReleaseOrderParamInput, 0, len(req.CDParams))
+	for _, item := range req.CDParams {
+		cdParams = append(cdParams, usecase.CreateReleaseOrderParamInput{
+			PipelineScope:     domain.PipelineScope(strings.ToLower(strings.TrimSpace(item.PipelineScope))),
+			ParamKey:          strings.ToLower(strings.TrimSpace(item.ParamKey)),
+			ExecutorParamName: strings.TrimSpace(item.ExecutorParamName),
+			ParamValue:        strings.TrimSpace(item.ParamValue),
+			ValueSource:       domain.ValueSource(strings.TrimSpace(item.ValueSource)),
+		})
+	}
+	order, err := h.manager.CreatePipelineReplayByOrderWithOptions(
 		c.Request.Context(),
 		sourceOrderID,
 		strings.TrimSpace(currentUser.ID),
 		resolveTriggeredBy(currentUser),
+		usecase.CreatePipelineReplayOptions{
+			OverrideCDParams: req.OverrideCDParams || len(req.CDParams) > 0,
+			CDParams:         cdParams,
+		},
 	)
 	if err != nil {
 		writeReleaseOrderHTTPError(c, err)
@@ -3293,34 +3318,28 @@ func deriveReleaseBusinessStatus(
 func deriveRunningExecutionBusinessStatus(
 	executions []domain.ReleaseOrderExecution,
 ) (domain.ReleaseBusinessStatus, bool) {
-	hasJenkinsQueueItem := false
 	hasRunningCI := false
+	hasRunningCD := false
 	for _, execution := range executions {
 		if execution.Status != domain.ExecutionStatusRunning {
-			continue
-		}
-		// Once the CD execution has been dispatched, the release has entered the
-		// deployment phase. Jenkins may briefly expose only a queue URL before the
-		// build URL is resolved, but that is not the release/concurrency queue shown
-		// to users.
-		if execution.PipelineScope == domain.PipelineScopeCD {
-			return domain.ReleaseBusinessStatusDeploying, true
-		}
-		if strings.EqualFold(strings.TrimSpace(execution.Provider), string(pipelinedomain.ProviderJenkins)) &&
-			strings.TrimSpace(execution.BuildURL) == "" {
-			hasJenkinsQueueItem = true
 			continue
 		}
 		switch execution.PipelineScope {
 		case domain.PipelineScopeCI:
 			hasRunningCI = true
+		case domain.PipelineScopeCD:
+			hasRunningCD = true
 		}
+	}
+	// The execution status is the authoritative phase signal. Jenkins can already
+	// be building while build_url is still waiting for the next tracker refresh;
+	// treating that synchronization window as the release/concurrency queue makes
+	// the whole-order banner contradict the running execution card.
+	if hasRunningCD {
+		return domain.ReleaseBusinessStatusDeploying, true
 	}
 	if hasRunningCI {
 		return domain.ReleaseBusinessStatusBuilding, true
-	}
-	if hasJenkinsQueueItem {
-		return domain.ReleaseBusinessStatusQueued, true
 	}
 	return "", false
 }

@@ -56,8 +56,8 @@ func TestEnrichRealtimeReleaseOrderPreservesExecutionPhaseOverBatchProjection(t 
 	executions[0].BuildURL = ""
 	progress.Items[0].QueueState = usecase.ReleaseOrderConcurrentBatchQueueStateExecuting
 	got = enrichRealtimeReleaseOrder(order, executions, progress)
-	if got.BusinessStatus != domain.ReleaseBusinessStatusQueued {
-		t.Fatalf("queued Jenkins execution status = %q, want %q", got.BusinessStatus, domain.ReleaseBusinessStatusQueued)
+	if got.BusinessStatus != domain.ReleaseBusinessStatusBuilding {
+		t.Fatalf("dispatched CI execution status = %q, want %q", got.BusinessStatus, domain.ReleaseBusinessStatusBuilding)
 	}
 
 	executions[0].PipelineScope = domain.PipelineScopeCD

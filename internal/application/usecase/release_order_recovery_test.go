@@ -375,6 +375,59 @@ func TestCreatePipelineReplayByOrderAllowsDeployFailedSource(t *testing.T) {
 	if findStepByCode(createdSteps, "cd:trigger_pipeline") == nil {
 		t.Fatalf("created steps=%#v, want downstream CD steps", createdSteps)
 	}
+
+	overridden, err := manager.CreatePipelineReplayByOrderWithOptions(
+		ctx,
+		sourceOrder.ID,
+		"tester",
+		"tester",
+		CreatePipelineReplayOptions{
+			OverrideCDParams: true,
+			CDParams: []CreateReleaseOrderParamInput{{
+				PipelineScope:     domain.PipelineScopeCD,
+				ParamKey:          "deploy_env",
+				ExecutorParamName: "DEPLOY_ENV",
+				ParamValue:        "staging",
+				ValueSource:       domain.ValueSourceReleaseInput,
+			}},
+		},
+	)
+	if err != nil {
+		t.Fatalf("CreatePipelineReplayByOrderWithOptions failed: %v", err)
+	}
+	overriddenParams, err := repo.ListParams(ctx, overridden.ID)
+	if err != nil {
+		t.Fatalf("ListParams for overridden replay failed: %v", err)
+	}
+	if findReleaseParamValue(overriddenParams, domain.PipelineScopeCI, "branch") != "release/failed" ||
+		findReleaseParamValue(overriddenParams, domain.PipelineScopeCD, "deploy_env") != "staging" {
+		t.Fatalf("overridden params=%#v, want preserved CI snapshot and replaced CD input", overriddenParams)
+	}
+}
+
+func TestNormalizeReplayCDParamOverridesRejectsDerivedParam(t *testing.T) {
+	t.Parallel()
+
+	_, err := normalizeReplayCDParamOverrides(
+		[]domain.ReleaseTemplateParam{{
+			PipelineScope:     domain.PipelineScopeCD,
+			ParamKey:          "ci_build",
+			ExecutorParamName: "CI_BUILD",
+			ValueSource:       domain.TemplateParamValueSourceCIParam,
+		}},
+		CreatePipelineReplayOptions{
+			OverrideCDParams: true,
+			CDParams: []CreateReleaseOrderParamInput{{
+				PipelineScope:     domain.PipelineScopeCD,
+				ParamKey:          "ci_build",
+				ExecutorParamName: "CI_BUILD",
+				ParamValue:        "42",
+			}},
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "没有可重新填写的 CD 参数") {
+		t.Fatalf("error = %v, want derived CD param rejection", err)
+	}
 }
 
 func TestCreatePipelineReplayByOrderRetriesFailedCDWithoutRebuildingCI(t *testing.T) {

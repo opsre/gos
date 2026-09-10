@@ -745,6 +745,11 @@ export interface CreateReleaseOrderParamPayload {
   value_source?: ReleaseValueSource;
 }
 
+export interface ReplayReleaseOrderPayload {
+  override_cd_params?: boolean;
+  cd_params?: CreateReleaseOrderParamPayload[];
+}
+
 export interface CreateReleaseOrderStepPayload {
   step_code: string;
   step_name?: string;

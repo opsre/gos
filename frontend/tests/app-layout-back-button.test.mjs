@@ -13,24 +13,13 @@ const ownBackButtonViews = [
   '../src/views/release/ReleaseOrderDetailView.vue',
 ]
 
-test('every authenticated route gets one shared back button', () => {
-  assert.match(source, /function goBack\(\)\s*\{\s*router\.back\(\)\s*\}/)
-  assert.match(
-    source,
-    /<div v-if="showLayoutBackButton" class="layout-page-toolbar">[\s\S]*?<a-button class="layout-page-back-btn" aria-label="返回上个页面" @click="goBack">/,
-  )
-  assert.match(source, /<ArrowLeftOutlined\s*\/>/)
-  assert.match(
-    source,
-    /const showLayoutBackButton = computed\(\(\) => !routesWithOwnBackButton\.has\(String\(route\.name \|\| ''\)\)\)/,
-  )
-})
-
-test('shared back button follows the existing page toolbar style', () => {
-  assert.match(source, /\.layout-page-toolbar\s*\{[\s\S]*?justify-content:\s*flex-end;/)
-  assert.match(source, /\.layout-page-back-btn\.ant-btn\s*\{[\s\S]*?height:\s*42px;/)
-  assert.match(source, /\.layout-page-back-btn\.ant-btn\s*\{[\s\S]*?border-radius:\s*16px;/)
-  assert.match(source, /\.layout-page-back-btn\.ant-btn\s*\{[\s\S]*?backdrop-filter:\s*blur\(14px\) saturate\(135%\);/)
+test('authenticated top-level pages do not get a history-dependent global back button', () => {
+  assert.doesNotMatch(source, /class="layout-page-back-btn"/)
+  assert.doesNotMatch(source, /class="layout-page-toolbar"/)
+  assert.doesNotMatch(source, /function goBack\(\)\s*\{\s*router\.back\(\)\s*\}/)
+  assert.doesNotMatch(source, /ArrowLeftOutlined/)
+  assert.doesNotMatch(source, /routesWithOwnBackButton|showLayoutBackButton/)
+  assert.match(source, /\.layout-route-view\s*\{[\s\S]*?min-height:\s*calc\(100vh - 60px\);/)
 })
 
 test('pages with an existing header back button use route history too', () => {

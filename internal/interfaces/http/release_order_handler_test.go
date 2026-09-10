@@ -32,7 +32,7 @@ func TestDeriveReleaseBusinessStatusUsesActiveExecutionPhase(t *testing.T) {
 		want       domain.ReleaseBusinessStatus
 	}{
 		{
-			name:   "jenkins ci waiting in queue",
+			name:   "jenkins ci dispatched before build url resolves",
 			status: domain.OrderStatusDeploying,
 			executions: []domain.ReleaseOrderExecution{{
 				PipelineScope: domain.PipelineScopeCI,
@@ -40,7 +40,7 @@ func TestDeriveReleaseBusinessStatusUsesActiveExecutionPhase(t *testing.T) {
 				Status:        domain.ExecutionStatusRunning,
 				QueueURL:      "https://jenkins.example/queue/item/1/",
 			}},
-			want: domain.ReleaseBusinessStatusQueued,
+			want: domain.ReleaseBusinessStatusBuilding,
 		},
 		{
 			name:   "jenkins ci build started",
@@ -86,6 +86,11 @@ func TestDeriveReleaseBusinessStatusUsesActiveExecutionPhase(t *testing.T) {
 				QueueURL:      "https://jenkins.example/queue/item/7/",
 			}},
 			want: domain.ReleaseBusinessStatusDeploying,
+		},
+		{
+			name:   "queued order without active execution stays queued",
+			status: domain.OrderStatusQueued,
+			want:   domain.ReleaseBusinessStatusQueued,
 		},
 		{
 			name:   "terminal order wins over stale execution",

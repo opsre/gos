@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import {
   AppstoreOutlined,
-  ArrowLeftOutlined,
   ClusterOutlined,
   DatabaseOutlined,
   HomeOutlined,
@@ -26,16 +25,6 @@ const siderCollapsed = ref(false)
 const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1440)
 const hasPendingApprovalTasks = ref(false)
 let pendingApprovalRefreshTimer: ReturnType<typeof window.setInterval> | null = null
-
-const routesWithOwnBackButton = new Set([
-  'application-create',
-  'application-edit',
-  'application-pipeline-bindings',
-  'release-order-create',
-  'release-order-edit',
-  'release-order-detail',
-])
-const showLayoutBackButton = computed(() => !routesWithOwnBackButton.has(String(route.name || '')))
 
 const activeMenuKey = computed(() => {
   if (route.path.startsWith('/system/users')) {
@@ -371,10 +360,6 @@ function toggleSider() {
   siderCollapsed.value = !siderCollapsed.value
 }
 
-function goBack() {
-  router.back()
-}
-
 async function refreshPendingApprovalIndicator() {
   try {
     const response = await listReleaseApprovalWorkbenchTasks({ page: 1, page_size: 1 })
@@ -608,14 +593,6 @@ onUnmounted(() => {
 
     <a-layout>
       <a-layout-content class="app-content">
-        <div v-if="showLayoutBackButton" class="layout-page-toolbar">
-          <a-button class="layout-page-back-btn" aria-label="返回上个页面" @click="goBack">
-            <template #icon>
-              <ArrowLeftOutlined />
-            </template>
-            返回
-          </a-button>
-        </div>
         <router-view v-slot="{ Component, route }">
           <Transition name="layout-route-switch" mode="out-in">
             <component :is="Component" :key="route.fullPath" class="layout-route-view" />
@@ -713,45 +690,8 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.layout-page-toolbar {
-  position: relative;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  min-height: 42px;
-  margin-bottom: 16px;
-}
-
-.layout-page-back-btn.ant-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 42px;
-  padding-inline: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.28) !important;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.42) !important;
-  color: #0f172a !important;
-  font-weight: 600;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.68),
-    0 10px 22px rgba(15, 23, 42, 0.05) !important;
-  backdrop-filter: blur(14px) saturate(135%);
-}
-
-.layout-page-back-btn.ant-btn:hover,
-.layout-page-back-btn.ant-btn:focus,
-.layout-page-back-btn.ant-btn:focus-visible,
-.layout-page-back-btn.ant-btn:active {
-  border-color: rgba(96, 165, 250, 0.34) !important;
-  background: rgba(255, 255, 255, 0.56) !important;
-  color: #0f172a !important;
-}
-
 .layout-route-view {
-  min-height: calc(100vh - 118px);
+  min-height: calc(100vh - 60px);
 }
 
 .layout-route-switch-enter-active,
@@ -1105,6 +1045,10 @@ onUnmounted(() => {
   .app-content {
     padding: 20px;
   }
+
+  .layout-route-view {
+    min-height: calc(100vh - 40px);
+  }
 }
 
 @media (max-width: 768px) {
@@ -1122,12 +1066,8 @@ onUnmounted(() => {
     padding: 16px;
   }
 
-  .layout-page-toolbar {
-    margin-bottom: 12px;
-  }
-
   .layout-route-view {
-    min-height: calc(100vh - 86px);
+    min-height: calc(100vh - 32px);
   }
 }
 

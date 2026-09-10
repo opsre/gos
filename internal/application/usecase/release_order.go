@@ -89,6 +89,11 @@ type CreateReleaseOrderParamInput struct {
 	ValueSource       domain.ValueSource
 }
 
+type CreatePipelineReplayOptions struct {
+	OverrideCDParams bool
+	CDParams         []CreateReleaseOrderParamInput
+}
+
 type CreateReleaseOrderStepInput struct {
 	StepCode string
 	StepName string
@@ -855,6 +860,24 @@ func (uc *ReleaseOrderManager) CreatePipelineReplayByOrder(
 	creatorUserID string,
 	triggeredBy string,
 ) (domain.ReleaseOrder, error) {
+	return uc.CreatePipelineReplayByOrderWithOptions(
+		ctx,
+		sourceOrderID,
+		creatorUserID,
+		triggeredBy,
+		CreatePipelineReplayOptions{},
+	)
+}
+
+// CreatePipelineReplayByOrderWithOptions creates a pipeline replay and can
+// replace user-entered CD parameters while preserving all other snapshots.
+func (uc *ReleaseOrderManager) CreatePipelineReplayByOrderWithOptions(
+	ctx context.Context,
+	sourceOrderID string,
+	creatorUserID string,
+	triggeredBy string,
+	options CreatePipelineReplayOptions,
+) (domain.ReleaseOrder, error) {
 	sourceOrderID = strings.TrimSpace(sourceOrderID)
 	logx.Info("release_order", "pipeline_replay_create_start",
 		logx.F("source_order_id", sourceOrderID),
@@ -911,22 +934,50 @@ func (uc *ReleaseOrderManager) CreatePipelineReplayByOrder(
 			return domain.ReleaseOrder{}, fmt.Errorf("%w: 当前模板的 %s 方式不是管线，无法执行参数重放", ErrInvalidInput, strings.ToUpper(string(binding.PipelineScope)))
 		}
 	}
+	if options.OverrideCDParams {
+		if !hasExecutionForScope(sourceExecutions, domain.PipelineScopeCI) ||
+			!hasExecutionForScope(sourceExecutions, domain.PipelineScopeCD) {
+			return domain.ReleaseOrder{}, fmt.Errorf("%w: 仅 CI+CD 发布单支持重新填写 CD 参数", ErrInvalidInput)
+		}
+		if _, ok := selectRecoveryTemplateBinding(replayBindings, domain.PipelineScopeCD); !ok {
+			return domain.ReleaseOrder{}, fmt.Errorf("%w: 当前重放不包含 CD 执行单元，不能重新填写 CD 参数", ErrInvalidInput)
+		}
+	}
+	cdParamOverrides, err := normalizeReplayCDParamOverrides(templateParams, options)
+	if err != nil {
+		return domain.ReleaseOrder{}, err
+	}
 
 	replayParams := make([]CreateReleaseOrderParamInput, 0, len(sourceParams))
+	matchedCDOverrides := make(map[string]struct{}, len(cdParamOverrides))
 	for _, binding := range replayBindings {
 		scopeParams := filterReleaseOrderParamsByScope(sourceParams, binding.PipelineScope)
 		if err := ensureReplayParamsMatchTemplate(templateParams, scopeParams, binding.PipelineScope); err != nil {
 			return domain.ReleaseOrder{}, err
 		}
 		for _, item := range scopeParams {
-			replayParams = append(replayParams, CreateReleaseOrderParamInput{
+			paramInput := CreateReleaseOrderParamInput{
 				PipelineScope:     binding.PipelineScope,
 				ParamKey:          strings.TrimSpace(item.ParamKey),
 				ExecutorParamName: strings.TrimSpace(item.ExecutorParamName),
 				ParamValue:        strings.TrimSpace(item.ParamValue),
 				ValueSource:       item.ValueSource,
-			})
+			}
+			if binding.PipelineScope == domain.PipelineScopeCD {
+				key := buildReleaseTemplateParamKey(paramInput.PipelineScope, paramInput.ParamKey, paramInput.ExecutorParamName)
+				if override, ok := cdParamOverrides[key]; ok {
+					paramInput = override
+					matchedCDOverrides[key] = struct{}{}
+				}
+			}
+			replayParams = append(replayParams, paramInput)
 		}
+	}
+	for key, override := range cdParamOverrides {
+		if _, ok := matchedCDOverrides[key]; ok {
+			continue
+		}
+		replayParams = append(replayParams, override)
 	}
 	order, err := uc.createRecoveryOrder(
 		ctx,
@@ -956,6 +1007,80 @@ func (uc *ReleaseOrderManager) CreatePipelineReplayByOrder(
 		logx.F("new_order_no", order.OrderNo),
 	)
 	return order, nil
+}
+
+func normalizeReplayCDParamOverrides(
+	templateParams []domain.ReleaseTemplateParam,
+	options CreatePipelineReplayOptions,
+) (map[string]CreateReleaseOrderParamInput, error) {
+	if !options.OverrideCDParams {
+		return nil, nil
+	}
+	allowed := make(map[string]releasedTemplateParamRule)
+	allowedByParamKey := make(map[string]releasedTemplateParamRule)
+	duplicateParamKeys := make(map[string]struct{})
+	for _, item := range templateParams {
+		if item.PipelineScope != domain.PipelineScopeCD ||
+			(item.ValueSource != "" && item.ValueSource != domain.TemplateParamValueSourceReleaseInput) {
+			continue
+		}
+		rule := releasedTemplateParamRule{
+			PipelineScope:     domain.PipelineScopeCD,
+			ParamKey:          strings.ToLower(strings.TrimSpace(item.ParamKey)),
+			ExecutorParamName: strings.TrimSpace(item.ExecutorParamName),
+			Required:          true,
+			ValueSource:       domain.TemplateParamValueSourceReleaseInput,
+		}
+		key := buildReleaseTemplateParamKey(rule.PipelineScope, rule.ParamKey, rule.ExecutorParamName)
+		allowed[key] = rule
+		paramKey := buildReleaseTemplateScopeParamKey(rule.PipelineScope, rule.ParamKey)
+		if _, exists := allowedByParamKey[paramKey]; exists {
+			delete(allowedByParamKey, paramKey)
+			duplicateParamKeys[paramKey] = struct{}{}
+		} else if _, duplicated := duplicateParamKeys[paramKey]; !duplicated {
+			allowedByParamKey[paramKey] = rule
+		}
+	}
+	if len(allowed) == 0 {
+		return nil, fmt.Errorf("%w: 当前模板没有可重新填写的 CD 参数", ErrInvalidInput)
+	}
+	if len(options.CDParams) == 0 {
+		return nil, fmt.Errorf("%w: 请填写需要重新使用的 CD 参数", ErrInvalidInput)
+	}
+
+	overrides := make(map[string]CreateReleaseOrderParamInput, len(options.CDParams))
+	for _, item := range options.CDParams {
+		if item.PipelineScope != "" && item.PipelineScope != domain.PipelineScopeCD {
+			return nil, fmt.Errorf("%w: 重放时仅支持覆盖 CD 参数", ErrInvalidInput)
+		}
+		paramKey := strings.ToLower(strings.TrimSpace(item.ParamKey))
+		executorParamName := strings.TrimSpace(item.ExecutorParamName)
+		rule, key, ok := resolveReleaseTemplateRule(
+			allowed,
+			allowedByParamKey,
+			domain.PipelineScopeCD,
+			paramKey,
+			executorParamName,
+		)
+		if !ok {
+			return nil, fmt.Errorf("%w: 参数 %s 不是模板开放的 CD 发布参数", ErrInvalidInput, executorParamNameOrKey(executorParamName, paramKey))
+		}
+		if _, exists := overrides[key]; exists {
+			return nil, fmt.Errorf("%w: CD 参数 %s 重复提交", ErrInvalidInput, executorParamNameOrKey(rule.ExecutorParamName, rule.ParamKey))
+		}
+		value := strings.TrimSpace(item.ParamValue)
+		if value == "" {
+			return nil, fmt.Errorf("%w: CD 参数 %s 不能为空", ErrInvalidInput, executorParamNameOrKey(rule.ExecutorParamName, rule.ParamKey))
+		}
+		overrides[key] = CreateReleaseOrderParamInput{
+			PipelineScope:     domain.PipelineScopeCD,
+			ParamKey:          rule.ParamKey,
+			ExecutorParamName: rule.ExecutorParamName,
+			ParamValue:        value,
+			ValueSource:       domain.ValueSourceReleaseInput,
+		}
+	}
+	return overrides, nil
 }
 
 // validateCreateTemplateParams 创建业务资源并返回处理结果。

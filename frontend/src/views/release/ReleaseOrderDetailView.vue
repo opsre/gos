@@ -25,6 +25,7 @@ import {
   ref,
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import ReleaseReplayModal from "../../components/release/ReleaseReplayModal.vue";
 import {
   approveReleaseOrder,
   approveReleaseOrderApprovalFlowTask,
@@ -85,6 +86,7 @@ import type {
   ReleaseOrderStep,
   ReleasePipelineScope,
   ReleasePipelineStageStatus,
+  ReplayReleaseOrderPayload,
   ReleaseTriggerType,
 } from "../../types/release";
 import { extractHTTPErrorMessage } from "../../utils/http-error";
@@ -149,6 +151,7 @@ const querying = ref(false);
 const cancelling = ref(false);
 const executing = ref(false);
 const recovering = ref(false);
+const replayModalVisible = ref(false);
 const approvalActing = ref(false);
 const executeLocked = ref(false);
 const currentDispatchAction = ref<ReleaseOrderDispatchAction>("execute");
@@ -362,12 +365,37 @@ function resolveBusinessStatusWithAgentHook(
   }
 }
 
+function resolveBusinessStatusWithActiveExecution(
+  status: ReleaseOrderBusinessStatus,
+): ReleaseOrderBusinessStatus {
+  if (!["building", "queued", "deploying"].includes(status)) {
+    return status;
+  }
+  if (
+    executions.value.some(
+      (item) => item.status === "running" && item.pipeline_scope === "cd",
+    )
+  ) {
+    return "deploying";
+  }
+  if (
+    executions.value.some(
+      (item) => item.status === "running" && item.pipeline_scope === "ci",
+    )
+  ) {
+    return "building";
+  }
+  return status;
+}
+
 const currentBusinessStatus = computed<ReleaseOrderBusinessStatus>(() => {
   if (!order.value) {
     return "pending_execution";
   }
   if (order.value.business_status) {
-    return resolveBusinessStatusWithAgentHook(order.value.business_status);
+    return resolveBusinessStatusWithActiveExecution(
+      resolveBusinessStatusWithAgentHook(order.value.business_status),
+    );
   }
   switch (order.value.status) {
     case "draft":
@@ -846,10 +874,11 @@ const currentConcurrentBatchItem = computed(() => {
 
 const isQueuedInConcurrentBatch = computed(
   () =>
-    currentConcurrentBatchItem.value?.queue_state === "queued" ||
-    Boolean(
-      order.value?.status === "running" && precheck.value?.waiting_for_lock,
-    ),
+    !executions.value.some((item) => item.status === "running") &&
+    (currentConcurrentBatchItem.value?.queue_state === "queued" ||
+      Boolean(
+        order.value?.status === "running" && precheck.value?.waiting_for_lock,
+      )),
 );
 
 const spotlightStep = computed(() => {
@@ -1919,12 +1948,6 @@ function isCiOnlyRecovery(record?: ReleaseOrder | null) {
 
 function replayActionText(record?: ReleaseOrder | null) {
   return "一键重发";
-}
-
-function replayConfirmTitle(record?: ReleaseOrder | null) {
-  return isCiOnlyRecovery(record)
-    ? "确认创建 CI 标准重放单吗？"
-    : "确认创建标准重放单吗？";
 }
 
 function replaySuccessText(record: ReleaseOrder, orderNo: string) {
@@ -3552,14 +3575,28 @@ async function handleRollback() {
   }
 }
 
-async function handleReplay() {
+function openReplayModal() {
+  if (!order.value || !canReplay.value) {
+    return;
+  }
+  replayModalVisible.value = true;
+}
+
+function closeReplayModal() {
+  if (!recovering.value) {
+    replayModalVisible.value = false;
+  }
+}
+
+async function handleReplay(payload: ReplayReleaseOrderPayload) {
   if (!order.value || !canReplay.value) {
     return;
   }
   recovering.value = true;
   try {
-    const response = await replayReleaseOrderByID(order.value.id);
+    const response = await replayReleaseOrderByID(order.value.id, payload);
     message.success(replaySuccessText(order.value, response.data.order_no));
+    replayModalVisible.value = false;
     void router.push({
       path: `/releases/${response.data.id}`,
       query: buildReleaseListQuery(),
@@ -3763,25 +3800,15 @@ onBeforeUnmount(() => {
             一键重发
           </a-button>
         </a-popconfirm>
-        <a-popconfirm
+        <a-button
           v-else-if="canTriggerStandardReplay"
           :disabled="!canReplay"
-          :title="replayConfirmTitle(order)"
-          :ok-text="isCiOnlyRecovery(order) ? '确认重发' : '确认重放'"
-          cancel-text="取消"
-          @confirm="handleReplay"
+          class="application-toolbar-action-btn"
+          :loading="recovering"
+          @click="openReplayModal"
         >
-          <template #icon>
-            <ExclamationCircleOutlined />
-          </template>
-          <a-button
-            class="application-toolbar-action-btn"
-            :disabled="!canReplay"
-            :loading="recovering"
-          >
-            {{ replayActionText(order) }}
-          </a-button>
-        </a-popconfirm>
+          {{ replayActionText(order) }}
+        </a-button>
         <a-popconfirm
           v-if="canCancel"
           title="确认取消当前发布单吗？"
@@ -5399,6 +5426,14 @@ onBeforeUnmount(() => {
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <ReleaseReplayModal
+      :open="replayModalVisible"
+      :order="order"
+      :confirm-loading="recovering"
+      @cancel="closeReplayModal"
+      @confirm="handleReplay"
+    />
   </div>
 </template>
 

@@ -38,6 +38,7 @@ import type {
   ReleaseOrderStatsResponse,
   ReleaseOrderPrecheckResponse,
   ReleaseOrderRealtimeSnapshotResponse,
+  ReplayReleaseOrderPayload,
   ReleaseOrderPipelineStageListResponse,
   ReleaseOrderPipelineStageLogResponse,
   ReleaseOrderPipelineStageDiagnosisFollowUpPayload,
@@ -237,9 +238,11 @@ export async function createApplicationRollbackOrder(
 
 export async function replayReleaseOrderByID(
   id: string,
+  payload?: ReplayReleaseOrderPayload,
 ): Promise<ReleaseOrderDataResponse> {
   const response = await http.post<ReleaseOrderDataResponse>(
     `/release-orders/${encodeURIComponent(String(id || "").trim())}/replay`,
+    payload,
   );
   return response.data;
 }

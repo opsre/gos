@@ -26,6 +26,7 @@ import { GridComponent, LegendComponent, TooltipComponent } from "echarts/compon
 import { CanvasRenderer } from "echarts/renderers";
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import ReleaseReplayModal from "../../components/release/ReleaseReplayModal.vue";
 import { listApplications } from "../../api/application";
 import { getReleaseSettings } from "../../api/system";
 import {
@@ -64,6 +65,7 @@ import type {
   ReleaseOrderPrecheck,
   ReleaseOrderStatus,
   ReleaseOrderDispatchAction,
+  ReplayReleaseOrderPayload,
   ReleaseTriggerType,
 } from "../../types/release";
 import { extractHTTPErrorMessage } from "../../utils/http-error";
@@ -144,6 +146,8 @@ const deletingID = ref("");
 const confirmingLiveID = ref("");
 const executingID = ref("");
 const recoveringID = ref("");
+const replayModalVisible = ref(false);
+const replayModalOrder = ref<ReleaseOrder | null>(null);
 const batchExecuting = ref(false);
 const batchDeleting = ref(false);
 const dataSource = ref<ReleaseOrder[]>([]);
@@ -164,6 +168,8 @@ const overviewStatusStats = ref({
 
 const overviewChartRef = ref<HTMLElement | null>(null);
 let overviewChart: ECharts | null = null;
+const durationNow = ref(Date.now());
+let durationTimer: number | undefined;
 const realtimeProgressMap = reactive<Record<string, ReleaseRealtimeProgress>>({});
 const realtimeProgressMaxPercent = reactive<Record<string, number>>({});
 const realtimeProgressInflight = new Set<string>();
@@ -235,6 +241,7 @@ const activeQuery = reactive({
 
 const initialColumns: TableColumnsType<ReleaseOrder> = [
   { title: "发布单号", dataIndex: "order_no", key: "order_no", width: 190 },
+  { title: "耗时", key: "duration", width: 115 },
   { title: "状态", key: "status", width: 140 },
   { title: "发布名称", dataIndex: "release_name", key: "release_name", width: 100 },
   { title: "发起人", dataIndex: "triggered_by", key: "triggered_by", width: 100 },
@@ -525,6 +532,71 @@ function formatTime(value: string | null) {
     return "-";
   }
   return dayjs(value).format("YYYY-MM-DD HH:mm:ss");
+}
+
+function releaseDurationSeconds(record: ReleaseOrder) {
+  if (!record.started_at) {
+    return null;
+  }
+  const startedAt = dayjs(record.started_at);
+  const finishedAt = record.finished_at
+    ? dayjs(record.finished_at)
+    : dayjs(durationNow.value);
+  if (!startedAt.isValid() || !finishedAt.isValid()) {
+    return null;
+  }
+  return Math.max(
+    0,
+    Math.floor(finishedAt.diff(startedAt, "millisecond") / 1000),
+  );
+}
+
+function formatReleaseDuration(record: ReleaseOrder) {
+  const totalSeconds = releaseDurationSeconds(record);
+  if (totalSeconds === null) {
+    return "—";
+  }
+  if (totalSeconds < 60) {
+    return `${totalSeconds}秒`;
+  }
+  if (totalSeconds < 60 * 60) {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}分${seconds}秒`;
+  }
+  if (totalSeconds < 24 * 60 * 60) {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    return `${hours}时${minutes}分`;
+  }
+  const days = Math.floor(totalSeconds / (24 * 3600));
+  const hours = Math.floor((totalSeconds % (24 * 3600)) / 3600);
+  return `${days}天${hours}时`;
+}
+
+function releaseDurationTitle(record: ReleaseOrder) {
+  if (!record.started_at) {
+    return "发布尚未开始";
+  }
+  const endText = record.finished_at
+    ? formatTime(record.finished_at)
+    : "仍在执行";
+  return `开始：${formatTime(record.started_at)} · 结束：${endText}`;
+}
+
+function startDurationTimer() {
+  stopDurationTimer();
+  durationNow.value = Date.now();
+  durationTimer = window.setInterval(() => {
+    durationNow.value = Date.now();
+  }, 1000);
+}
+
+function stopDurationTimer() {
+  if (durationTimer !== undefined) {
+    window.clearInterval(durationTimer);
+    durationTimer = undefined;
+  }
 }
 
 async function copyReleaseOrderNo(orderNo: string) {
@@ -1710,12 +1782,6 @@ function replayActionText(record: ReleaseOrder) {
   return "一键重发";
 }
 
-function replayConfirmTitle(record: ReleaseOrder) {
-  return isCiOnlyRecovery(record)
-    ? "确认创建 CI 标准重放单吗？"
-    : "确认创建标准重放单吗？";
-}
-
 function replaySuccessText(record: ReleaseOrder, orderNo: string) {
   return isCiOnlyRecovery(record)
     ? `已创建 CI 标准重放单：${orderNo}`
@@ -2507,14 +2573,33 @@ async function handleRollback(record: ReleaseOrder) {
   }
 }
 
-async function handleReplay(record: ReleaseOrder) {
+function openReplayModal(record: ReleaseOrder) {
   if (!canReplay(record)) {
+    return;
+  }
+  replayModalOrder.value = record;
+  replayModalVisible.value = true;
+}
+
+function closeReplayModal() {
+  if (recoveringID.value) {
+    return;
+  }
+  replayModalVisible.value = false;
+  replayModalOrder.value = null;
+}
+
+async function handleReplay(payload: ReplayReleaseOrderPayload) {
+  const record = replayModalOrder.value;
+  if (!record || !canReplay(record)) {
     return;
   }
   recoveringID.value = record.id;
   try {
-    const response = await replayReleaseOrderByID(record.id);
+    const response = await replayReleaseOrderByID(record.id, payload);
     message.success(replaySuccessText(record, response.data.order_no));
+    replayModalVisible.value = false;
+    replayModalOrder.value = null;
     await loadOverviewStats({ force: true, silent: true });
     void router.push({
       path: `/releases/${response.data.id}`,
@@ -2820,11 +2905,13 @@ onMounted(async () => {
   await loadOverviewStats({ force: true, silent: true });
   await loadReleaseOrders();
   startListRefreshTimer();
+  startDurationTimer();
   window.addEventListener("resize", handleOverviewChartResize);
 });
 
 onBeforeUnmount(() => {
   stopRealtimeProgressTimer();
+  stopDurationTimer();
   window.removeEventListener("resize", handleOverviewChartResize);
   disposeOverviewChart();
 });
@@ -3172,7 +3259,7 @@ function handleOverviewChartResize() {
         :data-source="dataSource"
         :loading="loading"
         :pagination="false"
-        :scroll="{ x: 1060 }"
+        :scroll="{ x: 1175 }"
         @expand="handleApprovalFlowExpand"
       >
         <template #expandedRowRender="{ record }">
@@ -3248,6 +3335,20 @@ function handleOverviewChartResize() {
                 </div>
                 <span class="status-progress-percent">{{ statusPercent(record) }}%</span>
               </div>
+            </div>
+          </template>
+          <template v-else-if="column.key === 'duration'">
+            <div
+              class="release-duration-cell"
+              :class="{
+                'release-duration-cell--running': Boolean(
+                  record.started_at && !record.finished_at,
+                ),
+              }"
+              :title="releaseDurationTitle(record)"
+            >
+              <ClockCircleFilled v-if="record.started_at" aria-hidden="true" />
+              <span>{{ formatReleaseDuration(record) }}</span>
             </div>
           </template>
           <template v-else-if="column.key === 'started_at'">
@@ -3402,21 +3503,14 @@ function handleOverviewChartResize() {
                         </span>
                       </a-popconfirm>
                     </a-menu-item>
-                    <a-menu-item v-else-if="canTriggerStandardReplay(record)" :disabled="!canReplay(record)">
-                      <a-popconfirm
-                        :disabled="!canReplay(record)"
-                        :title="replayConfirmTitle(record)"
-                        :ok-text="isCiOnlyRecovery(record) ? '确认重发' : '确认重放'"
-                        cancel-text="取消"
-                        @confirm="handleReplay(record)"
-                      >
-                        <template #icon>
-                          <ExclamationCircleOutlined />
-                        </template>
-                        <span class="release-row-menu-text">
-                          {{ recoveringID === record.id ? "重发中" : replayActionText(record) }}
-                        </span>
-                      </a-popconfirm>
+                    <a-menu-item
+                      v-else-if="canTriggerStandardReplay(record)"
+                      :disabled="!canReplay(record)"
+                      @click="openReplayModal(record)"
+                    >
+                      <span class="release-row-menu-text">
+                        {{ recoveringID === record.id ? "重发中" : replayActionText(record) }}
+                      </span>
                     </a-menu-item>
                     <a-menu-item v-if="canCancel(record)">
                       <a-popconfirm
@@ -3887,6 +3981,14 @@ function handleOverviewChartResize() {
         />
       </template>
     </a-modal>
+
+    <ReleaseReplayModal
+      :open="replayModalVisible"
+      :order="replayModalOrder"
+      :confirm-loading="Boolean(recoveringID)"
+      @cancel="closeReplayModal"
+      @confirm="handleReplay"
+    />
   </div>
 </template>
 
@@ -4848,6 +4950,38 @@ function handleOverviewChartResize() {
   align-items: flex-start;
   gap: 6px;
   min-width: 0;
+}
+
+.release-duration-cell {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.release-duration-cell :deep(.anticon) {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.release-duration-cell--running {
+  border-color: rgba(59, 130, 246, 0.25);
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.release-duration-cell--running :deep(.anticon) {
+  color: #2563eb;
 }
 
 .status-progress-track-wrap {
