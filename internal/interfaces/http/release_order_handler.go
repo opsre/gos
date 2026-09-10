@@ -3299,14 +3299,19 @@ func deriveRunningExecutionBusinessStatus(
 		if execution.Status != domain.ExecutionStatusRunning {
 			continue
 		}
+		// Once the CD execution has been dispatched, the release has entered the
+		// deployment phase. Jenkins may briefly expose only a queue URL before the
+		// build URL is resolved, but that is not the release/concurrency queue shown
+		// to users.
+		if execution.PipelineScope == domain.PipelineScopeCD {
+			return domain.ReleaseBusinessStatusDeploying, true
+		}
 		if strings.EqualFold(strings.TrimSpace(execution.Provider), string(pipelinedomain.ProviderJenkins)) &&
 			strings.TrimSpace(execution.BuildURL) == "" {
 			hasJenkinsQueueItem = true
 			continue
 		}
 		switch execution.PipelineScope {
-		case domain.PipelineScopeCD:
-			return domain.ReleaseBusinessStatusDeploying, true
 		case domain.PipelineScopeCI:
 			hasRunningCI = true
 		}

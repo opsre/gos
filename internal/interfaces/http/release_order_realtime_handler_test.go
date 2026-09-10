@@ -59,6 +59,13 @@ func TestEnrichRealtimeReleaseOrderPreservesExecutionPhaseOverBatchProjection(t 
 	if got.BusinessStatus != domain.ReleaseBusinessStatusQueued {
 		t.Fatalf("queued Jenkins execution status = %q, want %q", got.BusinessStatus, domain.ReleaseBusinessStatusQueued)
 	}
+
+	executions[0].PipelineScope = domain.PipelineScopeCD
+	progress.Items[0].QueueState = usecase.ReleaseOrderConcurrentBatchQueueStateQueued
+	got = enrichRealtimeReleaseOrder(order, executions, progress)
+	if got.BusinessStatus != domain.ReleaseBusinessStatusDeploying {
+		t.Fatalf("dispatched CD execution status = %q, want %q", got.BusinessStatus, domain.ReleaseBusinessStatusDeploying)
+	}
 }
 
 type dynamicRealtimePermissionAuthorizer struct {

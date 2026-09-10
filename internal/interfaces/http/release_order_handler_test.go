@@ -77,6 +77,17 @@ func TestDeriveReleaseBusinessStatusUsesActiveExecutionPhase(t *testing.T) {
 			want: domain.ReleaseBusinessStatusDeploying,
 		},
 		{
+			name:   "jenkins cd dispatched before build url resolves",
+			status: domain.OrderStatusDeploying,
+			executions: []domain.ReleaseOrderExecution{{
+				PipelineScope: domain.PipelineScopeCD,
+				Provider:      "jenkins",
+				Status:        domain.ExecutionStatusRunning,
+				QueueURL:      "https://jenkins.example/queue/item/7/",
+			}},
+			want: domain.ReleaseBusinessStatusDeploying,
+		},
+		{
 			name:   "terminal order wins over stale execution",
 			status: domain.OrderStatusDeploySuccess,
 			executions: []domain.ReleaseOrderExecution{{
