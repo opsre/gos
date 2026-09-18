@@ -1,367 +1,130 @@
-<div align="center">
 
-<h1 align="center">GOS Release · 发布治理平台</h1>
 
-<p><strong>一张发布单，串起交付全链路。</strong></p>
+# GOS Release · 发布治理平台
 
-<p>
-  <img alt="Go 1.25+" src="https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white" />
-  <img alt="Vue 3.5+" src="https://img.shields.io/badge/Vue-3.5+-42B883?logo=vue.js&logoColor=white" />
-  <img alt="Vite 7.x" src="https://img.shields.io/badge/Vite-7.x-646CFF?logo=vite&logoColor=white" />
-  <img alt="Gin API" src="https://img.shields.io/badge/Gin-API-00ACD7" />
-  <img alt="MySQL / SQLite" src="https://img.shields.io/badge/MySQL%20%2F%20SQLite-supported-4479A1" />
-  <img alt="Docker Ready" src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white" />
-  <a href="https://hub.docker.com/r/yl10115658529/gos-release"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/yl10115658529/gos-release?logo=docker&amp;label=Docker%20Pulls&amp;color=2496ED&amp;cacheSeconds=300" /></a>
-</p>
+**一张发布单，串起交付全链路。**
 
-<p>
-  <img alt="Jenkins Sync" src="https://img.shields.io/badge/Jenkins-sync-D24939?logo=jenkins&logoColor=white" />
-  <img alt="ArgoCD GitOps" src="https://img.shields.io/badge/ArgoCD-GitOps-EF7B4D?logo=argo&logoColor=white" />
-  <img alt="GitOps Repos" src="https://img.shields.io/badge/GitOps-repos-F05032?logo=git&logoColor=white" />
-  <img alt="GOS Agent" src="https://img.shields.io/badge/GOS%20Agent-active-111827?logo=gnubash&logoColor=white" />
-  <img alt="Approval Workflow" src="https://img.shields.io/badge/Approval-workflow-2563EB?logo=checkmarx&logoColor=white" />
-  <img alt="Pipeline Rules" src="https://img.shields.io/badge/Pipeline-rules-334155" />
-  <img alt="Artifact Center" src="https://img.shields.io/badge/Artifact-center-0EA5E9" />
-  <img alt="AI Diagnosis" src="https://img.shields.io/badge/AI-diagnosis-7C3AED" />
-  <img alt="Feishu WeCom DingTalk" src="https://img.shields.io/badge/Notify-Feishu%20%2F%20WeCom%20%2F%20DingTalk-1677FF?logo=dingtalk&logoColor=white" />
-</p>
+GOS 不替代 Jenkins、ArgoCD 或 Agent，而是它们上层的发布治理层：把散落在各系统里的发布执行，收口成可审批、可追踪、可审计的发布单。
 
-<h2>🌐 在线体验</h2>
+![Go 1.25+](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)![Vue 3](https://img.shields.io/badge/Vue-3-42B883?logo=vue.js&logoColor=white)![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)![MySQL / SQLite](https://img.shields.io/badge/MySQL%20%2F%20SQLite-supported-4479A1)![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)![Docker Pulls](https://img.shields.io/docker/pulls/yl10115658529/gos-release?logo=docker&label=Docker%20Pulls&color=2496ED&cacheSeconds=300)![Jenkins](https://img.shields.io/badge/Jenkins-sync-D24939?logo=jenkins&logoColor=white)![ArgoCD](https://img.shields.io/badge/ArgoCD-GitOps-EF7B4D?logo=argo&logoColor=white)![GOS Agent](https://img.shields.io/badge/GOS%20Agent-active-111827)![License MIT](https://img.shields.io/badge/License-MIT-3DA639)
 
-<p>
-  <a href="http://36.151.150.63:5174/"><strong>立即访问 GOS Release 体验环境 →</strong></a>
-</p>
+### 🌐 在线体验
 
-<p>
-  登录账号：<code>admin</code>　登录密码：<code>admin123</code>
-</p>
+**[http://36.151.150.63:5174](http://36.151.150.63:5174/)**　账号 `admin`　密码 `admin123`
 
-<p><sub>体验环境数据可能定期清理，请勿录入生产凭据或其他敏感信息。</sub></p>
+体验环境数据会定期清理，请勿录入生产凭据或敏感信息。
 
-<p>GOS 不是 Jenkins、ArgoCD 或 Agent 的替代品，而是它们上层的发布治理层。</p>
 
-<p>GOS 只做一件事：把分散执行收口成可治理的发布流程。</p>
 
-<p><strong>第一次使用？请从 <a href="docs/USER_GUIDE.md">GOS Release 用户操作手册</a> 开始。</strong></p>
+![GOS Release 发布单工作台](images/release-order-dashboard.png)
 
-</div>
+## 核心能力
 
----
+- **发布单收口**：标准发布、极速发布、仅构建、分段部署、回滚、重放都从发布单发起，不用在 Jenkins、ArgoCD、Git 仓库、Agent 之间来回切换。
+- **模板治理**：发布模板固化执行单元、参数映射、审批规则、Hook 和通知策略，发布前统一预检。
+- **管线规范**：对 Jenkins Pipeline 只约束平台必须识别的边界（制品地址输出、OSS 上传命令、内置参数），不接管团队业务步骤。
+- **审批流**：可视化画布编排整单 / CI 前 / CD 前审批，支持环境匹配、或签会签、主管审批与审批留痕。
+- **实时追踪**：SSE 推送执行单元、阶段日志、Hook 与审批进度，失败阶段可一键 AI 诊断。
+- **制品沉淀**：CI 产物统一归档到制品中心，`gos_artifact_url` 可沿用至 CD、GitOps 和 Hook。
+- **权限与审计**：应用、环境、模板、制品库、通知分层授权，参数、执行、制品和通知结果全程留痕。
 
-## 🎯 为什么选择 GOS？
+## Docker 部署
 
-内部发布平台真正复杂的地方，不是单个执行器，而是发布链路被拆散在太多系统里。
+单容器同时提供前端页面和后端 API；MySQL、Jenkins、ArgoCD、GitOps 建议继续使用外部已有服务。
 
-应用负责人、项目归属、发布环境、Jenkins 参数、管线脚本规范、GitOps 仓库、ArgoCD 实例、Agent 脚本、制品产物、通知 Hook、审批人和执行权限分散维护。研发需要理解大量底层细节，平台也很难回答一次发布到底用了什么参数、跑了哪条管线、产出了哪些制品、失败在哪里、通知是否送达。
+### 1. 拉取镜像
 
-GOS 将这些链路收口成发布单：
+```bash
+docker pull yl10115658529/gos-release:v1.3.3
+```
 
-- 统一入口：从发布单发起标准发布、极速发布、仅构建、分段部署、回滚和重放，减少 Jenkins / ArgoCD / Git 仓库 / Agent 任务之间的切换。
-- 模板治理：用发布模板固化 CI/CD 执行单元、参数映射、审批规则、Hook 和通知策略，避免每次发布临时拼流程。
-- 管线约束：通过管线规范对 Jenkins Pipeline 做底层、有边界的约束，保证制品地址输出、OSS 上传命令、内置参数映射等关键节点可被平台识别。
-- 参数收敛：用标准字库和高级参数展示规则隐藏底层映射细节，只让申请人填写真正需要输入的字段。
-- 执行追踪：在发布单详情里查看预检、审批、构建、部署、Hook、阶段日志、制品信息和 AI 诊断结论。
-- 制品沉淀：用制品中心聚合发布过程产物、校验信息、记录时间和下载入口，避免制品链接散落在流水线日志里。
-- 诊断闭环：对 Jenkins 阶段日志做 AI 诊断，提取错误上下文、可能原因、日志证据和处理建议。
-- 通知闭环：把飞书、企业微信（企微）、钉钉通知源、Markdown 模板和通知 Hook 配成平台能力。
-- 权限与审计：统一控制应用、环境、组件、模板、制品库、通知和系统管理入口，并沉淀发布参数、执行单元、阶段、Agent 任务、制品元信息、AI 诊断记录和通知结果。
+本地构建改为 `docker build -t gos-release:latest .`。
 
----
+### 2. 启动（MySQL）
 
-## 🧭 标准化
+```bash
+docker run -d --name gos-release \
+  -p 5174:5174 -p 8081:8081 \
+  -e GOS_DB_DRIVER=mysql \
+  -e GOS_MYSQL_DSN='gos:password@tcp(192.168.1.10:3306)/gos_release?charset=utf8mb4&parseTime=true&loc=Local' \
+  -e GOS_AUTH_ADMIN_USERNAME=admin \
+  -e GOS_AUTH_ADMIN_PASSWORD='your-admin-password' \
+  -e GOS_SECURITY_ENCRYPTION_KEY='replace-with-a-strong-key' \
+  -e GOS_JENKINS_ENABLED=true \
+  -e GOS_JENKINS_BASE_URL='http://jenkins.example.com/' \
+  -e GOS_JENKINS_USERNAME=admin \
+  -e GOS_JENKINS_API_TOKEN='your-token' \
+  yl10115658529/gos-release:v1.3.3
+```
 
-GOS 的标准化不是要求所有团队使用同一条流水线，而是把发布过程中必须统一的边界先定下来。
+访问 `http://127.0.0.1:5174/login`；健康检查 `curl -i http://127.0.0.1:5174/healthz`，正常返回 `200`。
 
-- 标准入口：所有发布、回滚、重放都从发布单进入。
-- 标准对象：项目、应用、环境、执行器、模板、制品库、发布单和通知源统一建模。
-- 标准字段：应用、环境、分支、镜像、Helm values、制品地址等关键参数统一命名和来源。
-- 标准参数：基础字段、固定值、CI 沿用、CD 沿用、GitOps 替换和 Hook 变量按同一套规则流转。
-- 标准模板：把 CI/CD、审批、Hook、通知、参数规则和管线规范前置到模板里。
-- 标准管线：对制品地址输出、OSS 上传命令、内置参数等关键边界做规则校验，不侵入团队自定义流水线逻辑。
-- 标准制品：发布过程产出的包、校验信息、对象路径和下载入口统一沉淀到制品中心。
-- 标准诊断：失败阶段可以回到同一个发布上下文中查看日志、AI 诊断、可能原因和建议动作。
-- 标准流程：预检、审批、管线规范校验、执行、制品归档、Hook、通知、AI 诊断、回滚和审计按同一套生命周期流转。
-- 标准留痕：每一次参数、操作、执行单元、阶段日志、制品元信息、AI 诊断和通知结果都能回到发布单追踪。
+`GOS_MYSQL_DSN`、`GOS_AUTH_ADMIN_PASSWORD`、`GOS_SECURITY_ENCRYPTION_KEY` 三项必填。前端默认走 5174 同源反代后端，`8081` 只在需要直接调试接口时暴露。
 
-执行器可以不同，网络环境可以不同，部署方式也可以不同；但申请人看到的是同一套发布语言，平台沉淀的是同一套治理数据。
+### 3. 启动（SQLite，本地试跑）
 
----
+```bash
+docker run -d --name gos-release \
+  -p 5174:5174 \
+  -v gos_release_data:/app/data \
+  -e GOS_DB_DRIVER=sqlite \
+  -e GOS_SQLITE_PATH=/app/data/demo.db \
+  -e GOS_AUTH_ADMIN_PASSWORD='admin123' \
+  -e GOS_SECURITY_ENCRYPTION_KEY='gos-release-local-key' \
+  yl10115658529/gos-release:v1.3.3
+```
 
-## ⚙️ 当前已落地能力
+### 4. Docker Compose（含 MySQL）
 
-### 🧾 发布单工作台
+```bash
+cp .env.example .env   # 填写 GOS_MYSQL_PASSWORD、GOS_MYSQL_ROOT_PASSWORD、GOS_AUTH_ADMIN_PASSWORD、GOS_SECURITY_ENCRYPTION_KEY
+docker compose up -d --build
+```
 
-围绕发布单组织完整发布生命周期。
+前端 `5174`，后端 `8081`。生产使用 `docker-compose.prod.yml`，MySQL 不对外暴露端口。
 
-- 发布单创建、编辑、删除、执行、取消。
-- 支持标准发布、极速发布、仅构建、分段部署、回滚和重放。
-- 支持批量新建发布单：创建清单最多暂存 50 项，一次生成多张相互独立的发布单，不自动发起审批或执行。
-- 创建清单中存在待创建项时，顶部“批量创建”入口自动锁定，只允许通过“创建全部”统一提交，避免重复入单。
-- 批量执行、批量删除、并发批次进度和执行状态追踪；列表选择控件独立占位，不遮挡发布单号。
-- 发布前预检覆盖发布单状态、执行单元、参数完整性、并发锁冲突和模板合规性。
-- 同应用、同环境启用并发锁后，冲突发布单进入队列；当前单结束后自动提升并执行下一张已放行发布单，避免队列全部卡住。
-- 应用维度回滚能力检测、当前上线状态确认与历史状态追踪。
-- 发布详情聚合执行单元、实时日志、阶段日志、审批进度、Hook 进度、制品信息和 AI 诊断结果。
-- 发布单聚合快照通过 SSE 实时刷新，并保留轮询兜底；Agent 任务、阶段状态和列表进度不需要手动刷新页面。
-
-### ✅ 审批与发布模板
-
-把发布规则前置到模板，而不是让每次发布临时决定。
-
-- 发布模板 CRUD，按应用绑定可用发布流程。
-- 应用级审批流采用可视化画布编排，支持开始、整单审批、CI 前审批、CD 前审批、待部署和结束节点。
-- 审批节点支持按环境匹配或自动跳过，支持指定审批人、直属主管，以及或签、会签两种通过方式。
-- 审批流绑定到应用；应用调整绑定后，尚未进入执行的历史发布单会在发起时同步最新审批流。
-- 创建发布单只保存业务参数，不提前进入审批；用户点击发布、构建或部署后才按对应阶段发起流程。
-- 审批通过后自动推进到下一审批节点、下一执行阶段或直接触发已放行任务，不需要再次手动点击发布。
-- 审批备注与审批结果一并持久化，并展示在审批工作台、发布单列表展开节点和发布单详情中。
-- 等待审批、等待部署等未执行节点使用静态状态图标，只有真正执行中的节点展示加载动画。
-- Agent 任务若位于人工 CD 审批之前，会先完成受控任务，再进入对应人工审批节点。
-- CI / CD 执行器绑定，支持 Jenkins、ArgoCD / GitOps 和 Agent 任务组合。
-- CI / CD 参数映射、固定值、基础字段、CI 参数沿用和高级参数展示。
-- 隐藏基础字段映射和 CD 沿用 CI 的参数，降低发布申请页面复杂度。
-- 审批工作台聚合待我审批、我已处理任务，支持通过、拒绝和审批备注留痕。
-- 模板 Hook 配置，支持 Agent 任务、通知 Hook 和发布后补充动作。
-- 发布创建前校验模板执行单元、参数、管线规范和权限边界。
-
-### 🧱 Jenkins 管理
-
-让 Jenkins 专注执行，GOS 负责治理入口。
-
-- Jenkins 管线同步、列表、详情和原始链接跳转。
-- 执行器参数同步，并映射到平台标准字段。
-- 原始脚本 / Config XML 查看，支持原始 Jenkins Pipeline 创建、编辑、删除。
-- 单条管线校验和批量管线扫描，帮助提前发现执行器不可用或脚本不合规。
-- Jenkins 构建日志、阶段状态、阶段日志回写发布单。
-- 与管线规范、制品中心、AI 诊断联动，补齐从构建到排障的发布链路。
-
-### 📏 管线规范
-
-在不接管团队 Pipeline 业务逻辑的前提下，对发布链路必须可治理的底层边界做规则约束。
+### 5. 常用环境变量
 
-- 规则管理支持内置规则和自定义规则，可按制品、安全、凭据、命名等分类维护。
-- 支持 `info`、`warning`、`error` 等级，规则可启停并记录更新时间。
-- 扫描 Jenkins Pipeline 脚本，输出违规行、匹配内容、处理建议和扫描状态。
-- 内置 `GOS_ARTIFACT_URL` 制品地址输出规范，确保 CI 产物能被发布单、CD、GitOps 和 Hook 继续沿用。
-- 支持 OSS 上传命令格式、内置字段参数映射等制品链路规范。
-- 发布模板可按 CI / CD 绑定管线规范校验范围，违反阻断级规则时阻止创建发布单。
-- 约束重点放在平台必须识别的边界上，保留团队对 Pipeline 内部业务步骤的自主权。
 
-### 🧠 AI 诊断
+| 变量                                                               | 说明                                  |
+| ---------------------------------------------------------------- | ----------------------------------- |
+| `GOS_DB_DRIVER`                                                  | `mysql` 或 `sqlite`，默认 `mysql`       |
+| `GOS_MYSQL_DSN`                                                  | MySQL 连接串，`mysql` 模式必填              |
+| `GOS_SQLITE_PATH`                                                | SQLite 文件路径，默认 `/app/data/demo.db`  |
+| `GOS_AUTH_ADMIN_USERNAME` / `_PASSWORD`                          | 首次初始化管理员账号与密码                       |
+| `GOS_SECURITY_ENCRYPTION_KEY`                                    | 平台加密密钥，用于凭据加密，必填                    |
+| `GOS_JENKINS_ENABLED` / `_BASE_URL` / `_USERNAME` / `_API_TOKEN` | Jenkins 接入配置                        |
+| `GOS_JENKINS_AUTO_SYNC_ENABLED` / `_INTERVAL_SEC`                | 管线自动同步，默认开启、300 秒，启动即同步一次           |
+| `GOS_RELEASE_ENV_OPTIONS`                                        | 发布环境列表，默认 `dev,test,prod`           |
+| `GOS_RELEASE_CONCURRENCY_ENABLED` / `_LOCK_SCOPE`                | 发布并发锁，默认开启，锁范围 `application_env`    |
+| `GOS_GITOPS_PATH_MAPS`                                           | GitOps 路径映射 `宿主路径=容器内路径`，多条用 `;` 分隔 |
 
-把 Jenkins 阶段日志转成结构化排障结果，降低失败定位成本。
 
-- 系统设置维护 OpenAI Compatible 模型，支持测试连接、启停和设置诊断模型。
-- 发布单详情的 Jenkins 阶段节点展示 AI 诊断入口，失败阶段可快速进入排障。
-- 后端拉取阶段日志，完成脱敏、截断、错误上下文提取后调用诊断模型。
-- 诊断抽屉展示分析结论、可能原因、日志证据、建议动作和人工复核提示。
-- 支持重新诊断、诊断缓存、历史结果查看和快捷追问。
-- 诊断记录保存模型、日志 hash、创建人和时间，便于审计追踪。
+容器启动时由 `docker/entrypoint.sh` 生成 `/app/configs/config.runtime.json`。
 
-### 🚢 ArgoCD / GitOps 管理
+## 源码开发
 
-面向声明式部署场景，串起环境、仓库、应用和集群。
+环境要求：Go `1.25+`、Node.js `20+`、MySQL `8+` 或 SQLite。
 
-- 多 ArgoCD 实例管理、连通性检查和环境绑定。
-- ArgoCD Application 列表、详情、原始链接和手动 Sync。
-- GitOps 实例管理、仓库状态检查和路径映射。
-- GitOps 模板字段、字段候选值、values 候选值和替换规则。
-- Helm / Kustomize 扫描路径配置。
-- 发布时解析链路：`env -> ArgoCD -> GitOps -> Git 仓库`。
-- 可沿用 CI 产出的制品地址、镜像版本和标准参数，保持构建到部署参数一致。
+```bash
+go run ./cmd/server -config configs/config.local.json
 
-### 🛰️ Agent 与受控任务
+cd frontend
+npm install
+VITE_API_BASE_URL=http://127.0.0.1:8081 npm run dev
+```
 
-用于生产孤岛、网络隔离或平台无法直连目标环境的场景。
+## 技术栈
 
-- Agent 注册、心跳、在线 / 离线 / 忙碌状态。
-- Agent 启用、禁用、维护模式、安装配置生成与 Token 重置。
-- 临时任务、常驻任务、指定 Agent 分发。
-- Shell 任务、脚本文件任务、文件分发任务。
-- 脚本管理：脚本模板、Shell 类型、脚本文本、脚本路径。
-- 任务执行、停止、恢复、删除、日志和结果回传。
-- 发布模板可把 Agent 任务配置为 Hook，发布详情中展示 Hook / Agent 任务进度和日志。
 
-### 📦 制品中心
+| 层级  | 技术                                                 |
+| --- | -------------------------------------------------- |
+| 后端  | Go 1.25、Gin、Swagger                                |
+| 存储  | MySQL、SQLite                                       |
+| 前端  | Vue 3、Vite、TypeScript、Pinia、Ant Design Vue、ECharts |
+| 执行器 | Jenkins、ArgoCD / GitOps、GOS Agent                  |
+| 部署  | Docker 单容器、源码运行                                    |
 
-把发布过程产出的文件纳入统一目录，避免制品链接散落在流水线日志里。
-
-- 制品库配置、连接测试和凭据加密存储。
-- 应用绑定制品库与制品路径，发布时自动注入 OSS 内置参数。
-- 管线规范约束制品上传和 `GOS_ARTIFACT_URL` 输出，保证平台能识别 CI 产物。
-- CI 标准字段 `gos_artifact_url` 可沿用至 CD、GitOps 和 Hook 变量。
-- 发布单详情展示制品名称、校验信息、记录时间和下载入口。
-- 制品目录按制品库、项目、应用、执行单元和发布单聚合检索。
-- 支持手动补录制品，并限制删除发布过程自动产出的制品记录。
-
-### 🔔 通知模块
-
-把通知源、模板和 Hook 配成平台能力，而不是散落在流水线脚本里。
-
-- 通知源管理：飞书、企业微信（企微）、钉钉。
-- Markdown 通知模板和条件化模板内容。
-- 通知 Hook 管理，发布模板可按阶段和触发条件关联通知 Hook。
-- 通知内容可复用发布单、应用、环境、执行结果、制品和 Hook 上下文。
-- 通知源 Secret / Token / 飞书放行关键字加密存储。
-
-### 🔐 应用、项目与权限治理
-
-把发布入口和组织权限绑定起来。
-
-- 项目管理和应用归属治理。
-- 应用 CRUD、负责人、仓库、语言、制品类型、制品库和制品路径。
-- 应用 GitOps 分支映射、发布分支选项和环境策略。
-- 应用与 CI/CD 管线绑定，支持应用级执行器选择。
-- 标准字库管理，统一发布字段、执行器参数、GitOps 替换和通知变量来源。
-- 应用级可见 / 发布权限控制、用户管理、权限授权和参数权限。
-- 系统设置：发布环境、并发控制、GitOps 扫描路径和 AI 模型配置。
-
-### 👥 组织架构与环境治理
-
-把审批人选择和发布环境从自由文本提升为可维护的平台数据。
-
-- 用户管理提供组织架构画布，可搜索成员、拖动布局并查看或调整直属主管关系。
-- 直属主管关系自动参与“主管审批”节点解析，并校验循环关系；内置管理员不进入普通组织层级。
-- 发布环境按编码、名称和描述结构化维护，支持新增、编辑、删除和默认环境设置。
-- 新建发布单、审批节点适用环境和系统并发策略共用同一套环境配置，环境卡片优先展示平台维护的描述。
-
-### 🗄️ 自动数据库迁移
-
-升级 GOS 不再要求运维人员手工导入增量 SQL。
-
-- 服务启动时自动检测并执行版本化数据库迁移，迁移记录写入 `gos_schema_migration`。
-- 旧版本直接替换为最新二进制并重启即可升级表结构，迁移具备版本判断和幂等保护。
-- MySQL 多实例启动使用迁移锁，避免多个实例重复执行同一结构变更。
-- 任一迁移失败时服务停止启动，防止最新代码在旧表结构上继续运行；`script_sql/` 只保留给结构核查和故障应急。
-- `v1.3.1` 启动时会自动执行 `deploy_platform_v1_3_1_pipeline_scan_rules`：补齐管线规范字段并记录迁移版本，同时修正历史内置规则 ID；全新数据库中的“GOS 制品地址输出规范”默认停用，已有数据库保留管理员设置的启停状态。
-
----
-
-## 🖼️ 界面预览
-
-<p align="center"><strong>登录首页：发布单快速查询</strong></p>
-
-<p align="center">登录后直接进入发布单查询首页，可通过完整单号直达详情，并快速进入发布单、新建发布和审批待办。</p>
-
-<p align="center">
-  <img src="images/release-search-home-v1.3.1.jpg" alt="发布单快速查询首页" width="90%" />
-</p>
-
-<p align="center"><strong>可视化审批流管理</strong></p>
-
-<p align="center">按应用绑定流程，在画布中配置审批阶段、适用环境、审批人以及或签 / 会签规则。</p>
-
-<p align="center">
-  <img src="images/release-approval-flow-management.png" alt="可视化审批流管理" width="90%" />
-</p>
-
-<p align="center"><strong>审批工作台</strong></p>
-
-<p align="center">统一聚合待我审批和我已处理任务，审批结果与备注会同步回发布单。</p>
-
-<p align="center">
-  <img src="images/release-approval-workbench.png" alt="审批工作台" width="90%" />
-</p>
-
-<p align="center"><strong>批量新建发布单</strong></p>
-
-<p align="center">创建清单暂存多项配置，通过“创建全部”一次生成多张独立发布单。</p>
-
-<p align="center">
-  <img src="images/release-order-batch-create.png" alt="批量新建发布单" width="90%" />
-</p>
-
-<p align="center"><strong>发布单列表：审批流程与备注</strong></p>
-
-<p align="center">列表展开后展示冻结的审批路径、节点状态、审批人和审批备注；等待节点不使用执行中动画。</p>
-
-<p align="center">
-  <img src="images/release-order-approval-progress.png" alt="发布单列表审批流程" width="90%" />
-</p>
-
-<p align="center"><strong>发布单详情：审批记录</strong></p>
-
-<p align="center">审批方式、审批人、通过时间与备注和执行单元并列展示，便于完整审计。</p>
-
-<p align="center">
-  <img src="images/release-order-approval-detail.png" alt="发布单详情审批记录" width="90%" />
-</p>
-
-<p align="center"><strong>用户组织架构</strong></p>
-
-<p align="center">通过组织画布维护直属主管关系，为主管审批节点提供统一的数据来源。</p>
-
-<p align="center">
-  <img src="images/user-organization-canvas.png" alt="用户组织架构" width="90%" />
-</p>
-
-<p align="center"><strong>结构化发布环境</strong></p>
-
-<p align="center">集中维护环境编码、名称、描述和默认值，供发布、审批和并发控制复用。</p>
-
-<p align="center">
-  <img src="images/release-environment-settings.png" alt="结构化发布环境配置" width="90%" />
-</p>
-
-<p align="center"><strong>应用工作台</strong></p>
-
-<p align="center">
-  <img src="images/my-applications-page-legend.png" alt="应用工作台" width="90%" />
-</p>
-
-<p align="center"><strong>发布单详情页</strong></p>
-
-<p align="center">
-  <img src="images/release-order-detail-legend.png" alt="发布单详情" width="90%" />
-</p>
-
-<p align="center"><strong>发布单详情：制品信息与 AI 诊断入口</strong></p>
-
-<p align="center">
-  <img src="images/release-detail-artifacts-ai.png" alt="发布单详情制品与 AI 诊断" width="90%" />
-</p>
-
-<p align="center"><strong>AI 诊断抽屉</strong></p>
-
-<p align="center">
-  <img src="images/ai-diagnosis-drawer.png" alt="AI 诊断抽屉" width="90%" />
-</p>
-
-<p align="center"><strong>制品目录</strong></p>
-
-<p align="center">
-  <img src="images/artifact-catalog.png" alt="制品目录" width="90%" />
-</p>
-
-<p align="center"><strong>管线规范</strong></p>
-
-<p align="center">内置 GOS 制品地址输出规范在新部署中默认停用，可由管理员按团队接入情况启用；启停请求由同源网关稳定转发。</p>
-
-<p align="center">
-  <img src="images/pipeline-rules-v1.3.1.jpg" alt="v1.3.1 管线规范默认停用" width="90%" />
-</p>
-
-<p align="center"><strong>发布单列表页</strong></p>
-
-<p align="center">
-  <img src="images/release-order-list-legend.png" alt="发布单列表" width="90%" />
-</p>
-
-<p align="center"><strong>新建发布单页</strong></p>
-
-<p align="center">
-  <img src="images/new-release-order-page-legend.png" alt="新建发布单" width="90%" />
-</p>
-
-<p align="center"><strong>发布模板配置</strong></p>
-
-<p align="center">
-  <img src="images/release-template-modal-legend.png" alt="发布模板" width="90%" />
-</p>
-
----
-
-## 🏗️ 架构概览
 
 ```mermaid
 flowchart LR
@@ -369,270 +132,24 @@ flowchart LR
     F --> B["Gin API"]
     B --> D["MySQL / SQLite"]
     B --> J["Jenkins"]
-    B --> AR["ArgoCD"]
+    B --> AR["ArgoCD / GitOps"]
     B --> AG["GOS Agent"]
-    B --> N["通知源"]
-    AR --> G["GitOps Repos"]
-    AR --> K["Kubernetes Clusters"]
-    AG --> T["特殊网络/生产环境"]
-    J --> B
+    B --> N["飞书 / 企微 / 钉钉"]
 ```
 
-后端采用轻量分层：
 
-- `internal/domain`：领域实体与仓储接口
-- `internal/application`：用例编排
-- `internal/infrastructure`：数据库、Jenkins、ArgoCD、GitOps、配置、加密
-- `internal/interfaces/http`：Gin 路由与 Handler
 
----
+后端为轻量分层：`internal/domain`（领域）、`internal/application`（用例）、`internal/infrastructure`（数据库与执行器适配）、`internal/interfaces/http`（Gin 路由）。
 
-## 🧩 技术栈
+## 文档索引
 
-| 层级 | 技术 |
-| --- | --- |
-| 后端 | Go 1.25、Gin、Swagger |
-| 存储 | MySQL、SQLite |
-| 前端 | Vue 3、Vite、TypeScript、Pinia、Ant Design Vue、ECharts |
-| 执行器 | Jenkins、ArgoCD / GitOps、GOS Agent |
-| 部署 | Docker 单容器、源码运行 |
+- [用户操作手册](docs/USER_GUIDE.md)：从零跑通一条 Jenkins 发布链路
+- [Docker 部署说明](docss/部署/Docker部署说明.md)
+- [P0 到 P1 初始化指南](docss/使用手册/GOS从0到1初始化使用指南.md)
+- [应用接入向导](docs/first-release-onboarding.md)
+- [Swagger / OpenAPI](docs/swagger.yaml)
+- 需求与设计文档：`docss/后端/`、`docss/前端/`、`docss/样式规范/`
 
----
-
-## 🚀 快速开始
-
-### 方式一：Docker 单容器运行
-
-适合部署到目标机器，单容器同时提供前端和后端服务。
-
-本地构建镜像：
-
-```bash
-docker build -t gos-release:latest .
-```
-
-MySQL 模式启动：
-
-```bash
-docker run -d \
-  --name gos-release \
-  -p 5174:5174 \
-  -p 8081:8081 \
-  -e GOS_DB_DRIVER=mysql \
-  -e GOS_MYSQL_DSN='<mysql-dsn>' \
-  -e GOS_JENKINS_ENABLED=true \
-  -e GOS_JENKINS_BASE_URL='http://jenkins.example.com/' \
-  -e GOS_JENKINS_USERNAME='admin' \
-  -e GOS_JENKINS_API_TOKEN='your-token' \
-  -e GOS_JENKINS_AUTO_SYNC_ENABLED=true \
-  -e GOS_AUTH_ADMIN_USERNAME='admin' \
-  -e GOS_AUTH_ADMIN_PASSWORD='your-admin-password' \
-  -e GOS_SECURITY_ENCRYPTION_KEY='replace-with-a-strong-key' \
-  yl10115658529/gos-release:v1.3.3
-```
-
-> **说明**：GOS_SECURITY_ENCRYPTION_KEY 用于加密数据，请自定义 。
-
-Jenkins 启用后，管线自动同步默认开启：服务启动时会立即拉取一次管线，之后按 `GOS_JENKINS_AUTO_SYNC_INTERVAL_SEC` 周期同步；无需在新部署后手动点击“同步”。如需明确关闭，可设置 `GOS_JENKINS_AUTO_SYNC_ENABLED=false`。
-
-Docker Compose 启动前可先复制 `.env.example` 到本地 `.env` 并填写真实值，`.env` 不应提交到仓库。
-
-访问地址：
-
-- 登入：`http://127.0.0.1:5174/login`
-
-生产镜像中的前端 API 默认走 `5174` 同源反向代理，不依赖宿主机是否直接暴露 `8081`，因此可以安全地修改前端端口映射或在容器前增加 HTTPS 反向代理。`8081` 仅在需要直接调试后端接口时暴露。
-
-`GOS_AUTH_ADMIN_USERNAME` 与 `GOS_AUTH_ADMIN_PASSWORD` 用于首次初始化管理员；复用已有数据库或 Docker Volume 时不会覆盖数据库内现有账号和密码。
-
-如果登录请求异常，可先检查同源健康接口：
-
-```bash
-curl -i http://127.0.0.1:5174/healthz
-```
-
-正常应返回 `200`。如果登录仍返回 Nginx `404`，通常表示运行的还是修复前镜像，需要重新拉取新版本并重建容器。
-
-首次部署只需要预先创建空数据库，并确保 GOS 数据库账号具备建表、建索引和修改表结构的权限。服务启动时会自动创建表并执行版本化迁移。
-
-后续升级只需替换 GOS 二进制并重启，无需人工导入增量 SQL。迁移结果记录在 `gos_schema_migration`，多实例同时启动时由 MySQL 迁移锁保证只有一个实例执行；迁移失败时服务会停止启动，避免新代码运行在旧表结构上。`script_sql/` 仅用于首次结构核查和迁移故障时的应急处理。
-
-### 方式二：源码开发
-
-环境要求：
-
-- Go `1.25+`
-- Node.js `20+`
-- MySQL `8+` 或 SQLite
-- Jenkins / ArgoCD / GitOps / Agent / 制品库 / AI 模型 / 通知源按需准备
-
-启动后端：
-
-```bash
-go run ./cmd/server -config configs/config.local.json
-```
-
-启动前端：
-
-```bash
-cd frontend
-npm install
-VITE_API_BASE_URL=http://127.0.0.1:8081 npm run dev
-```
-
----
-
-## 🛠️ 配置说明
-
-源码运行时主要读取配置文件，例如：
-
-- `configs/config.local.json`
-- `configs/config.production.json`
-
-Docker 单容器运行时由 `docker/entrypoint.sh` 根据环境变量生成：
-
-- `/app/configs/config.runtime.json`
-
-常用 Docker 环境变量：
-
-| 变量 | 说明 |
-| --- | --- |
-| `GOS_DB_DRIVER` | 数据库类型：`mysql` 或 `sqlite` |
-| `GOS_MYSQL_DSN` | MySQL 连接串 |
-| `GOS_SQLITE_PATH` | SQLite 文件路径 |
-| `GOS_JENKINS_ENABLED` | 是否启用 Jenkins |
-| `GOS_JENKINS_BASE_URL` | Jenkins 地址 |
-| `GOS_JENKINS_USERNAME` | Jenkins 用户名 |
-| `GOS_JENKINS_API_TOKEN` | Jenkins API Token |
-| `GOS_JENKINS_AUTO_SYNC_ENABLED` | 是否启用 Jenkins 自动同步 |
-| `GOS_JENKINS_AUTO_SYNC_INTERVAL_SEC` | Jenkins 自动同步间隔 |
-| `GOS_JENKINS_RELEASE_TRACK_ENABLED` | 是否启用发布构建追踪 |
-| `GOS_AUTH_ADMIN_USERNAME` | 初始管理员账号 |
-| `GOS_AUTH_ADMIN_PASSWORD` | 初始管理员密码 |
-| `GOS_SECURITY_ENCRYPTION_KEY` | 平台加密密钥 |
-| `GOS_RELEASE_ENV_OPTIONS` | 发布环境列表，例如 `dev,test,prod` |
-| `GOS_RELEASE_CONCURRENCY_ENABLED` | 是否启用发布并发锁 |
-| `GOS_RELEASE_LOCK_SCOPE` | 锁范围，例如 `application_env` |
-| `GOS_RELEASE_CONFLICT_STRATEGY` | 冲突策略，例如 `reject` |
-| `GOS_GITOPS_PATH_MAPS` | GitOps 路径映射，格式 `宿主机路径=容器内路径` |
-
-生产环境务必使用强密码、独立加密密钥，并避免在日志或命令历史中暴露 Token。
-
----
-
-## 🗺️ 页面地图
-
-| 模块 | 页面 | 路由 |
-| --- | --- | --- |
-| 入口 | 首页 / 发布单查询 | `/release-search`（登录后默认进入） |
-| 入口 | 登录 | `/login` |
-| 应用管理 | 我的应用 | `/applications` |
-| 应用管理 | 新增应用 | `/applications/new` |
-| 应用管理 | 应用接入向导（首次 / 后续新增） | `/system/quick-start` |
-| 应用管理 | 继续接入任务 | `/onboarding/:sessionId` |
-| 应用管理 | 编辑应用 | `/applications/:id/edit` |
-| 应用管理 | 管线绑定 | `/applications/:id/pipeline-bindings` |
-| 应用管理 | 项目管理 | `/projects` |
-| 应用管理 | 标准字库 | `/platform-param-dicts` |
-| 发布管理 | 发布单 | `/releases` |
-| 发布管理 | 新建发布单 | `/releases/new` |
-| 发布管理 | 批量新建发布单 | `/releases/new?batch=1` |
-| 发布管理 | 编辑发布单 | `/releases/:id/edit` |
-| 发布管理 | 发布单详情 | `/releases/:id` |
-| 发布管理 | 预约发布 | `/release-schedules` |
-| 发布管理 | 审批工作台 | `/release-approvals` |
-| 发布管理 | 审批流管理 | `/release-approval-flows` |
-| 发布管理 | 发布模板 | `/release-templates` |
-| 制品中心 | 制品目录 | `/artifacts` |
-| 制品中心 | 制品库配置 | `/artifacts/repositories` |
-| 组件管理 | Jenkins 管线 | `/components/jenkins` |
-| 组件管理 | 管线规范 | `/components/pipeline-rules` |
-| 组件管理 | 执行器参数 | `/components/executor-params` |
-| 组件管理 | ArgoCD 管理 | `/components/argocd` |
-| 组件管理 | ArgoCD 应用 | `/components/argocd/applications` |
-| 组件管理 | GitOps 管理 | `/components/gitops` |
-| 组件管理 | GitOps 教程 | `/help/gitops` |
-| 组件管理 | Agent 概览 | `/components/agents` |
-| 组件管理 | Agent 脚本管理 | `/components/agent-scripts` |
-| 组件管理 | Agent 任务管理 | `/components/agent-tasks` |
-| 系统管理 | 用户管理 | `/system/users` |
-| 系统管理 | 权限授权 | `/system/permissions` |
-| 系统管理 | 通知模块 | `/system/notifications` |
-| 系统管理 | 系统设置 / AI 模型 | `/system/settings` |
-
----
-
-## 🧪 初始化顺序
-
-已有 Jenkins 管线的应用，建议从“应用管理 → 应用接入向导”开始，不需要提前维护完整标准字库：
-
-1. 完成安装：数据库、管理员、执行端连接，启动后端和前端并登录；确认发布环境与管理权限。
-2. 新增接入任务，在同一页面选择或创建项目，填写应用名称、Key 和负责人。
-3. 选择已有 CI/CD 管线，按实际参数复用标准映射；缺少的标准字段当场补建，并选择发布时填写、固定值或自动来源。
-4. 创建该应用的独立发布模板；如需审批，显式选择应用审批流程。
-5. 通过配置检查后创建首个发布单。创建不会自动执行，后续构建、部署和审批沿用现有发布流程。
-6. 后续新增应用仍使用同一入口，或点击“继续接入下一个应用”。只预选项目，复用公共字段，不复制旧应用绑定、模板和固定值。
-
-草稿会自动保存，可在接入中心继续。已有应用也可从列表或详情的“接入检查 / 继续配置”进入。语言、制品类型不再是纯管线应用的必填项；应用访问地址不属于接入条件。仓库与分支只在选择了对应参数来源时补齐。
-
-向导使用说明与 API 契约：[应用接入向导](docs/first-release-onboarding.md)。ArgoCD、GitOps、动态/敏感插件参数及 Hook 等仍使用原高级配置，详见 [完整初始化指南](docs/使用手册/GOS从0到1初始化使用指南.md)。
-
----
-
-## 📁 项目结构
-
-```text
-gos/
-├── agent                       # Agent 相关代码
-├── cmd/server                  # 后端入口
-├── configs                     # 配置文件
-├── docker                      # 单容器运行配置
-├── docs                        # Swagger、需求文档、样式规范、测试清单
-├── frontend                    # Vue 3 管理后台
-├── images                      # README 截图素材
-├── internal/application        # 用例层
-├── internal/bootstrap          # 启动与配置
-├── internal/domain             # 领域层
-├── internal/infrastructure     # 基础设施层
-├── internal/interfaces/http    # Gin 接口层
-└── scripts                     # 辅助脚本
-```
-
----
-
-## 📚 文档索引
-
-- Docker 部署：`docs/部署/Docker部署说明.md`
-- 初始化使用指南：`docs/使用手册/GOS从0到1初始化使用指南.md`
-- 可复用应用接入向导：`docs/first-release-onboarding.md`
-- Swagger：`docs/swagger.yaml`
-- 后端需求：`docs/后端/`
-- 前端需求：`docs/前端/`
-- AI 诊断功能设计：`docs/ai-diagnosis-feature.md`
-- 前端样式规范：`docs/样式规范/`
-- 测试清单与报告：`docs/测试/`
-
----
-
-## 🛣️ Roadmap
-
-以下内容在需求文档中有规划，但不要理解为当前已完整落地能力：
-
-- K8s 发布策略引擎
-- 多平台小程序发布
-- 更细粒度的发布策略可视化
-- 外部身份源接入：LDAP / SSO
-
----
-
-## 💬 联系
-
-<p>
-  <img alt="WeChat 13025452443" src="https://img.shields.io/badge/WeChat-13025452443-07C160?logo=wechat&logoColor=white" />
-</p>
-
----
-
-## 📄 License
+## License
 
 本项目基于 MIT License 开源，详见 [LICENSE](./LICENSE)。

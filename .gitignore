@@ -41,6 +41,7 @@ coverage.out
 # AI assistant local files
 .claude/
 .codex/
+.zcode/
 .cursor/
 .windsurf/
 .continue/
