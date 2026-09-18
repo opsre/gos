@@ -46,7 +46,7 @@ GOS 不替代 Jenkins、ArgoCD 或 Agent，而是它们上层的发布治理层�
 ### 1. 拉取镜像
 
 ```bash
-docker pull yl10115658529/gos-release:v1.3.3
+docker pull yl10115658529/gos-release:v1.3.4
 ```
 
 本地构建改为 `docker build -t gos-release:latest .`。
@@ -65,7 +65,7 @@ docker run -d --name gos-release \
   -e GOS_JENKINS_BASE_URL='http://jenkins.example.com/' \
   -e GOS_JENKINS_USERNAME=admin \
   -e GOS_JENKINS_API_TOKEN='your-token' \
-  yl10115658529/gos-release:v1.3.3
+  yl10115658529/gos-release:v1.3.4
 ```
 
 访问 `http://127.0.0.1:5174/login`；健康检查 `curl -i http://127.0.0.1:5174/healthz`，正常返回 `200`。
@@ -82,7 +82,7 @@ docker run -d --name gos-release \
   -e GOS_SQLITE_PATH=/app/data/demo.db \
   -e GOS_AUTH_ADMIN_PASSWORD='admin123' \
   -e GOS_SECURITY_ENCRYPTION_KEY='gos-release-local-key' \
-  yl10115658529/gos-release:v1.3.3
+  yl10115658529/gos-release:v1.3.4
 ```
 
 ### 4. Docker Compose（含 MySQL）
