@@ -265,6 +265,16 @@ type ReleaseOrderResponse struct {
 	FinishedAt            *time.Time                           `json:"finished_at"`
 	CreatedAt             time.Time                            `json:"created_at"`
 	UpdatedAt             time.Time                            `json:"updated_at"`
+
+	// HeadCommit* / HeadChange* 是创建发布单时解析一次并落库的仓库 HEAD 快照，
+	// 列表 / 详情 / realtime 快照共用本结构。历史发布单为空字符串 / null，前端显示占位。
+	HeadCommitSHA    string     `json:"head_commit_sha"`
+	HeadCommitRef    string     `json:"head_commit_ref"`
+	HeadChangeSHA    string     `json:"head_change_sha"`
+	HeadChangeTitle  string     `json:"head_change_title"`
+	HeadChangeAuthor string     `json:"head_change_author"`
+	HeadChangeAt     *time.Time `json:"head_change_at"`
+	HeadChangeURL    string     `json:"head_change_url"`
 }
 
 type ReleaseOrderDeploySnapshotResponse struct {
@@ -2849,6 +2859,13 @@ func toReleaseOrderResponse(item domain.ReleaseOrder, states ...*domain.AppRelea
 		EnvCode:               item.EnvCode,
 		ProjectName:           "",
 		GitRef:                item.GitRef,
+		HeadCommitSHA:         item.HeadCommitSHA,
+		HeadCommitRef:         item.HeadCommitRef,
+		HeadChangeSHA:         item.HeadChangeSHA,
+		HeadChangeTitle:       item.HeadChangeTitle,
+		HeadChangeAuthor:      item.HeadChangeAuthor,
+		HeadChangeAt:          item.HeadChangeAt,
+		HeadChangeURL:         item.HeadChangeURL,
 		ImageTag:              item.ImageTag,
 		TriggerType:           string(item.TriggerType),
 		Status:                string(item.Status),

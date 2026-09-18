@@ -33,6 +33,7 @@ func NewRouter(
 	releaseOrderHandler *ReleaseOrderHandler,
 	releaseTemplateHandler *ReleaseTemplateHandler,
 	announcementHandler *AnnouncementHandler,
+	releaseAutomationHandler *ReleaseAutomationHandler,
 ) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
@@ -60,7 +61,16 @@ func NewRouter(
 	registerReleaseOrderRoutes(router, releaseOrderHandler)
 	registerReleaseTemplateRoutes(router, releaseTemplateHandler)
 	registerAnnouncementRoutes(router, announcementHandler)
+	registerReleaseAutomationRoutes(router, releaseAutomationHandler)
 	return router
+}
+
+// registerReleaseAutomationRoutes 封装当前模块的业务处理逻辑。
+func registerReleaseAutomationRoutes(router gin.IRouter, releaseAutomationHandler *ReleaseAutomationHandler) {
+	if releaseAutomationHandler == nil {
+		return
+	}
+	releaseAutomationHandler.RegisterRoutes(router)
 }
 
 func registerAIModelConfigRoutes(router gin.IRouter, aiModelConfigHandler *AIModelConfigHandler) {

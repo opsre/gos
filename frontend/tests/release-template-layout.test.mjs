@@ -74,7 +74,8 @@ test('release template table uses the current management table theme without an 
   assert.match(tableHeadRule, /linear-gradient\(180deg,\s*#243247,\s*#1f2a3d\)/, 'table header should use the dark management-table gradient')
 
   const fixedColumnRule = extractStyleRule('.release-template-table :deep(.ant-table-cell-fix-right)')
-  assert.match(fixedColumnRule, /background:\s*rgba\(255,\s*255,\s*255,\s*0\.96\)/, 'fixed operation column should keep an opaque background')
+  assert.match(fixedColumnRule, /background:\s*#f8f9fe\s*!important/, 'fixed operation column should keep the same opaque tone as the row')
+  assert.doesNotMatch(fixedColumnRule, /background:\s*rgba\(/, 'fixed operation column background must be opaque, not translucent')
 })
 
 test('release template execution unit column uses segmented icon pills instead of plain text', () => {

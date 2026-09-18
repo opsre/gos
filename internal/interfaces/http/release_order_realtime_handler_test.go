@@ -646,6 +646,19 @@ CREATE TABLE IF NOT EXISTS sys_user (
 	if err := repo.Create(context.Background(), order, nil, nil, nil); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
+	// realtime 快照与详情/列表共用同一套发布单映射，这里给订单补上创建时解析的 HEAD 快照。
+	changeAt := time.Date(2026, 9, 18, 8, 30, 0, 0, time.UTC)
+	if err := repo.UpdateHeadCommit(context.Background(), order.ID, domain.ReleaseOrderHeadCommit{
+		CommitSHA:    "sha-realtime-head",
+		CommitRef:    "release/2026-09-18",
+		ChangeSHA:    "sha-realtime-change",
+		ChangeTitle:  "feat: realtime 快照带出 HEAD 快照",
+		ChangeAuthor: "Alice",
+		ChangeAt:     &changeAt,
+		ChangeURL:    "http://git.cloud.local:9080/code/bigData/fusion-source-web/-/commit/sha-realtime-change",
+	}); err != nil {
+		t.Fatalf("UpdateHeadCommit failed: %v", err)
+	}
 	manager := usecase.NewReleaseOrderManager(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	handler := NewReleaseOrderHandler(manager, nil, authorizer, nil)
 	router := gin.New()

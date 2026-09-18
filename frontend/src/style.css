@@ -51,7 +51,9 @@
   --table-glass-row: rgba(255, 255, 255, 0.18);
   --table-glass-row-hover: rgba(255, 255, 255, 0.58);
   --table-glass-row-selected: rgba(239, 246, 255, 0.72);
-  --table-glass-fixed-cell: rgba(255, 255, 255, 0.9);
+  /* 固定列的底色必须是「行底色的不透明等价值」：既不能透出横向滚动的内容，
+     又要和整行看起来是同一块色。用半透明白会让固定列比行更白，形成一条竖条色差。 */
+  --table-glass-fixed-cell: #f8f9fe;
   --table-glass-border: rgba(255, 255, 255, 0.72);
   --table-glass-divider: rgba(148, 163, 184, 0.14);
   --table-glass-radius: 20px;
@@ -343,12 +345,12 @@ body .app-layout .app-content .ant-table-wrapper.ant-table-wrapper .ant-table-tb
 body .app-layout .app-content .ant-table-wrapper.ant-table-wrapper .ant-table-tbody > tr:hover > td.ant-table-cell-fix-right,
 body .app-layout .app-content .ant-table-wrapper.ant-table-wrapper .ant-table-tbody > tr > td.ant-table-cell-row-hover.ant-table-cell-fix-left,
 body .app-layout .app-content .ant-table-wrapper.ant-table-wrapper .ant-table-tbody > tr > td.ant-table-cell-row-hover.ant-table-cell-fix-right {
-  background: rgba(255, 255, 255, 0.96) !important;
+  background: #fbfcfe !important;
 }
 
 body .app-layout .app-content .ant-table-wrapper.ant-table-wrapper .ant-table-tbody > tr.ant-table-row-selected > td.ant-table-cell-fix-left,
 body .app-layout .app-content .ant-table-wrapper.ant-table-wrapper .ant-table-tbody > tr.ant-table-row-selected > td.ant-table-cell-fix-right {
-  background: rgba(239, 246, 255, 0.96) !important;
+  background: #f1f7ff !important;
 }
 
 body .app-layout .app-content .ant-table-wrapper.ant-table-wrapper .ant-table-placeholder > td,
@@ -903,71 +905,41 @@ body .app-layout .app-content .ant-table-wrapper.ant-table-wrapper .ant-paginati
   line-height: 1.7;
 }
 
-/* 「最近提交」的元信息色块：提交者/时间/发布时点/分支当时HEAD/仓库各用一色，避免
-   一长串灰字。列表 tooltip 与发布详情共用这套类。 */
-.git-commit-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-width: 100%;
+
+/* ── 全局滚动条：滑轨透明、滑块半透明待机，滚动或指向它时显形 ─────────────
+   注意这里只用 ::-webkit-scrollbar 系列（Chrome / Edge / Safari 生效）；
+   一旦在元素上设置标准的 scrollbar-width / scrollbar-color，Chromium 会忽略
+   这套伪元素样式，所以两者不要混用。 */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
 }
 
-.git-commit-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 100%;
-  padding: 2px 8px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 18px;
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
-.git-commit-chip-label {
-  flex: none;
-  opacity: 0.7;
+*::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-color: rgba(100, 116, 139, 0.16);
+  background-clip: content-box;
+  transition: background-color 220ms ease;
 }
 
-.git-commit-chip-value {
-  min-width: 0;
-  overflow: hidden;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+*:hover::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-thumb:hover,
+.is-scrolling::-webkit-scrollbar-thumb {
+  background-color: rgba(100, 116, 139, 0.46);
 }
 
-.git-commit-chip--author {
-  border-color: #c7d2fe;
-  background: #eef2ff;
-  color: #4338ca;
+*::-webkit-scrollbar-thumb:active {
+  background-color: rgba(100, 116, 139, 0.62);
 }
 
-.git-commit-chip--time {
-  border-color: #e2e8f0;
-  background: #f1f5f9;
-  color: #475569;
-}
-
-.git-commit-chip--asof {
-  border-color: #fcd34d;
-  background: #fffbeb;
-  color: #b45309;
-}
-
-.git-commit-chip--head {
-  border-color: #ddd6fe;
-  background: #f5f3ff;
-  color: #6d28d9;
-}
-
-.git-commit-chip--repo {
-  border-color: #99f6e4;
-  background: #f0fdfa;
-  color: #0f766e;
-}
-
-.git-commit-chip--mono .git-commit-chip-value {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+@media (prefers-reduced-motion: reduce) {
+  *::-webkit-scrollbar-thumb {
+    transition: none;
+  }
 }

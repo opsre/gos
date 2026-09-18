@@ -93,6 +93,9 @@ const activeMenuKey = computed(() => {
   if (route.path.startsWith('/releases')) {
     return ['release-orders']
   }
+  if (route.path.startsWith('/release-automations')) {
+    return ['release-automations']
+  }
   if (route.path.startsWith('/release-schedules')) {
     return ['release-order-schedules']
   }
@@ -136,6 +139,9 @@ const openMenuKeys = computed(() => {
     return []
   }
   if (route.path.startsWith('/release-schedules')) {
+    return ['release-management']
+  }
+  if (route.path.startsWith('/release-automations')) {
     return ['release-management']
   }
   if (route.path.startsWith('/release-approvals')) {
@@ -212,6 +218,11 @@ const canViewAgent = computed(
   () => authStore.hasPermission('component.agent.view') || authStore.hasPermission('component.agent.manage'),
 )
 const canManageReleaseTemplate = computed(() => authStore.hasPermission('release.template.manage'))
+const canViewReleaseAutomation = computed(
+  () =>
+    authStore.hasPermission('release.automation.view') ||
+    authStore.hasPermission('release.automation.manage'),
+)
 const canManageUser = computed(() => authStore.hasPermission('system.user.manage'))
 const canManagePermission = computed(() => authStore.hasPermission('system.permission.manage'))
 const canManageNotification = computed(() => authStore.hasPermission('system.notification.manage'))
@@ -318,6 +329,10 @@ function goToReleaseSearch() {
 
 function goToReleaseSchedules() {
   void router.push('/release-schedules')
+}
+
+function goToReleaseAutomations() {
+  void router.push('/release-automations')
 }
 
 function goToReleaseTemplates() {
@@ -475,6 +490,13 @@ onUnmounted(() => {
 
           <a-menu-item key="release-orders" @click="goToReleaseOrders">发布单</a-menu-item>
           <a-menu-item key="release-order-schedules" @click="goToReleaseSchedules">预约发布</a-menu-item>
+          <a-menu-item
+            v-if="canViewReleaseAutomation"
+            key="release-automations"
+            @click="goToReleaseAutomations"
+          >
+            自动化
+          </a-menu-item>
           <a-menu-item key="release-approval-workbench" @click="goToReleaseApprovalWorkbench">
             <span class="sidebar-approval-menu-label">
               <span>审批待办</span>
@@ -1031,7 +1053,13 @@ onUnmounted(() => {
 
 .sider-menu::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(56, 189, 248, 0.7), rgba(34, 197, 94, 0.6));
+  background-color: rgba(226, 232, 240, 0.16);
+  transition: background-color 220ms ease;
+}
+
+.sider-menu:hover::-webkit-scrollbar-thumb,
+.sider-menu.is-scrolling::-webkit-scrollbar-thumb {
+  background-color: rgba(226, 232, 240, 0.42);
 }
 
 .sider-menu::-webkit-scrollbar-track {

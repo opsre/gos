@@ -3,7 +3,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const viewURL = new URL('../src/views/release/ReleaseOrderCreateView.vue', import.meta.url)
+const choiceUtilURL = new URL('../src/utils/executor-param-choice.ts', import.meta.url)
 const source = readFileSync(viewURL, 'utf8')
+// 选项解析已抽成共享工具（建单页与自动化配置页共用），解析规则改读工具文件
+const choiceUtil = readFileSync(choiceUtilURL, 'utf8')
 
 test('release order multi choice dropdown exposes expanded checkbox modal', () => {
   assert.match(source, /FullscreenOutlined/, 'expanded choice action should use an icon')
@@ -33,13 +36,18 @@ test('release order multi choice dropdown exposes expanded checkbox modal', () =
     'modal should show selected and total option counts for large lists',
   )
   assert.match(
-    source,
-    /function normalizeChoiceOptions[\s\S]*choiceOptions[\s\S]*label[\s\S]*value/,
+    choiceUtil,
+    /objectRaw\.value[\s\S]*objectRaw\.label[\s\S]*\{ label: label \|\| value, value \}/,
     'choice options should preserve a display label separately from the submitted value',
   )
   assert.match(
-    source,
+    choiceUtil,
     /parsed\.choiceOptions[\s\S]*parsed\.options[\s\S]*parsed\.choices/,
     'choice metadata should prefer labeled options before falling back to raw values',
+  )
+  assert.match(
+    source,
+    /import \{[\s\S]*resolveChoiceMeta[\s\S]*\} from '\.\.\/\.\.\/utils\/executor-param-choice'/,
+    'the create page should reuse the shared choice parser instead of keeping a private copy',
   )
 })

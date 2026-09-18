@@ -391,6 +391,8 @@ func (r *UserRepository) ensureBuiltinPermissions(ctx context.Context, now time.
 		{ID: "perm-release-approval-approve", Code: "release.approval.approve", Name: "审批通过", Module: "release", Action: "approval_approve", Description: "对发布单执行审批通过"},
 		{ID: "perm-release-approval-reject", Code: "release.approval.reject", Name: "审批拒绝", Module: "release", Action: "approval_reject", Description: "对发布单执行审批拒绝"},
 		{ID: "perm-release-param-config-view", Code: "release.param_config.view", Name: "展示额外参数配置", Module: "release", Action: "param_config_view", Description: "控制新建发布单页面额外参数区域展示"},
+		{ID: "perm-release-automation-view", Code: "release.automation.view", Name: "查看发布自动化", Module: "release", Action: "automation_view", Description: "查看发布自动化配置与轮询检查结果"},
+		{ID: "perm-release-automation-manage", Code: "release.automation.manage", Name: "管理发布自动化", Module: "release", Action: "automation_manage", Description: "新增/编辑/删除发布自动化配置与手动检查 Git 权限"},
 		{ID: "perm-release-execute", Code: "release.execute", Name: "执行发布单", Module: "release", Action: "execute", Description: "执行发布操作"},
 		{ID: "perm-release-cancel", Code: "release.cancel", Name: "取消发布单", Module: "release", Action: "cancel", Description: "取消发布操作"},
 		{ID: "perm-system-user-manage", Code: "system.user.manage", Name: "管理用户", Module: "system", Action: "user_manage", Description: "用户管理"},

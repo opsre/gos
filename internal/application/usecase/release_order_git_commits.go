@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -39,6 +40,14 @@ const (
 	gitCommitFetchWorker        = 4
 	gitCommitCredentialPage     = 100
 	gitCommitCredentialMaxPages = 20
+	// gitCommitHeadWindow is the history the create-time HEAD read pulls: the HEAD
+	// itself plus the commits behind it, out of which the newest non-merge commit is
+	// the "change". 30 commits cover the ordinary "release a branch that just merged
+	// a MR or two" case without paying for a deeper read.
+	gitCommitHeadWindow = 30
+	// gitCommitMergeTitlePrefix is how both channels title a merge commit
+	// ("Merge branch 'x' into 'y'"), which is what the change lookup skips.
+	gitCommitMergeTitlePrefix = "Merge "
 )
 
 // GitCommitFetcher is the commit read the release order lookup needs. Declaring
@@ -66,6 +75,22 @@ type GitCommitInfo struct {
 	AuthorEmail string    `json:"author_email"`
 	CommittedAt time.Time `json:"committed_at"`
 	WebURL      string    `json:"web_url"`
+}
+
+// HeadCommit is the snapshot of one branch taken once, when a release order is
+// created, and then stored on the order: the branch HEAD plus the newest
+// non-merge commit at or before it (the "change" the release actually delivers).
+//
+// ChangeAt is nil when the channel returned no usable commit date, and Change*
+// falls back to the HEAD itself when the window holds nothing but merge commits.
+type HeadCommit struct {
+	CommitSHA    string
+	CommitRef    string
+	ChangeSHA    string
+	ChangeTitle  string
+	ChangeAuthor string
+	ChangeAt     *time.Time
+	ChangeURL    string
 }
 
 // ReleaseOrderRecentCommits is the per-order result of the recent commit
@@ -214,6 +239,131 @@ func (uc *GitCommitManager) fetcherFor(credential gitcredentialdomain.Credential
 		Secret:   credential.Secret,
 		AuthType: string(credential.AuthType),
 	})
+}
+
+// ResolveHeadCommit reads the current HEAD of one repository branch and the
+// newest non-merge commit at or before it. It is the create-time counterpart of
+// RecentCommits: a release order resolves this once, stores it, and every later
+// view reads the stored columns instead of asking git again.
+//
+// The credential is picked the same way the list lookup picks it (longest base
+// URL prefix of the application repository URL) and the channel follows the
+// credential's auth_type, so both entry points stay consistent. The read is a
+// plain "newest commits" read of gitCommitHeadWindow commits: a create resolves
+// the branch as it is now, it is never anchored in time.
+func (uc *GitCommitManager) ResolveHeadCommit(ctx context.Context, repoURL string, ref string) (HeadCommit, error) {
+	repoURL = strings.TrimSpace(repoURL)
+	if repoURL == "" {
+		return HeadCommit{}, errors.New("应用未配置 Git 仓库地址")
+	}
+	ref = strings.TrimSpace(ref)
+
+	credentials, err := uc.listActiveCredentials(ctx)
+	if err != nil {
+		return HeadCommit{}, err
+	}
+	credential, ok := gitcredentialdomain.ResolveForRepoURL(credentials, repoURL)
+	if !ok {
+		return HeadCommit{}, errors.New("未找到匹配的 Git 凭证（按仓库地址前缀匹配）")
+	}
+	projectPath := gitcredentialdomain.RepoPathFromURL(repoURL)
+	if projectPath == "" {
+		return HeadCommit{}, errors.New("无法从应用仓库地址解析 GitLab 项目路径")
+	}
+
+	fetcher := uc.fetcherFor(credential)
+	if fetcher == nil {
+		return HeadCommit{}, errors.New("Git 读取通道不可用")
+	}
+	commits, err := fetcher.ListCommits(ctx, projectPath, ref, gitCommitHeadWindow, nil)
+	if err != nil {
+		return HeadCommit{}, fmt.Errorf("读取分支 HEAD 失败：%w", err)
+	}
+	items := make([]GitCommitInfo, 0, len(commits))
+	for _, item := range commits {
+		items = append(items, GitCommitInfo{
+			SHA:         item.ID,
+			ShortSHA:    item.ShortID,
+			Title:       item.Title,
+			Message:     item.Message,
+			AuthorName:  item.AuthorName,
+			AuthorEmail: item.AuthorEmail,
+			CommittedAt: item.CommittedAt,
+			WebURL:      item.WebURL,
+		})
+	}
+	if len(items) == 0 {
+		return HeadCommit{}, errors.New("分支上没有读取到任何提交")
+	}
+	// Both channels return the newest commit first; sorting makes the contract
+	// explicit the same way fetchCommits does for the list lookup.
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].CommittedAt.After(items[j].CommittedAt)
+	})
+
+	head := items[0]
+	change := releaseHeadChangeCommit(items)
+	return HeadCommit{
+		CommitSHA:    head.SHA,
+		CommitRef:    ref,
+		ChangeSHA:    change.SHA,
+		ChangeTitle:  change.Title,
+		ChangeAuthor: change.AuthorName,
+		ChangeAt:     releaseHeadChangeTime(change),
+		ChangeURL:    releaseHeadCommitURL(change, credential.BaseURL, projectPath),
+	}, nil
+}
+
+// releaseHeadChangeCommit returns the newest non-merge commit of a newest-first
+// commit window. Merge commits ("Merge branch ... into ...") are what the release
+// tools and the reviewers add around a change, not the change itself, so the
+// window is walked until a real commit is found. A window that holds nothing but
+// merge commits falls back to the HEAD, which is still better than no commit at
+// all for a brand new branch.
+func releaseHeadChangeCommit(commits []GitCommitInfo) GitCommitInfo {
+	for _, item := range commits {
+		if isReleaseMergeCommit(item) {
+			continue
+		}
+		return item
+	}
+	if len(commits) == 0 {
+		return GitCommitInfo{}
+	}
+	return commits[0]
+}
+
+// isReleaseMergeCommit treats a commit as a merge when its title starts with
+// "Merge ". Only the title is inspected: a commit body that mentions a merge must
+// not hide a real change.
+func isReleaseMergeCommit(commit GitCommitInfo) bool {
+	return strings.HasPrefix(strings.TrimSpace(commit.Title), gitCommitMergeTitlePrefix)
+}
+
+// releaseHeadChangeTime returns the commit instant, or nil when the channel did
+// not provide a usable one. The column is nullable on purpose: an unparsable date
+// must not be stored as the zero time, which the UI would render as year 1.
+func releaseHeadChangeTime(commit GitCommitInfo) *time.Time {
+	if commit.CommittedAt.IsZero() {
+		return nil
+	}
+	value := commit.CommittedAt.UTC()
+	return &value
+}
+
+// releaseHeadCommitURL builds the browser URL of one commit, <baseURL>/<projectPath>/-/commit/<sha>.
+// The channel's own web_url wins when it has one, because a GitLab served from a
+// sub-path (or behind a proxy) knows its external address better than a base URL
+// joined here.
+func releaseHeadCommitURL(commit GitCommitInfo, baseURL string, projectPath string) string {
+	if trimmed := strings.TrimSpace(commit.WebURL); trimmed != "" {
+		return trimmed
+	}
+	webURL := gitlab.ProjectWebURL(baseURL, projectPath)
+	if webURL == "" || strings.TrimSpace(commit.SHA) == "" {
+		return ""
+	}
+	return webURL + "/-/commit/" + commit.SHA
 }
 
 // GitCommitQuery is the request shape of RecentCommits.

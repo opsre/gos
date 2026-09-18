@@ -34,11 +34,17 @@ type Repository interface {
 	UpdateConcurrentBatch(ctx context.Context, orderIDs []string, batchNo string, batchName string, isConcurrent bool) error
 	ListByConcurrentBatchNo(ctx context.Context, batchNo string) ([]ReleaseOrder, error)
 	FindActiveOrderByApplicationEnv(ctx context.Context, applicationID string, envCode string, excludeReleaseOrderID string) (ReleaseOrder, error)
+	// FindOpenOrderByApplicationEnv 返回同应用同环境下「尚未结束」的发布单（含待执行/已批准/
+	// 排队/构建/部署中/已构建待部署），用于自动化触发前判断是否已有手工发布排在前面。
+	FindOpenOrderByApplicationEnv(ctx context.Context, applicationID string, envCode string, excludeReleaseOrderID string) (ReleaseOrder, error)
 	CountActiveOrdersByApplicationEnv(ctx context.Context, applicationID string, envCode string, excludeReleaseOrderID string) (int, error)
 	FindActiveExecutionLock(ctx context.Context, lockKey string, excludeReleaseOrderID string, now time.Time) (ReleaseExecutionLock, error)
 	AcquireExecutionLock(ctx context.Context, lock ReleaseExecutionLock, now time.Time) (ReleaseExecutionLock, bool, error)
 	TouchExecutionLocksByOrderID(ctx context.Context, releaseOrderID string, expiredAt time.Time) error
 	ReleaseExecutionLocksByOrderID(ctx context.Context, releaseOrderID string, status ExecutionLockStatus, releasedAt time.Time) error
+	// UpdateHeadCommit 只写入发布单创建时解析出来的 HEAD 快照列。
+	// 有意不改 updated_at：发布单可能已经进入排队，改 updated_at 会打乱同应用同环境的排队顺序。
+	UpdateHeadCommit(ctx context.Context, orderID string, head ReleaseOrderHeadCommit) error
 	GetByID(ctx context.Context, id string) (ReleaseOrder, error)
 	List(ctx context.Context, filter ListFilter) ([]ReleaseOrder, int64, error)
 	ListStats(ctx context.Context, filter ListFilter) (ReleaseOrderStats, error)

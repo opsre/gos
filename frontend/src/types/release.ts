@@ -1,4 +1,8 @@
-export type ReleaseTriggerType = "manual" | "webhook" | "schedule";
+export type ReleaseTriggerType =
+  | "manual"
+  | "webhook"
+  | "schedule"
+  | "automation";
 export type ReleaseOrderDispatchAction = "execute" | "build" | "deploy";
 export type ReleaseOrderStatus =
   | "pending"
@@ -103,6 +107,17 @@ export interface ReleaseOrder {
   env_code: string;
   project_name: string;
   git_ref: string;
+  /** 创建发布单时该分支的 HEAD（短/全 sha），用于「分支当时 HEAD」。 */
+  head_commit_sha?: string;
+  /** 创建发布单时的分支名。 */
+  head_commit_ref?: string;
+  /** 展示用的「最后一条真实改动」sha；HEAD 是 merge 提交时取其前面最近的非 merge 提交。 */
+  head_change_sha?: string;
+  head_change_title?: string;
+  head_change_author?: string;
+  /** 提交时间：RFC3339 字符串，旧发布单为空。 */
+  head_change_at?: string | null;
+  head_change_url?: string;
   image_tag: string;
   trigger_type: ReleaseTriggerType;
   status: ReleaseOrderStatus;
@@ -623,48 +638,6 @@ export interface ReleaseOrderPipelineStageListResponse {
 
 export interface ReleaseOrderArtifactMetadataListResponse {
   data: ReleaseOrderArtifactMetadata[];
-}
-
-export interface ReleaseOrderGitCommit {
-  sha: string;
-  short_sha: string;
-  title: string;
-  message?: string;
-  author_name: string;
-  author_email?: string;
-  committed_at: string;
-  web_url: string;
-}
-
-// 「最近提交」的元信息色块：列表 tooltip 与发布详情共用同一套渲染与配色。
-export type ReleaseCommitChipTone = "author" | "time" | "asof" | "head" | "repo";
-
-export interface ReleaseCommitChip {
-  key: string;
-  tone: ReleaseCommitChipTone;
-  label: string;
-  value: string;
-}
-
-export interface ReleaseOrderRecentCommits {
-  order_id: string;
-  application_id: string;
-  application_name?: string;
-  repository: string;
-  provider: string;
-  ref: string;
-  /** 时点(RFC3339)：发布单执行开始/创建时刻，commits 是该时点的分支最新提交；
-   * 为空表示未启用时点筛选，commits 即当前最新提交。 */
-  as_of?: string;
-  web_url: string;
-  credential_id?: string;
-  credential_name?: string;
-  commits: ReleaseOrderGitCommit[];
-  error?: string;
-}
-
-export interface ReleaseOrderRecentCommitsResponse {
-  data: Record<string, ReleaseOrderRecentCommits>;
 }
 
 export interface ReleaseOrderRealtimeSnapshot {

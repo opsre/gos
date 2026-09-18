@@ -4,6 +4,7 @@ import {
   ArrowRightOutlined,
   CheckCircleFilled,
   ClockCircleFilled,
+  ClockCircleOutlined,
   CloseCircleFilled,
   CopyOutlined,
   ExclamationCircleOutlined,
@@ -42,7 +43,6 @@ import {
   getLatestReleaseOrderPipelineStageDiagnosis,
   getReleaseOrderPrecheck,
   getReleaseOrderPipelineStageLog,
-  getReleaseOrderRecentCommits,
   listReleaseOrderArtifactMetadata,
   listReleaseOrderApprovalRecords,
   listReleaseOrderExecutions,
@@ -78,9 +78,6 @@ import type {
   ReleaseOrderRealtimeSnapshot,
   ReleaseOrderValueProgress,
   ReleaseOrderValueProgressStatus,
-  ReleaseCommitChip,
-  ReleaseOrderGitCommit,
-  ReleaseOrderRecentCommits,
   ReleaseOrderPipelineStage,
   ReleaseOrderPipelineStageDiagnosis,
   ReleaseOrderPipelineStageDiagnosisAction,
@@ -94,7 +91,7 @@ import type {
   ReleaseTriggerType,
 } from "../../types/release";
 import { extractHTTPErrorMessage } from "../../utils/http-error";
-import { formatRecentCommitTime, recentCommitErrorText } from "../../utils/recent-commit";
+import { formatRecentCommitTime, shortCommitSHA } from "../../utils/recent-commit";
 import { notifyReleaseApprovalTasksChanged } from "../../utils/release-approval-events";
 
 const route = useRoute();
@@ -103,8 +100,6 @@ const authStore = useAuthStore();
 // Avoid duplicate stage requests when a full detail refresh is explicitly requested.
 const PIPELINE_STAGE_REFRESH_INTERVAL_MS = 5000;
 const PRECHECK_REFRESH_INTERVAL_MS = 5_000;
-// 「最近提交」按需展示的提交条数上限，与后端 limit 参数保持一致。
-const RECENT_COMMIT_LIMIT = 5;
 
 type ScopeLogState = {
   text: string;
@@ -177,9 +172,6 @@ const steps = ref<ReleaseOrderStep[]>([]);
 const executions = ref<ReleaseOrderExecution[]>([]);
 const artifactMetadata = ref<ReleaseOrderArtifactMetadata[]>([]);
 const artifactMetadataLoading = ref(false);
-const recentCommits = ref<ReleaseOrderRecentCommits | null>(null);
-const recentCommitsLoading = ref(false);
-const recentCommitsRequestError = ref("");
 const pipelineStages = ref<ReleaseOrderPipelineStage[]>([]);
 const precheck = ref<ReleaseOrderPrecheck | null>(null);
 const precheckLoading = ref(false);
@@ -960,24 +952,6 @@ const spotlightStatusKey = computed<
   }
 });
 
-const spotlightMeta = computed(() => {
-  if (isQueuedInConcurrentBatch.value) {
-    const queuePosition = currentConcurrentBatchItem.value?.queue_position || 0;
-    if (queuePosition > 0) {
-      return `并发批次等待队列 · 当前位次 ${queuePosition}`;
-    }
-    return "并发批次等待队列 · 等待前序发布释放执行位";
-  }
-  const step = spotlightStep.value;
-  if (step) {
-    return `${step.step_name} · ${statusText(step.status)}`;
-  }
-  if (!order.value) {
-    return "等待获取发布详情";
-  }
-  return `发布单状态 · ${statusText(currentBusinessStatus.value)}`;
-});
-
 const spotlightTitle = computed(() => {
   if (!order.value) {
     return "等待加载发布状态";
@@ -1030,6 +1004,11 @@ const spotlightDescription = computed(() => {
   }
   return `当前状态：${statusText(currentBusinessStatus.value)}`;
 });
+
+// 「发布时间」取实际开始执行的时间，尚未开始执行（排队/待执行）时退回创建时间。
+const spotlightPublishedAt = computed(() =>
+  formatTime(order.value?.started_at || order.value?.created_at || null),
+);
 
 const executionSections = computed(() =>
   visibleScopes.value.map((scope) => ({
@@ -1925,6 +1904,8 @@ function triggerTypeText(
   ) {
     case "manual":
       return "手动";
+    case "automation":
+      return "自动化";
     case "webhook":
       return "Webhook";
     case "schedule":
@@ -2873,12 +2854,6 @@ async function loadDetail(options?: { silent?: boolean }) {
       );
     }
 
-    // 最近提交属于辅助信息：单独 try/catch，失败只记入 detailErrors，不阻塞详情渲染。
-    const recentCommitsError = await loadReleaseOrderRecentCommits(orderID.value, silent);
-    if (recentCommitsError) {
-      detailErrors.push(`最近提交：${recentCommitsError}`);
-    }
-
     await Promise.all([loadApprovalRecords({ silent: true }), loadApprovalFlow({ silent: true })]);
     if (orderResp.data.is_concurrent) {
       await loadConcurrentBatchProgress({ silent });
@@ -2925,94 +2900,53 @@ async function loadDetail(options?: { silent?: boolean }) {
   }
 }
 
-async function loadReleaseOrderRecentCommits(id: string, silent: boolean): Promise<string> {
-  if (!silent) {
-    recentCommitsLoading.value = true;
+// 「最近提交」直接读发布单创建时已落库的字段（head_change_*），不再实时查询 Git。
+// 旧发布单与未配置凭证的发布单这些字段为空，整段不渲染，也不留加载骨架。
+const spotlightCommit = computed(() => {
+  const record = order.value;
+  if (!record) {
+    return null;
   }
-  try {
-    const response = await getReleaseOrderRecentCommits([id], RECENT_COMMIT_LIMIT);
-    recentCommits.value = response.data?.[id] || null;
-    recentCommitsRequestError.value = "";
-    return "";
-  } catch (error) {
-    recentCommits.value = null;
-    const message = extractHTTPErrorMessage(error, "加载失败");
-    recentCommitsRequestError.value = message;
-    return message;
-  } finally {
-    if (!silent) {
-      recentCommitsLoading.value = false;
-    }
+  const sha = String(record.head_change_sha || "").trim();
+  const title = String(record.head_change_title || "").trim();
+  if (!sha && !title) {
+    return null;
   }
-}
-
-// 「Merge branch … into …」只说明分支被并回主干，看不出这次发布改了什么，因此
-// 详情里同样优先列出真实改动；全部都是合并提交时再退回原列表。
-function recentCommitList(commits: ReleaseOrderRecentCommits | null): ReleaseOrderGitCommit[] {
-  const items = (commits?.commits || []).slice(0, RECENT_COMMIT_LIMIT);
-  const changes = items.filter((item) => !/^merge\b/i.test(String(item.title || "").trim()));
-  return changes.length > 0 ? changes : items;
-}
-
-// 发布时点分支上的 HEAD：列表跳过了合并提交，这里把当时的分支头单独标出来。
-function recentCommitHeaderChips(commits: ReleaseOrderRecentCommits | null): ReleaseCommitChip[] {
-  if (!commits || commits.error) {
-    return [];
-  }
-  const chips: ReleaseCommitChip[] = [];
-  const asOf = String(commits.as_of || "").trim();
-  if (asOf && dayjs(asOf).isValid()) {
-    chips.push({
-      key: "asof",
-      tone: "asof",
-      label: "发布时点",
-      value: dayjs(asOf).format("YYYY-MM-DD HH:mm"),
-    });
-  }
-  const anchor = (commits.commits || [])[0];
-  const shown = recentCommitList(commits);
-  if (anchor && !shown.some((item) => item.sha === anchor.sha)) {
-    chips.push({
-      key: "head",
-      tone: "head",
-      label: "分支当时 HEAD",
-      value: anchor.short_sha || anchor.sha.slice(0, 7),
-    });
-  }
-  return chips;
-}
-
-// 每条提交的提交者与提交时间同样用色块区分。
-function recentCommitItemChips(commit: ReleaseOrderGitCommit): ReleaseCommitChip[] {
-  const chips: ReleaseCommitChip[] = [];
-  if (commit.author_name) {
-    chips.push({ key: "author", tone: "author", label: "提交者", value: commit.author_name });
-  }
-  if (commit.committed_at) {
-    chips.push({
-      key: "time",
-      tone: "time",
-      label: "提交时间",
-      value: formatRecentCommitTime(commit.committed_at),
-    });
-  }
-  return chips;
-}
-
-function recentCommitRepositoryText(commits: ReleaseOrderRecentCommits | null) {
-  if (!commits) {
-    return "";
-  }
-  return [commits.repository, commits.ref].filter(Boolean).join(" · ");
-}
-
-// 后端错误码与请求失败都要落到同一处提示位置，避免整块区域空白。
-const recentCommitHint = computed(() => {
-  if (recentCommitsRequestError.value) {
-    return recentCommitErrorText(recentCommitsRequestError.value);
-  }
-  return recentCommitErrorText(String(recentCommits.value?.error || ""));
+  return {
+    sha,
+    title,
+    author: String(record.head_change_author || "").trim(),
+    url: String(record.head_change_url || "").trim(),
+    at: record.head_change_at || "",
+  };
 });
+
+// HEAD 胶囊用创建发布单时落库的分支 HEAD。
+const spotlightHeadSHA = computed(() => shortCommitSHA(order.value?.head_commit_sha));
+
+// 发布时点文案沿用订单自身的开始/创建时间（不再依赖实时接口的 as_of）。
+const spotlightCommitAsOfText = computed(() => {
+  const asOf = order.value?.started_at || order.value?.created_at || "";
+  if (!asOf || !dayjs(asOf).isValid()) {
+    return "";
+  }
+  return `发布时点 ${dayjs(asOf).format("YYYY-MM-DD HH:mm")}`;
+});
+
+const spotlightCommitTitleText = computed(() => {
+  const commit = spotlightCommit.value;
+  if (!commit) {
+    return "";
+  }
+  return [commit.title, commit.author, commit.at ? formatRecentCommitTime(commit.at) : ""]
+    .filter(Boolean)
+    .join(" · ");
+});
+
+// 有提交信息才占用卡片空间。
+const showSpotlightCommits = computed(
+  () => Boolean(spotlightCommit.value) || Boolean(spotlightHeadSHA.value),
+);
 
 async function clearFastExecuteQuery() {
   if (!fastExecuteRequested.value) {
@@ -4027,61 +3961,104 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div
-          class="release-spotlight"
-          :class="`release-spotlight-${spotlightStatusKey}`"
-        >
-          <div class="release-spotlight-content">
-            <div class="release-spotlight-header">
-              <div class="release-spotlight-label">整体进度</div>
-            </div>
-            <div class="release-spotlight-title">{{ spotlightTitle }}</div>
-            <div class="release-spotlight-description">
-              {{ spotlightDescription }}
-            </div>
+        <div class="release-spotlight">
+          <!-- 状态头：按状态着色的圆形实心图标 + 标题/描述 + 状态胶囊 -->
+          <div
+            class="release-spotlight-head"
+            :class="`release-spotlight-${spotlightStatusKey}`"
+          >
             <div
+              class="release-spotlight-orb"
+              :class="`release-spotlight-orb-${spotlightStatusKey}`"
+            >
+              <SyncOutlined
+                v-if="spotlightStatusKey === 'running'"
+                spin
+                class="release-spotlight-orb-icon"
+              />
+              <ClockCircleFilled
+                v-else-if="spotlightStatusKey === 'queued'"
+                class="release-spotlight-orb-icon"
+              />
+              <CheckCircleFilled
+                v-else-if="spotlightStatusKey === 'success'"
+                class="release-spotlight-orb-icon"
+              />
+              <CloseCircleFilled
+                v-else-if="spotlightStatusKey === 'failed'"
+                class="release-spotlight-orb-icon"
+              />
+              <StopFilled
+                v-else-if="spotlightStatusKey === 'cancelled'"
+                class="release-spotlight-orb-icon"
+              />
+              <ClockCircleFilled v-else class="release-spotlight-orb-icon" />
+            </div>
+            <div class="release-spotlight-copy">
+              <div class="release-spotlight-title">{{ spotlightTitle }}</div>
+              <div class="release-spotlight-description">
+                整体进度 · {{ spotlightDescription }}
+              </div>
+            </div>
+            <span
               :class="[
                 'release-spotlight-meta',
                 'status-tag',
                 statusToneClass(currentBusinessStatus),
               ]"
             >
-              <component
-                :is="statusIconForTone(statusToneClass(currentBusinessStatus))"
-                :spin="statusIconSpins(statusToneClass(currentBusinessStatus))"
-                aria-hidden="true"
-              />
-              <span>{{ spotlightMeta }}</span>
-            </div>
+              {{ statusText(currentBusinessStatus) }}
+            </span>
           </div>
-          <div class="release-spotlight-icon-wrap">
-            <div
-              class="release-spotlight-icon-orb"
-              :class="`release-spotlight-icon-orb-${spotlightStatusKey}`"
-            >
-              <SyncOutlined
-                v-if="spotlightStatusKey === 'running'"
-                spin
-                class="release-spotlight-icon"
-              />
-              <ClockCircleFilled
-                v-else-if="spotlightStatusKey === 'queued'"
-                class="release-spotlight-icon"
-              />
-              <CheckCircleFilled
-                v-else-if="spotlightStatusKey === 'success'"
-                class="release-spotlight-icon"
-              />
-              <CloseCircleFilled
-                v-else-if="spotlightStatusKey === 'failed'"
-                class="release-spotlight-icon"
-              />
-              <StopFilled
-                v-else-if="spotlightStatusKey === 'cancelled'"
-                class="release-spotlight-icon"
-              />
-              <ClockCircleFilled v-else class="release-spotlight-icon" />
+
+          <!-- 发布时间：取开始执行时间，未开始时退回创建时间 -->
+          <div class="release-spotlight-time">
+            <ClockCircleOutlined
+              class="release-spotlight-time-icon"
+              aria-hidden="true"
+            />
+            <span class="release-spotlight-time-label">发布时间</span>
+            <span class="release-spotlight-time-value">
+              {{ spotlightPublishedAt }}
+            </span>
+          </div>
+
+          <!-- 提交信息为空（旧发布单/无凭证）时整段不渲染 -->
+          <div v-if="showSpotlightCommits" class="release-spotlight-commits">
+            <div class="release-spotlight-commits-head">
+              <span class="release-spotlight-commits-title">最近提交</span>
+              <span
+                v-if="spotlightCommitAsOfText"
+                class="release-spotlight-commits-meta"
+              >
+                {{ spotlightCommitAsOfText }}
+              </span>
+              <span
+                v-if="spotlightHeadSHA"
+                class="release-spotlight-head-chip"
+                title="发布时点分支 HEAD"
+              >
+                HEAD {{ spotlightHeadSHA }}
+              </span>
             </div>
+            <a
+              v-if="spotlightCommit"
+              class="release-spotlight-commit"
+              :href="spotlightCommit.url || undefined"
+              :title="spotlightCommitTitleText"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span class="release-spotlight-commit-sha">
+                {{ shortCommitSHA(spotlightCommit.sha) }}
+              </span>
+              <span class="release-spotlight-commit-title">
+                {{ spotlightCommit.title || "-" }}
+              </span>
+              <span v-if="spotlightCommit.author" class="release-spotlight-commit-author">
+                {{ spotlightCommit.author }}
+              </span>
+            </a>
           </div>
         </div>
       </div>
@@ -4165,80 +4142,6 @@ onBeforeUnmount(() => {
               </a-descriptions>
             </section>
 
-            <section class="detail-inline-section">
-              <div class="detail-inline-section-header">
-                <div class="detail-inline-section-title">最近提交</div>
-                <div class="detail-inline-section-summary detail-recent-commit-repo">
-                  <span v-if="recentCommitRepositoryText(recentCommits)">
-                    {{ recentCommitRepositoryText(recentCommits) }}
-                  </span>
-                  <a
-                    v-if="recentCommits?.web_url"
-                    class="detail-recent-commit-repo-link"
-                    :href="recentCommits.web_url"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    打开仓库
-                  </a>
-                </div>
-              </div>
-
-              <a-skeleton v-if="recentCommitsLoading" active :paragraph="{ rows: 2 }" />
-
-              <div
-                v-else-if="recentCommitHeaderChips(recentCommits).length"
-                class="git-commit-chips detail-recent-commit-chips"
-              >
-                <span
-                  v-for="chip in recentCommitHeaderChips(recentCommits)"
-                  :key="chip.key"
-                  class="git-commit-chip"
-                  :class="[
-                    `git-commit-chip--${chip.tone}`,
-                    chip.tone === 'head' ? 'git-commit-chip--mono' : '',
-                  ]"
-                >
-                  <span class="git-commit-chip-label">{{ chip.label }}</span>
-                  <span class="git-commit-chip-value">{{ chip.value }}</span>
-                </span>
-              </div>
-
-              <div v-if="recentCommitsLoading" />
-
-              <div v-else-if="recentCommitList(recentCommits).length > 0" class="detail-recent-commit-list">
-                <div
-                  v-for="commit in recentCommitList(recentCommits)"
-                  :key="commit.sha"
-                  class="detail-recent-commit-item"
-                >
-                  <a
-                    class="detail-recent-commit-sha"
-                    :href="commit.web_url"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {{ commit.short_sha }}
-                  </a>
-                  <div class="detail-recent-commit-main">
-                    <div class="detail-recent-commit-title">{{ commit.title }}</div>
-                    <div class="git-commit-chips detail-recent-commit-meta">
-                      <span
-                        v-for="chip in recentCommitItemChips(commit)"
-                        :key="chip.key"
-                        class="git-commit-chip"
-                        :class="`git-commit-chip--${chip.tone}`"
-                      >
-                        <span class="git-commit-chip-label">{{ chip.label }}</span>
-                        <span class="git-commit-chip-value">{{ chip.value }}</span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div v-else class="detail-recent-commit-hint">{{ recentCommitHint }}</div>
-            </section>
 
             <section class="detail-inline-section">
               <div class="detail-inline-section-header">
@@ -6270,134 +6173,168 @@ onBeforeUnmount(() => {
   word-break: break-word;
 }
 
+/* 顶部「整体进度」卡：竖向三段（状态头 / 发布时间 / 最近提交），整卡白底 16px 圆角。 */
 .release-spotlight {
   border-radius: 16px;
   align-self: stretch;
   border: 1px solid #cbd5e1;
   background: #ffffff;
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
-  padding: 24px 26px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 92px;
-  gap: 22px;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   position: relative;
   overflow: hidden;
 }
 
+/* 状态头：左侧圆形实心图标 + 标题/描述 + 右侧状态胶囊，底色按状态着色。 */
+.release-spotlight-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px 20px;
+}
+
 .release-spotlight-success {
-  border-color: #86efac;
   background: #f0fdf4;
 }
 
 .release-spotlight-running {
-  border-color: #93c5fd;
   background: #eff6ff;
 }
 
 .release-spotlight-failed {
-  border-color: #fca5a5;
   background: #fef2f2;
 }
 
 .release-spotlight-queued,
-.release-spotlight-cancelled,
 .release-spotlight-pending {
-  border-color: #fdba74;
   background: #fff7ed;
 }
 
-.release-spotlight-icon-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
+.release-spotlight-cancelled {
+  background: #f8fafc;
 }
 
-.release-spotlight-icon-orb {
-  width: 60px;
-  height: 60px;
-  border-radius: 14px;
+.release-spotlight-orb {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.05);
+  width: 44px;
+  height: 44px;
+  border: 1px solid transparent;
+  border-radius: 50%;
 }
 
-.release-spotlight-icon-orb-success {
+.release-spotlight-orb-success {
+  border-color: #bbf7d0;
+  background: #dcfce7;
   color: #15803d;
-  background: #ecfdf3;
-  border-color: #86efac;
 }
 
-.release-spotlight-icon-orb-running {
+.release-spotlight-orb-running {
+  border-color: #bfdbfe;
+  background: #dbeafe;
   color: #1d4ed8;
-  background: #ffffff;
-  border-color: #93c5fd;
 }
 
-.release-spotlight-icon-orb-failed {
+.release-spotlight-orb-failed {
+  border-color: #fecaca;
+  background: #fee2e2;
   color: #b91c1c;
-  background: #ffffff;
-  border-color: #fca5a5;
 }
 
-.release-spotlight-icon-orb-queued,
-.release-spotlight-icon-orb-cancelled,
-.release-spotlight-icon-orb-pending {
+.release-spotlight-orb-queued,
+.release-spotlight-orb-pending {
+  border-color: #fde68a;
+  background: #fef3c7;
   color: #b45309;
-  background: #ffffff;
-  border-color: #fdba74;
 }
 
-.release-spotlight-icon {
-  font-size: 24px;
+.release-spotlight-orb-cancelled {
+  border-color: #cbd5e1;
+  background: #e2e8f0;
+  color: #475569;
 }
 
-.release-spotlight-content {
+.release-spotlight-orb-icon {
+  font-size: 22px;
+}
+
+.release-spotlight-copy {
   display: flex;
+  flex: 1 1 160px;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   min-width: 0;
 }
 
-.release-spotlight-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.release-spotlight-label {
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-text-soft);
-}
-
+/* 标题最多两行；中文不逐字断行，只有整段放不下时才兜底折行。 */
 .release-spotlight-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   font-size: 24px;
-  line-height: 1.2;
+  line-height: 1.25;
   font-weight: 800;
   color: var(--color-dashboard-900);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
+/* 「整体进度 · 描述」，灰色小字，最多两行。 */
 .release-spotlight-description {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   color: var(--color-text-secondary);
-  line-height: 1.9;
-  max-width: 520px;
+  font-size: 13px;
+  line-height: 1.7;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
+/* 状态胶囊：文案取发布单业务状态，配色复用全局 status-pill-* 语义色。 */
 .release-spotlight-meta {
-  color: var(--color-text-soft);
-  font-size: 12px;
-  font-weight: 600;
-  display: inline-flex;
+  flex: none;
+  margin-left: auto;
+  padding: 5px 12px;
+  font-size: 13px;
+}
+
+/* 发布时间行：上下各一条 1px 分隔线，没有最近提交段时不留尾部横线。 */
+.release-spotlight-time {
+  display: flex;
   align-items: center;
   gap: 8px;
-  width: fit-content;
-  padding: 3px 9px;
-  border-radius: 8px;
+  min-width: 0;
+  padding: 12px 20px;
+  border-top: 1px solid #eef2f7;
+  border-bottom: 1px solid #eef2f7;
+  font-size: 13px;
+}
+
+.release-spotlight-time:last-child {
+  border-bottom: none;
+}
+
+.release-spotlight-time-icon {
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+.release-spotlight-time-label {
+  color: var(--color-text-soft);
+}
+
+.release-spotlight-time-value {
+  font-weight: 700;
+  color: #0f172a;
 }
 
 .detail-dashboard {
@@ -7492,48 +7429,71 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
 }
 
-/* 最近提交：右上角显示仓库路径与分支，正文为紧凑的单行提交列表。 */
-.detail-recent-commit-repo {
-  display: inline-flex;
+
+
+.release-spotlight-commits {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 12px 20px 16px;
+}
+
+.release-spotlight-commits-head {
+  display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
-  margin-top: 0;
-  max-width: 60%;
+  min-width: 0;
+}
+
+.release-spotlight-commits-title {
+  flex: none;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.release-spotlight-commits-meta {
+  min-width: 0;
   overflow: hidden;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.detail-recent-commit-chips {
-  margin-bottom: 8px;
-}
-
-.detail-recent-commit-repo-link {
+/* 紫色 HEAD 胶囊：只在展示的提交跳过了发布时点分支头时出现。 */
+.release-spotlight-head-chip {
   flex: none;
-  color: #2563eb;
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid #ddd6fe;
+  border-radius: 999px;
+  background: #f5f3ff;
+  color: #6d28d9;
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 11px;
   font-weight: 700;
 }
 
-.detail-recent-commit-list {
-  display: grid;
-  gap: 8px;
-}
-
-.detail-recent-commit-item {
+.release-spotlight-commit {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.72);
+  padding: 6px 0;
+  text-decoration: none;
 }
 
-.detail-recent-commit-item:last-child {
-  padding-bottom: 0;
-  border-bottom: none;
+/* 行与行之间 1px 细分割线，首行与末行外侧都不留线。 */
+.release-spotlight-commit + .release-spotlight-commit {
+  border-top: 1px solid #eef2f7;
 }
 
-.detail-recent-commit-sha {
+.release-spotlight-commit-sha {
   flex: none;
   padding: 1px 6px;
   border-radius: 6px;
@@ -7544,36 +7504,36 @@ onBeforeUnmount(() => {
   font-weight: 700;
 }
 
-.detail-recent-commit-sha:hover,
-.detail-recent-commit-sha:focus-visible {
+.release-spotlight-commit:hover .release-spotlight-commit-sha,
+.release-spotlight-commit:focus-visible .release-spotlight-commit-sha {
   color: #2563eb;
 }
 
-.detail-recent-commit-main {
+.release-spotlight-commit-title {
+  flex: 1 1 auto;
   min-width: 0;
-}
-
-.detail-recent-commit-title {
   overflow: hidden;
   color: #0f172a;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.detail-recent-commit-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 3px;
-  color: #64748b;
-  font-size: 12px;
-}
-
-.detail-recent-commit-hint {
-  color: #64748b;
-  font-size: 13px;
+/* 作者胶囊与 HEAD 胶囊同色系，尺寸更小。 */
+.release-spotlight-commit-author {
+  flex: none;
+  max-width: 132px;
+  overflow: hidden;
+  padding: 1px 7px;
+  border: 1px solid #ede9fe;
+  border-radius: 999px;
+  background: #f5f3ff;
+  color: #7c3aed;
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .detail-collapse :deep(.ant-collapse-item) {
@@ -8172,18 +8132,21 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
   }
 
-  .release-spotlight {
-    grid-template-columns: 1fr;
-    padding: 20px 18px;
+  .release-spotlight-head {
+    gap: 12px;
+    padding: 16px;
   }
 
-  .release-spotlight-icon-wrap {
-    justify-content: flex-start;
+  .release-spotlight-title {
+    font-size: 20px;
   }
 
-  .release-spotlight-header {
-    flex-direction: column;
-    align-items: flex-start;
+  .release-spotlight-time {
+    padding: 10px 16px;
+  }
+
+  .release-spotlight-commits {
+    padding: 12px 16px 14px;
   }
 
   .release-hero-facts {

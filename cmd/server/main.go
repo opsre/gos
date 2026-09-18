@@ -115,6 +115,10 @@ func main() {
 	if err := bootstrap.InitSchema(releaseRepo); err != nil {
 		log.Fatalf("init release schema: %v", err)
 	}
+	releaseAutomationRepo := sqlrepo.NewReleaseAutomationRepository(db, cfg.Database.Driver)
+	if err := bootstrap.InitSchema(releaseAutomationRepo); err != nil {
+		log.Fatalf("init release automation schema: %v", err)
+	}
 	argocdAppRepo := sqlrepo.NewArgoCDApplicationRepository(db, cfg.Database.Driver)
 	if err := bootstrap.InitSchema(argocdAppRepo); err != nil {
 		log.Fatalf("init argocd schema: %v", err)
@@ -292,6 +296,9 @@ func main() {
 		gitopsServiceFactory,
 		nil,
 	)
+	// 发布单创建后由 GitCommitManager 异步解析一次仓库 HEAD 并落库，
+	// 列表/详情只读库（recent-commits 实时接口暂时保留给详情页）。
+	releaseOrderManager.SetHeadCommitResolver(gitCommitManager)
 	handler.SetWorkbenchQuery(usecase.NewApplicationWorkbench(repo, releaseRepo))
 	handler.SetApprovalFlowManager(releaseOrderManager)
 	releaseTemplateManager := usecase.NewReleaseTemplateManager(releaseRepo, repo, pipelineRepo, executorParamRepo, platformParamRepo, argocdAppRepo, agentRepo, notificationRepo, gitopsInstanceManager)
@@ -331,6 +338,20 @@ func main() {
 		jenkinsClient,
 	)
 	releaseOrderHandler.SetRealtimeSynchronizer(releaseTracker)
+
+	// 发布自动化：复用发布单链路的建单/派发能力和 GitCommitManager 的凭证选择，
+	// 自己不碰 git 协议，只做「轮询 HEAD → 建单 → 派发」的编排。
+	releaseAutomationManager := usecase.NewReleaseAutomationManager(
+		releaseAutomationRepo,
+		repo,
+		releaseRepo,
+		releaseOrderManager,
+		gitCommitManager,
+	)
+	releaseAutomationHandler := httpapi.NewReleaseAutomationHandler(
+		releaseAutomationManager,
+		authSessionManager,
+	)
 
 	syncTask := bootstrap.StartJenkinsAutoSyncTask(cfg.Jenkins, func(ctx context.Context) error {
 		var (
@@ -431,6 +452,27 @@ func main() {
 	})
 	defer releaseScheduleTask.Stop()
 
+	releaseAutomationTask := bootstrap.StartReleaseAutomationTask(30, func(ctx context.Context) error {
+		result, err := releaseAutomationManager.RunDueAutomations(ctx, 20)
+		if err != nil {
+			return err
+		}
+		if result.Scanned > 0 {
+			log.Printf(
+				"release automation poll completed: scanned=%d triggered=%d unchanged=%d blocked=%d failed=%d deployed=%d deploy_waiting=%d",
+				result.Scanned,
+				result.Triggered,
+				result.Unchanged,
+				result.Blocked,
+				result.Failed,
+				result.Deployed,
+				result.DeployWaiting,
+			)
+		}
+		return nil
+	})
+	defer releaseAutomationTask.Stop()
+
 	router := httpapi.NewRouter(
 		authHandler,
 		agentHandler,
@@ -452,6 +494,7 @@ func main() {
 		releaseOrderHandler,
 		releaseTemplateHandler,
 		announcementHandler,
+		releaseAutomationHandler,
 	)
 
 	server := &http.Server{

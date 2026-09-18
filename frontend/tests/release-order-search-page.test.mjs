@@ -4,7 +4,7 @@ import test from "node:test";
 
 const root = new URL("../", import.meta.url);
 
-test("release search home is the post-login landing page and opens an exact order match", async () => {
+test("release search home stays reachable from the sidebar and opens an exact order match", async () => {
   const [view, router, layout, login] = await Promise.all([
     readFile(new URL("src/views/release/ReleaseOrderSearchView.vue", root), "utf8"),
     readFile(new URL("src/router/index.ts", root), "utf8"),
@@ -14,8 +14,9 @@ test("release search home is the post-login landing page and opens an exact orde
 
   assert.match(router, /path:\s*['"]\/release-search['"]/);
   assert.match(router, /name:\s*['"]release-order-search['"]/);
-  assert.match(router, /path:\s*['"]\/['"][\s\S]*redirect:\s*['"]\/release-search['"]/);
-  assert.match(login, /redirect\s*\|\|\s*['"]\/release-search['"]/);
+  // 落地页已改为应用列表；发布搜索只保留侧栏「首页」入口
+  assert.match(router, /path:\s*['"]\/['"][\s\S]*redirect:\s*['"]\/applications['"]/);
+  assert.match(login, /redirect\s*\|\|\s*['"]\/applications['"]/);
   assert.match(layout, /key="release-home"/);
   assert.match(layout, /<a-menu-item key="release-home"[\s\S]*?<HomeOutlined \/>[\s\S]*?首页[\s\S]*?<\/a-menu-item>/);
   assert.ok(

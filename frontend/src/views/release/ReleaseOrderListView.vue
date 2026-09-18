@@ -14,6 +14,8 @@ import {
   PlusOutlined,
   SearchOutlined,
   SyncOutlined,
+  SwapOutlined,
+  ThunderboltOutlined,
   ArrowRightOutlined,
 } from "@ant-design/icons-vue";
 import { message } from "ant-design-vue";
@@ -39,7 +41,6 @@ import {
   deployReleaseOrder,
   executeReleaseOrder,
   getReleaseOrderApprovalFlow,
-  getReleaseOrderRecentCommits,
   getReleaseOrderStats,
   getReleaseOrderByID,
   getReleaseOrderPrecheck,
@@ -61,19 +62,16 @@ import type {
   ReleaseOrderApprovalFlowTask,
   ReleaseOrderBusinessStatus,
   ReleaseOrderExecution,
-  ReleaseCommitChip,
-  ReleaseOrderGitCommit,
   ReleaseOrderPipelineStage,
   ReleaseOrderParam,
   ReleaseOrderPrecheck,
-  ReleaseOrderRecentCommits,
   ReleaseOrderStatus,
   ReleaseOrderDispatchAction,
   ReplayReleaseOrderPayload,
   ReleaseTriggerType,
 } from "../../types/release";
 import { extractHTTPErrorMessage } from "../../utils/http-error";
-import { formatRecentCommitTime, recentCommitErrorText } from "../../utils/recent-commit";
+import { formatRecentCommitTime, shortCommitSHA } from "../../utils/recent-commit";
 
 echarts.use([BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer]);
 
@@ -102,15 +100,6 @@ interface ReleaseRealtimeProgress {
   tone: ReleaseRealtimeProgressTone;
 }
 
-// 「最近提交」列每次批量查询的提交条数上限，和后端 limit 参数保持一致。
-const RECENT_COMMIT_LIMIT = 5;
-// 轮询时最近提交的最短复用时间，避免每 10s 都去触发后端 Git 查询。
-const RECENT_COMMIT_REFRESH_INTERVAL_MS = 60_000;
-// 失败后的重试间隔比成功缓存短：后端冷启动时首个请求可能超时，等满一分钟才重试会让
-// 该列长时间空白，缩短到 15s 可以让预热完成后的下一轮轮询尽快补上。
-const RECENT_COMMIT_RETRY_INTERVAL_MS = 15_000;
-
-
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
@@ -137,9 +126,24 @@ const triggerTypeOptions: Array<{
 }> = [
   { label: "全部方式", value: "" },
   { label: "手动", value: "manual" },
+  { label: "自动化", value: "automation" },
   { label: "Webhook", value: "webhook" },
   { label: "定时", value: "schedule" },
 ];
+
+/**
+ * 页头触发方式切换：图标与发布详情页的「发布名称/单号」切换保持一致（⇄），
+ * 只在「手动 / 自动」之间翻，Webhook / 定时仍走「高级检索」的触发方式下拉。
+ */
+const DEFAULT_TRIGGER_TYPE: ReleaseTriggerType = "manual";
+
+function isTriggerToggleValue(value: string): value is "manual" | "automation" {
+  return value === "manual" || value === "automation";
+}
+
+function isAdvancedTriggerType(value: string) {
+  return Boolean(value) && !isTriggerToggleValue(value);
+}
 
 const operationTypeOptions: Array<{
   label: string;
@@ -186,11 +190,6 @@ let durationTimer: number | undefined;
 const realtimeProgressMap = reactive<Record<string, ReleaseRealtimeProgress>>({});
 const realtimeProgressMaxPercent = reactive<Record<string, number>>({});
 const realtimeProgressInflight = new Set<string>();
-// 发布单最近提交按订单 id 缓存，批量接口一次查询当前页可见行。
-const recentCommitsMap = reactive<Record<string, ReleaseOrderRecentCommits>>({});
-const recentCommitsInflight = new Set<string>();
-const recentCommitsFetchedAt = new Map<string, number>();
-let recentCommitsRequestSeq = 0;
 const approvalFlowByOrderID = reactive<Record<string, ReleaseOrderApprovalFlow | null>>({});
 const approvalFlowLoadingByOrderID = reactive<Record<string, boolean>>({});
 const approvalFlowLoadedByOrderID = reactive<Record<string, boolean>>({});
@@ -237,7 +236,7 @@ const filters = reactive({
   env_code: "",
   operation_type: "" as ReleaseOperationType | "",
   status: "" as ReleaseOrderStatus | "",
-  trigger_type: "" as ReleaseTriggerType | "",
+  trigger_type: DEFAULT_TRIGGER_TYPE as ReleaseTriggerType | "",
   created_at_range: [] as string[],
   page: 1,
   pageSize: 10,
@@ -252,7 +251,7 @@ const activeQuery = reactive({
   env_code: "",
   operation_type: "" as ReleaseOperationType | "",
   status: "" as ReleaseOrderStatus | "",
-  trigger_type: "" as ReleaseTriggerType | "",
+  trigger_type: DEFAULT_TRIGGER_TYPE as ReleaseTriggerType | "",
   created_at_from: "",
   created_at_to: "",
 });
@@ -416,7 +415,7 @@ const activeFilterTags = computed(() => {
       value: rawStatusText(activeQuery.status),
     });
   }
-  if (activeQuery.trigger_type) {
+  if (isAdvancedTriggerType(activeQuery.trigger_type)) {
     tags.push({
       key: "trigger_type",
       label: "触发方式",
@@ -441,7 +440,7 @@ const hasAdvancedFilter = computed(() =>
     filters.concurrent_batch_name.trim() ||
     filters.triggered_by.trim() ||
     filters.operation_type ||
-    filters.trigger_type ||
+    isAdvancedTriggerType(filters.trigger_type) ||
     filters.created_at_range.length,
   ),
 );
@@ -453,11 +452,55 @@ const hasActiveAdvancedFilter = computed(() =>
     activeQuery.concurrent_batch_name ||
     activeQuery.triggered_by ||
     activeQuery.operation_type ||
-    activeQuery.trigger_type ||
+    isAdvancedTriggerType(activeQuery.trigger_type) ||
     activeQuery.created_at_from ||
     activeQuery.created_at_to,
   ),
 );
+
+/** 页头切换的提示文案：webhook / 定时这类值不在切换范围里，按当前值原样显示。 */
+const triggerToggleLabel = computed(() =>
+  isTriggerToggleValue(filters.trigger_type)
+    ? filters.trigger_type === "automation"
+      ? "自动"
+      : "手动"
+    : triggerTypeText(filters.trigger_type),
+);
+
+const triggerToggleHint = computed(() => `当前只看${triggerToggleLabel.value}触发的发布单，点击切换`);
+
+/** 自动视图：页头标题从「发布」变成蓝色的「自动」。 */
+const triggerToggleIsAutomation = computed(() => filters.trigger_type === "automation");
+const pageTitleText = computed(() => (triggerToggleIsAutomation.value ? "自动" : "发布"));
+
+/** ⇄ 图标的方向与动效：自动态翻半圈，切换瞬间再补一次翻转动画。 */
+const TRIGGER_TOGGLE_LAST_MODE_KEY = "gos:release-trigger-toggle-mode";
+const triggerToggleSwitched = ref(false);
+const triggerToggleDirection = ref<"to-auto" | "to-manual">("to-manual");
+
+/**
+ * 列表页改 query 时整页会重建（AppLayout 用 route.fullPath 当 key），
+ * 本地计数器活不过这一次切换，所以用 sessionStorage 记住上次看的模式来判断方向。
+ */
+function markTriggerToggleSwitch() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const previous = window.sessionStorage.getItem(TRIGGER_TOGGLE_LAST_MODE_KEY);
+  window.sessionStorage.setItem(TRIGGER_TOGGLE_LAST_MODE_KEY, filters.trigger_type);
+  triggerToggleSwitched.value = Boolean(previous) && previous !== filters.trigger_type;
+  triggerToggleDirection.value = filters.trigger_type === "automation" ? "to-auto" : "to-manual";
+}
+
+function triggerToggleIconClass() {
+  return {
+    "release-trigger-switch-icon--auto": filters.trigger_type === "automation",
+    "release-trigger-switch-icon--spin-to-auto":
+      triggerToggleSwitched.value && triggerToggleDirection.value === "to-auto",
+    "release-trigger-switch-icon--spin-to-manual":
+      triggerToggleSwitched.value && triggerToggleDirection.value === "to-manual",
+  };
+}
 const showAdvancedSearch = computed(() => advancedSearchExpanded.value);
 const hasPendingAdvancedFilterChanges = computed(
   () =>
@@ -508,6 +551,34 @@ function buildReleaseListQuery() {
     }
   });
   return query;
+}
+
+function normalizeQuery(query: Record<string, unknown>) {
+  const result: Record<string, string> = {};
+  Object.entries(query).forEach(([key, value]) => {
+    const text = Array.isArray(value)
+      ? String(value[0] || "").trim()
+      : String(value || "").trim();
+    if (text) {
+      result[key] = text;
+    }
+  });
+  return result;
+}
+
+/** 把当前生效筛选写回地址栏，刷新或从详情页返回时保持同一批筛选条件。 */
+function syncReleaseListQueryToRoute() {
+  const nextQuery = buildReleaseListQuery();
+  const currentQuery = normalizeQuery(route.query);
+  const currentKeys = Object.keys(currentQuery).sort();
+  const nextKeys = Object.keys(nextQuery).sort();
+  const sameKeys =
+    currentKeys.length === nextKeys.length &&
+    currentKeys.every((key, index) => key === nextKeys[index]);
+  if (sameKeys && nextKeys.every((key) => currentQuery[key] === nextQuery[key])) {
+    return;
+  }
+  void router.replace({ path: "/releases", query: nextQuery });
 }
 
 function applyActiveQueryFromFilters() {
@@ -1148,164 +1219,45 @@ function realtimeProgress(record: ReleaseOrder) {
   return realtimeProgressMap[record.id] || fallbackRealtimeProgress(record);
 }
 
-// 批量拉取当前页可见发布单的最近提交。默认只补齐缺失/失败/已过期的订单，
-// 避免 10s 轮询反复触发后端 Git 查询；用户主动查询或翻页时强制刷新。
-async function loadVisibleOrderRecentCommits(
-  records: ReleaseOrder[],
-  options?: { force?: boolean },
-) {
-  const requestSeq = ++recentCommitsRequestSeq;
-  const currentIDs = new Set(records.map((item) => item.id));
-
-  Object.keys(recentCommitsMap).forEach((id) => {
-    if (!currentIDs.has(id)) {
-      delete recentCommitsMap[id];
-      recentCommitsInflight.delete(id);
-      recentCommitsFetchedAt.delete(id);
-    }
-  });
-
-  const targets = records.filter((record) => {
-    if (recentCommitsInflight.has(record.id)) {
-      return false;
-    }
-    if (options?.force) {
-      return true;
-    }
-    const existing = recentCommitsMap[record.id];
-    if (!existing || existing.error) {
-      return true;
-    }
-    const fetchedAt = recentCommitsFetchedAt.get(record.id) || 0;
-    return Date.now() - fetchedAt >= RECENT_COMMIT_REFRESH_INTERVAL_MS;
-  });
-
-  if (!targets.length) {
-    return;
-  }
-
-  const targetIDs = targets.map((record) => record.id);
-  targetIDs.forEach((id) => recentCommitsInflight.add(id));
-
-  try {
-    const response = await getReleaseOrderRecentCommits(targetIDs, RECENT_COMMIT_LIMIT);
-    if (requestSeq !== recentCommitsRequestSeq) {
-      return;
-    }
-    const visibleIDs = currentIDs;
-    const returnedIDs = new Set(Object.keys(response.data || {}));
-    Object.entries(response.data || {}).forEach(([orderID, item]) => {
-      if (visibleIDs.has(orderID)) {
-        recentCommitsMap[orderID] = item;
-        recentCommitsFetchedAt.set(orderID, Date.now());
-      }
-    });
-    // 后端未返回的订单同样按已查询处理，避免下一轮轮询立刻重试。
-    targetIDs.forEach((id) => {
-      if (!returnedIDs.has(id)) {
-        recentCommitsFetchedAt.set(id, Date.now());
-      }
-    });
-  } catch {
-    // 提交信息属于辅助信息，失败时保持单元格为空由后续轮询重试，不弹提示打断用户；
-    // 失败的重试窗口按 15s 计（而不是成功的 60s），冷启动预热完成后能尽快补齐。
-    const retryAt = Date.now() - (RECENT_COMMIT_REFRESH_INTERVAL_MS - RECENT_COMMIT_RETRY_INTERVAL_MS);
-    targetIDs.forEach((id) => recentCommitsFetchedAt.set(id, retryAt));
-  } finally {
-    targetIDs.forEach((id) => recentCommitsInflight.delete(id));
-  }
+// 「最近提交」直接读发布单创建时已落库的字段，不再实时查询 Git；
+// 旧发布单这些字段为空，单元格与 tooltip 统一兜底成 -。
+function recentCommitSHA(record: ReleaseOrder) {
+  return String(record.head_change_sha || "").trim();
 }
 
-function recentCommits(record: ReleaseOrder) {
-  return recentCommitsMap[record.id] || null;
-}
-
-// 「Merge branch … into …」只是把分支并回主干的动作，读不出这次发布改了什么，
-// 所以展示时跳过这类合并提交，取该时点之前最后一条真实改动。
-function isMergeCommit(commit: ReleaseOrderGitCommit | null | undefined) {
-  return /^merge\b/i.test(String(commit?.title || "").trim());
-}
-
-function recentCommitAnchor(record: ReleaseOrder): ReleaseOrderGitCommit | null {
-  return recentCommits(record)?.commits?.[0] || null;
-}
-
-function recentCommitItem(record: ReleaseOrder): ReleaseOrderGitCommit | null {
-  const commits = recentCommits(record)?.commits || [];
-  if (commits.length === 0) {
-    return null;
-  }
-  return commits.find((item) => !isMergeCommit(item)) || commits[0];
-}
-
-// 还没有拿到后端结果时（首次加载或冷启动重试中）显示「获取中…」，避免与
-// 「确实没有提交」的 - 混淆。
-function recentCommitPending(record: ReleaseOrder) {
-  return !recentCommits(record);
-}
-
-function recentCommitRepositoryText(record: ReleaseOrder) {
-  const info = recentCommits(record);
-  if (!info) {
-    return "";
-  }
-  return [info.repository, info.ref].filter(Boolean).join(" · ");
+function recentCommitTitle(record: ReleaseOrder) {
+  return String(record.head_change_title || "").trim();
 }
 
 function recentCommitTooltipTitle(record: ReleaseOrder) {
-  const info = recentCommits(record);
-  if (!info) {
-    return "正在获取最近提交";
-  }
-  if (info.error) {
-    return recentCommitErrorText(info.error);
-  }
-  return recentCommitItem(record)?.title || "暂无提交记录";
+  // 标题缺失时退回短 sha，避免 tooltip 首行只有一个占位符。
+  return recentCommitTitle(record) || shortCommitSHA(record.head_change_sha) || "-";
 }
 
-// tooltip 里的元信息按「提交者 / 提交时间 / 发布时点 / 分支当时 HEAD / 仓库」分成色块，
-// 比一长串灰字更容易一眼区分；发布时点与分支 HEAD 只在能确定时给出。
-function recentCommitChips(record: ReleaseOrder): ReleaseCommitChip[] {
-  const info = recentCommits(record);
-  if (!info || info.error) {
-    return [];
-  }
-  const commit = recentCommitItem(record);
-  const chips: ReleaseCommitChip[] = [];
-  if (commit?.author_name) {
-    chips.push({ key: "author", tone: "author", label: "提交者", value: commit.author_name });
-  }
-  if (commit?.committed_at) {
-    chips.push({
-      key: "time",
-      tone: "time",
-      label: "提交时间",
-      value: formatRecentCommitTime(commit.committed_at),
-    });
-  }
-  const asOf = String(info.as_of || "").trim();
+// tooltip 第二行：提交者 · 提交时间 · 发布时点 · 分支当时 HEAD，保持纯文本。
+function recentCommitTooltipMeta(record: ReleaseOrder) {
+  const parts = [
+    String(record.head_change_author || "").trim(),
+    record.head_change_at ? formatRecentCommitTime(record.head_change_at) : "",
+  ].filter(Boolean);
+  // 发布时点沿用订单自身的开始/创建时间，不再依赖实时接口的 as_of。
+  const asOf = record.started_at || record.created_at;
   if (asOf && dayjs(asOf).isValid()) {
-    chips.push({
-      key: "asof",
-      tone: "asof",
-      label: "发布时点",
-      value: dayjs(asOf).format("YYYY-MM-DD HH:mm"),
-    });
+    parts.push(`发布时点 ${dayjs(asOf).format("YYYY-MM-DD HH:mm")}`);
   }
-  const anchor = recentCommitAnchor(record);
-  if (anchor && commit && anchor.sha !== commit.sha) {
-    chips.push({
-      key: "head",
-      tone: "head",
-      label: "分支当时 HEAD",
-      value: anchor.short_sha || anchor.sha.slice(0, 7),
-    });
+  const headSHA = shortCommitSHA(record.head_commit_sha);
+  if (headSHA) {
+    parts.push(`分支当时 HEAD ${headSHA}`);
   }
-  const repository = recentCommitRepositoryText(record);
-  if (repository) {
-    chips.push({ key: "repo", tone: "repo", label: "仓库", value: repository });
-  }
-  return chips;
+  return parts.join(" · ");
+}
+
+// tooltip 第三行：仓库地址 · 分支。列表行没有仓库地址字段，退回应用名 + 分支，
+// 避免为了 tooltip 再开一次应用查询接口。
+function recentCommitRepositoryText(record: ReleaseOrder) {
+  return [record.application_name, record.head_commit_ref || record.git_ref]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function releaseOrderEffectRowClassName(record: ReleaseOrder) {
@@ -1365,6 +1317,8 @@ function triggerTypeText(
   ) {
     case "manual":
       return "手动";
+    case "automation":
+      return "自动化";
     case "webhook":
       return "Webhook";
     case "schedule":
@@ -2325,8 +2279,6 @@ async function loadReleaseOrders(options?: { silent?: boolean; force?: boolean }
     );
     lastLoadedAt.value = dayjs().format("YYYY-MM-DD HH:mm:ss");
     void loadSpotlightOrders({ silent: true });
-    // 跟随既有列表刷新节奏补齐最近提交；主动查询/翻页时强制刷新缓存。
-    void loadVisibleOrderRecentCommits(response.data, { force: !silent });
   } catch (error) {
     if (!silent) {
       message.error(extractHTTPErrorMessage(error, "发布单列表加载失败"));
@@ -2367,7 +2319,7 @@ function clearFilterTag(key: string) {
   } else if (key === "status") {
     filters.status = "";
   } else if (key === "trigger_type") {
-    filters.trigger_type = "";
+    filters.trigger_type = DEFAULT_TRIGGER_TYPE;
   } else if (key === "created_at_range") {
     filters.created_at_range = [];
   }
@@ -2391,8 +2343,11 @@ function applyRouteQuery() {
     filters.status = status as ReleaseOrderStatus | "";
   }
   const triggerType = routeQueryText("trigger_type");
-  if (triggerTypeOptions.some((item) => item.value === triggerType)) {
-    filters.trigger_type = triggerType as ReleaseTriggerType | "";
+  if (triggerType && triggerTypeOptions.some((item) => item.value === triggerType)) {
+    filters.trigger_type = triggerType as ReleaseTriggerType;
+  } else {
+    // URL 没带（或带了不认识的值）时回落到切换的默认态，保证页头始终有一侧点亮。
+    filters.trigger_type = DEFAULT_TRIGGER_TYPE;
   }
 
   const page = Number(routeQueryText("page"));
@@ -2490,8 +2445,22 @@ function openReleaseOrderDetail(record: ReleaseOrder) {
 function handleSearch() {
   filters.page = 1;
   applyActiveQueryFromFilters();
+  syncReleaseListQueryToRoute();
   void loadSpotlightOrders();
   void loadReleaseOrders();
+}
+
+/** 页头「手动 / 自动」切换：切换即生效，并同步 URL query。 */
+function handleTriggerTypeToggleChange() {
+  const current = filters.trigger_type;
+  // 手动 ↔ 自动；停在 Webhook / 定时这类高级值上时，点一下回到默认的手动列表。
+  const next: "manual" | "automation" =
+    isTriggerToggleValue(current) && current === "manual" ? "automation" : "manual";
+  if (current === next) {
+    return;
+  }
+  filters.trigger_type = next;
+  handleSearch();
 }
 
 function handleReset() {
@@ -2503,7 +2472,7 @@ function handleReset() {
   filters.env_code = "";
   filters.operation_type = "";
   filters.status = "";
-  filters.trigger_type = "";
+  filters.trigger_type = DEFAULT_TRIGGER_TYPE;
   filters.created_at_range = [];
   filters.page = 1;
   filters.pageSize = 10;
@@ -2520,12 +2489,14 @@ function toggleAdvancedSearch() {
 function handlePageChange(page: number, pageSize: number) {
   filters.page = page;
   filters.pageSize = pageSize;
+  syncReleaseListQueryToRoute();
   void loadReleaseOrders();
 }
 
 function handlePageSizeChange(page: number, pageSize: number) {
   filters.page = page;
   filters.pageSize = pageSize;
+  syncReleaseListQueryToRoute();
   void loadReleaseOrders();
 }
 
@@ -3088,6 +3059,7 @@ const executePreviewOkText = computed(() => `确认${dispatchActionText(executeP
 
 onMounted(async () => {
   applyRouteQuery();
+  markTriggerToggleSwitch();
   advancedSearchExpanded.value = hasAdvancedFilter.value || hasActiveAdvancedFilter.value;
   await loadReleaseEnvOptions();
   await loadApplicationOptions();
@@ -3114,8 +3086,29 @@ function handleOverviewChartResize() {
 <template>
   <div class="page-wrapper">
     <div class="page-header-card page-header">
-      <div class="page-header-copy">
-        <h2 class="page-title">发布</h2>
+      <div class="page-header-copy page-header-title-group">
+        <h2
+          class="page-title"
+          :class="{ 'page-title--automation': triggerToggleIsAutomation }"
+        >
+          {{ pageTitleText }}
+        </h2>
+        <div class="release-trigger-switch">
+          <a-tooltip :title="triggerToggleHint">
+            <button
+              type="button"
+              class="release-trigger-switch-button"
+              :aria-label="triggerToggleHint"
+              @click="handleTriggerTypeToggleChange"
+            >
+              <SwapOutlined
+                class="release-trigger-switch-icon"
+                :class="triggerToggleIconClass()"
+                aria-hidden="true"
+              />
+            </button>
+          </a-tooltip>
+        </div>
       </div>
       <a-space :size="10">
         <a-button
@@ -3610,6 +3603,13 @@ function handleOverviewChartResize() {
               </div>
               <div class="release-order-no-tags">
                 <a-tag
+                  v-if="record.trigger_type === 'automation'"
+                  class="release-trigger-automation-tag"
+                >
+                  <ThunderboltOutlined aria-hidden="true" />
+                  <span>自动</span>
+                </a-tag>
+                <a-tag
                   v-if="record.live_state_status === 'pending_confirm' && record.live_state_can_confirm"
                   class="release-live-status-tag release-live-status-tag--pending"
                 >
@@ -3654,47 +3654,41 @@ function handleOverviewChartResize() {
           </template>
           <template v-else-if="column.key === 'recent_commit'">
             <div class="release-recent-commit-cell">
-              <a-tooltip placement="topLeft" overlay-class-name="release-recent-commit-tooltip">
+              <!-- 提交信息已随发布单落库：有数据才挂 tooltip，旧单没有数据时只留 -。 -->
+              <a-tooltip
+                v-if="recentCommitSHA(record)"
+                placement="topLeft"
+                overlay-class-name="release-recent-commit-tooltip"
+              >
                 <template #title>
                   <div class="release-recent-commit-tip">
                     <div class="release-recent-commit-tip-title">
                       {{ recentCommitTooltipTitle(record) }}
                     </div>
-                    <div v-if="recentCommitChips(record).length" class="git-commit-chips">
-                      <span
-                        v-for="chip in recentCommitChips(record)"
-                        :key="chip.key"
-                        class="git-commit-chip"
-                        :class="[
-                          `git-commit-chip--${chip.tone}`,
-                          chip.tone === 'head' ? 'git-commit-chip--mono' : '',
-                        ]"
-                      >
-                        <span class="git-commit-chip-label">{{ chip.label }}</span>
-                        <span class="git-commit-chip-value">{{ chip.value }}</span>
-                      </span>
+                    <div v-if="recentCommitTooltipMeta(record)" class="release-recent-commit-tip-meta">
+                      {{ recentCommitTooltipMeta(record) }}
+                    </div>
+                    <div v-if="recentCommitRepositoryText(record)" class="release-recent-commit-tip-meta">
+                      {{ recentCommitRepositoryText(record) }}
                     </div>
                   </div>
                 </template>
                 <a
-                  v-if="recentCommitItem(record)"
                   class="release-recent-commit-link"
-                  :href="recentCommitItem(record)?.web_url"
+                  :href="record.head_change_url || undefined"
                   target="_blank"
                   rel="noopener noreferrer"
                   @click.stop
                 >
                   <span class="release-recent-commit-sha">
-                    {{ recentCommitItem(record)?.short_sha }}
+                    {{ shortCommitSHA(record.head_change_sha) }}
                   </span>
                   <span class="release-recent-commit-title">
-                    {{ recentCommitItem(record)?.title }}
+                    {{ record.head_change_title }}
                   </span>
                 </a>
-                <span v-else class="release-recent-commit-empty">{{
-                  recentCommitPending(record) ? "获取中…" : "-"
-                }}</span>
               </a-tooltip>
+              <span v-else class="release-recent-commit-empty">-</span>
             </div>
           </template>
           <template v-else-if="column.key === 'trigger_type'">
@@ -4090,11 +4084,16 @@ function handleOverviewChartResize() {
       @ok="confirmExecuteRelease"
       @cancel="closeExecutePreviewModal"
     >
-      <a-skeleton
-        v-if="executePreviewLoading"
-        active
-        :paragraph="{ rows: 8 }"
-      />
+      <div v-if="executePreviewLoading" class="execute-preview-loading">
+        <a-skeleton
+          active
+          :paragraph="{ rows: 8 }"
+        />
+        <div class="execute-preview-loading-hint">
+          <LoadingOutlined spin aria-hidden="true" />
+          <span>正在读取 Jenkins 真实参数，首次预审可能稍慢…</span>
+        </div>
+      </div>
       <template v-else-if="executePreviewOrder">
         <div class="batch-preview-overview execute-preview-overview">
           <div class="batch-preview-metric">
@@ -4250,6 +4249,127 @@ function handleOverviewChartResize() {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
+}
+
+.page-header-title-group {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
+/* 页头标题：自动视图下「发布」变成蓝色的「自动」 */
+.page-title {
+  position: relative;
+}
+
+.page-title--automation {
+  color: #1d4ed8;
+}
+
+/* 页头切换：⇄ 图标按钮 + 当前只看哪一类，和详情页的标题切换同一套视觉语言 */
+.release-trigger-switch {
+  --release-trigger-switch-ease: cubic-bezier(0.22, 0.68, 0.24, 1);
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  gap: 5px;
+}
+
+.release-trigger-switch-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-soft);
+  cursor: pointer;
+  transition:
+    background 200ms ease,
+    color 200ms ease;
+}
+
+.release-trigger-switch-button:hover {
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--color-primary);
+}
+
+.release-trigger-switch-button:active {
+  background: rgba(37, 99, 235, 0.16);
+}
+
+.release-trigger-switch-button:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.45);
+  outline-offset: 2px;
+}
+
+.release-trigger-switch-icon {
+  font-size: 15px;
+  color: currentColor;
+}
+
+/* 自动态把 ⇄ 翻半圈：和详情页那个切换按钮是同一个手势 */
+.release-trigger-switch-icon--auto {
+  transform: rotate(180deg);
+}
+
+.release-trigger-switch-icon--spin-to-auto {
+  animation: release-trigger-switch-spin-to-auto 420ms var(--release-trigger-switch-ease);
+}
+
+.release-trigger-switch-icon--spin-to-manual {
+  animation: release-trigger-switch-spin-to-manual 420ms var(--release-trigger-switch-ease);
+}
+
+@keyframes release-trigger-switch-spin-to-auto {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(180deg);
+  }
+}
+
+@keyframes release-trigger-switch-spin-to-manual {
+  from {
+    transform: rotate(180deg);
+  }
+
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .release-trigger-switch-button {
+    transition: none;
+  }
+
+  .release-trigger-switch-icon--spin-to-auto,
+  .release-trigger-switch-icon--spin-to-manual {
+    animation: none;
+  }
+}
+
+.execute-preview-loading {
+  position: relative;
+}
+
+.execute-preview-loading-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: -12px;
+  padding-bottom: 6px;
+  font-size: 13px;
+  color: #64748b;
 }
 
 .release-toolbar-action-btn {
@@ -4938,6 +5058,33 @@ function handleOverviewChartResize() {
   border-color: #c7d2fe;
   background: #eef2ff;
   color: #4f46e5;
+}
+
+/* 自动触发标记：与生效状态标签同尺寸，保证单号标签区排版一致 */
+.release-trigger-automation-tag {
+  box-sizing: border-box;
+  display: inline-flex;
+  min-height: 24px;
+  max-width: 100%;
+  align-items: center;
+  gap: 5px;
+  margin-inline-end: 0;
+  padding: 2px 8px;
+  overflow: hidden;
+  border-color: #fdba74;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.release-trigger-automation-tag :deep(.anticon) {
+  flex: 0 0 auto;
+  color: currentColor;
+  font-size: 12px;
 }
 
 .release-order-table :deep(.ant-table-container) {

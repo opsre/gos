@@ -903,6 +903,256 @@ func TestConfirmAppReleaseState_RejectsOutdatedOrder(t *testing.T) {
 	}
 }
 
+// releaseOrderHeadCommitColumns 是发布单 HEAD 快照的全部列，迁移与读写测试共用。
+var releaseOrderHeadCommitColumns = []string{
+	"head_commit_sha",
+	"head_commit_ref",
+	"head_change_sha",
+	"head_change_title",
+	"head_change_author",
+	"head_change_at",
+	"head_change_url",
+}
+
+// TestReleaseRepositoryHeadCommitColumnsRoundTrip 覆盖 HEAD 快照列的写入与读取：
+// 建单 INSERT、列表/详情 SELECT、以及创建成功后异步补写的 UpdateHeadCommit。
+func TestReleaseRepositoryHeadCommitColumnsRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	repo := newTestReleaseRepository(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 18, 10, 0, 0, 0, time.UTC)
+	changeAt := now.Add(-time.Hour)
+	changeURL := "http://git.cloud.local:9080/code/bigData/fusion-source-web/-/commit/sha-change-1"
+
+	order := newTestReleaseOrder("ro-head-commit", "RO-HEAD-COMMIT", "app-1", "prod", domain.OrderStatusPending, now)
+	order.HeadCommitSHA = "sha-head-1"
+	order.HeadCommitRef = "release/2026-09-18"
+	order.HeadChangeSHA = "sha-change-1"
+	order.HeadChangeTitle = "feat: 支持发布单 HEAD 落库"
+	order.HeadChangeAuthor = "Alice"
+	order.HeadChangeAt = &changeAt
+	order.HeadChangeURL = changeURL
+	if err := repo.Create(ctx, order, nil, nil, nil); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	legacy := newTestReleaseOrder("ro-head-commit-legacy", "RO-HEAD-COMMIT-LEGACY", "app-1", "prod", domain.OrderStatusSuccess, now.Add(time.Second))
+	if err := repo.Create(ctx, legacy, nil, nil, nil); err != nil {
+		t.Fatalf("Create legacy failed: %v", err)
+	}
+
+	got, err := repo.GetByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	assertReleaseOrderHeadCommit(t, got, "sha-head-1", "release/2026-09-18", "sha-change-1", "feat: 支持发布单 HEAD 落库", "Alice", &changeAt, changeURL)
+
+	// 列表页直接读这些列，不再实时拉 Git。
+	items, _, err := repo.List(ctx, domain.ListFilter{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("List returned %d orders, want 2", len(items))
+	}
+	var listed domain.ReleaseOrder
+	for _, item := range items {
+		if item.ID == order.ID {
+			listed = item
+		}
+	}
+	assertReleaseOrderHeadCommit(t, listed, "sha-head-1", "release/2026-09-18", "sha-change-1", "feat: 支持发布单 HEAD 落库", "Alice", &changeAt, changeURL)
+
+	// 历史发布单不补数据：列保持空值，时间列为 NULL。
+	legacyGot, err := repo.GetByID(ctx, legacy.ID)
+	if err != nil {
+		t.Fatalf("GetByID legacy failed: %v", err)
+	}
+	assertReleaseOrderHeadCommit(t, legacyGot, "", "", "", "", "", nil, "")
+
+	// 创建成功后的异步补写路径。
+	asyncAt := changeAt.Add(time.Minute)
+	asyncURL := "http://git.cloud.local:9080/code/bigData/fusion-source-web/-/commit/sha-change-2"
+	if err := repo.UpdateHeadCommit(ctx, order.ID, domain.ReleaseOrderHeadCommit{
+		CommitSHA:    "sha-head-2",
+		CommitRef:    "main",
+		ChangeSHA:    "sha-change-2",
+		ChangeTitle:  "fix: 补写 HEAD 快照",
+		ChangeAuthor: "Bob",
+		ChangeAt:     &asyncAt,
+		ChangeURL:    asyncURL,
+	}); err != nil {
+		t.Fatalf("UpdateHeadCommit failed: %v", err)
+	}
+	got, err = repo.GetByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetByID after update failed: %v", err)
+	}
+	assertReleaseOrderHeadCommit(t, got, "sha-head-2", "main", "sha-change-2", "fix: 补写 HEAD 快照", "Bob", &asyncAt, asyncURL)
+	if !got.UpdatedAt.Equal(now) {
+		t.Fatalf("updated_at = %v, want %v: 补写 HEAD 快照不能改动 updated_at（会影响同环境排队顺序）", got.UpdatedAt, now)
+	}
+
+	// 编辑链路整行回写这些列，必须是调用方给出的值。
+	got.Remark = "edited"
+	if err := repo.UpdateEditable(ctx, got, nil, nil, nil); err != nil {
+		t.Fatalf("UpdateEditable failed: %v", err)
+	}
+	edited, err := repo.GetByID(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("GetByID after edit failed: %v", err)
+	}
+	assertReleaseOrderHeadCommit(t, edited, "sha-head-2", "main", "sha-change-2", "fix: 补写 HEAD 快照", "Bob", &asyncAt, asyncURL)
+
+	if err := repo.UpdateHeadCommit(ctx, "ro-missing", domain.ReleaseOrderHeadCommit{CommitSHA: "sha"}); !errors.Is(err, domain.ErrOrderNotFound) {
+		t.Fatalf("UpdateHeadCommit on a missing order = %v, want ErrOrderNotFound", err)
+	}
+}
+
+// TestReleaseRepositoryInitSchemaAddsHeadCommitColumnsToLegacyOrderTable 覆盖已部署库的补列：
+// 老的 release_order 表没有 HEAD 快照列，InitSchema 必须通过版本化迁移补上，且可重复执行。
+func TestReleaseRepositoryInitSchemaAddsHeadCommitColumnsToLegacyOrderTable(t *testing.T) {
+	t.Parallel()
+
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("sql.Open failed: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := context.Background()
+
+	// 变更前的 release_order 定义（没有 head_commit_* / head_change_*）。
+	if _, err := db.ExecContext(ctx, `CREATE TABLE release_order (
+	id TEXT PRIMARY KEY,
+	order_no TEXT NOT NULL UNIQUE,
+	release_name TEXT NOT NULL DEFAULT '',
+	previous_order_no TEXT NOT NULL DEFAULT '',
+	operation_type TEXT NOT NULL DEFAULT 'deploy',
+	source_order_id TEXT NOT NULL DEFAULT '',
+	source_order_no TEXT NOT NULL DEFAULT '',
+	is_concurrent INTEGER NOT NULL DEFAULT 0,
+	concurrent_batch_no TEXT NOT NULL DEFAULT '',
+	concurrent_batch_name TEXT NOT NULL DEFAULT '',
+	concurrent_batch_seq INTEGER NOT NULL DEFAULT 0,
+	application_id TEXT NOT NULL,
+	application_name TEXT NOT NULL DEFAULT '',
+	template_id TEXT NOT NULL DEFAULT '',
+	template_name TEXT NOT NULL DEFAULT '',
+	delivery_engine TEXT NOT NULL DEFAULT 'k8s_native',
+	strategy_snapshot_json TEXT NOT NULL DEFAULT '{}',
+	binding_id TEXT NOT NULL,
+	pipeline_id TEXT NOT NULL DEFAULT '',
+	env_code TEXT NOT NULL,
+	git_ref TEXT NOT NULL DEFAULT '',
+	image_tag TEXT NOT NULL DEFAULT '',
+	trigger_type TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	approval_required INTEGER NOT NULL DEFAULT 0,
+	approval_mode TEXT NOT NULL DEFAULT '',
+	approval_approver_ids_json TEXT NOT NULL DEFAULT '[]',
+	approval_approver_names_json TEXT NOT NULL DEFAULT '[]',
+	approved_at INTEGER NULL,
+	approved_by TEXT NOT NULL DEFAULT '',
+	rejected_at INTEGER NULL,
+	rejected_by TEXT NOT NULL DEFAULT '',
+	rejected_reason TEXT NOT NULL DEFAULT '',
+	remark TEXT NOT NULL DEFAULT '',
+	creator_user_id TEXT NOT NULL DEFAULT '',
+	triggered_by TEXT NOT NULL DEFAULT '',
+	executor_user_id TEXT NOT NULL DEFAULT '',
+	executor_name TEXT NOT NULL DEFAULT '',
+	started_at INTEGER NULL,
+	finished_at INTEGER NULL,
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL
+);`); err != nil {
+		t.Fatalf("create legacy release_order failed: %v", err)
+	}
+	// 已经部署过的库把 v1.1 迁移标记为已应用，CREATE TABLE IF NOT EXISTS 因此不会再补列，
+	// 只有本次新增的版本化迁移能补上这些列。
+	if err := ensureSchemaMigrationTable(ctx, db, "sqlite"); err != nil {
+		t.Fatalf("create schema migration table failed: %v", err)
+	}
+	if _, err := db.ExecContext(
+		ctx,
+		`INSERT INTO gos_schema_migration (version, description, applied_at) VALUES (?, ?, 1);`,
+		"deploy_platform_v1_1_release_schema",
+		"legacy release schema",
+	); err != nil {
+		t.Fatalf("record legacy migration failed: %v", err)
+	}
+
+	repo := NewReleaseRepository(db, "sqlite")
+	if err := repo.InitSchema(ctx); err != nil {
+		t.Fatalf("InitSchema on a legacy database failed: %v", err)
+	}
+	if err := repo.InitSchema(ctx); err != nil {
+		t.Fatalf("repeated InitSchema failed: %v", err)
+	}
+
+	columns, err := repo.sqliteTableColumns(ctx, "release_order")
+	if err != nil {
+		t.Fatalf("sqliteTableColumns failed: %v", err)
+	}
+	for _, column := range releaseOrderHeadCommitColumns {
+		if _, ok := columns[column]; !ok {
+			t.Fatalf("legacy release_order missing migrated column %s", column)
+		}
+	}
+	assertSchemaMigrationCount(t, db, releaseOrderHeadCommitMigrationVersion, 1)
+}
+
+// TestReleaseRepositoryInitSchemaRegistersHeadCommitColumnsOnFreshInstall 覆盖新库：
+// CREATE TABLE 已经带了这些列，版本化迁移必须仍然登记且幂等。
+func TestReleaseRepositoryInitSchemaRegistersHeadCommitColumnsOnFreshInstall(t *testing.T) {
+	t.Parallel()
+
+	repo := newTestReleaseRepository(t)
+	columns, err := repo.sqliteTableColumns(context.Background(), "release_order")
+	if err != nil {
+		t.Fatalf("sqliteTableColumns failed: %v", err)
+	}
+	for _, column := range releaseOrderHeadCommitColumns {
+		if _, ok := columns[column]; !ok {
+			t.Fatalf("release_order missing column %s", column)
+		}
+	}
+	assertSchemaMigrationCount(t, repo.db, releaseOrderHeadCommitMigrationVersion, 1)
+}
+
+func assertReleaseOrderHeadCommit(
+	t *testing.T,
+	order domain.ReleaseOrder,
+	commitSHA string,
+	commitRef string,
+	changeSHA string,
+	changeTitle string,
+	changeAuthor string,
+	changeAt *time.Time,
+	changeURL string,
+) {
+	t.Helper()
+
+	if order.HeadCommitSHA != commitSHA || order.HeadCommitRef != commitRef {
+		t.Fatalf("head_commit = %q / %q, want %q / %q", order.HeadCommitSHA, order.HeadCommitRef, commitSHA, commitRef)
+	}
+	if order.HeadChangeSHA != changeSHA || order.HeadChangeTitle != changeTitle || order.HeadChangeAuthor != changeAuthor {
+		t.Fatalf("head_change = %q / %q / %q", order.HeadChangeSHA, order.HeadChangeTitle, order.HeadChangeAuthor)
+	}
+	switch {
+	case changeAt == nil && order.HeadChangeAt != nil:
+		t.Fatalf("head_change_at = %v, want nil", order.HeadChangeAt)
+	case changeAt != nil && order.HeadChangeAt == nil:
+		t.Fatalf("head_change_at = nil, want %v", changeAt)
+	case changeAt != nil && !order.HeadChangeAt.Equal(changeAt.UTC()):
+		t.Fatalf("head_change_at = %v, want %v", order.HeadChangeAt, changeAt)
+	}
+	if order.HeadChangeURL != changeURL {
+		t.Fatalf("head_change_url = %q, want %q", order.HeadChangeURL, changeURL)
+	}
+}
+
 // newTestReleaseRepository 封装当前模块的业务处理逻辑。
 func newTestReleaseRepository(t *testing.T) *ReleaseRepository {
 	t.Helper()

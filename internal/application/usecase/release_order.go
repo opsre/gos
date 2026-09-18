@@ -48,10 +48,12 @@ type ReleaseOrderManager struct {
 	gitopsFactory            GitOpsServiceFactory
 	gitops                   GitOpsReleaseService
 	approvalManagerResolver  ApprovalManagerResolver
-	now                      func() time.Time
-	runAsync                 func(func())
-	orderLocksMu             sync.Mutex
-	orderLocks               map[string]*releaseOrderOperationLock
+	// headCommitResolver 在发布单创建完成后异步解析并落库仓库 HEAD 快照，未注入时跳过。
+	headCommitResolver ReleaseOrderHeadCommitResolver
+	now                func() time.Time
+	runAsync           func(func())
+	orderLocksMu       sync.Mutex
+	orderLocks         map[string]*releaseOrderOperationLock
 }
 
 type ApprovalManagerResolver interface {
@@ -523,6 +525,8 @@ func (uc *ReleaseOrderManager) Create(
 		logx.F("params_count", len(params)),
 		logx.F("steps_count", len(steps)),
 	)
+	// 创建成功后异步解析并落库 HEAD 快照：不阻塞建单，失败只记日志。
+	uc.scheduleReleaseOrderHeadCommit(ctx, order, app.RepoURL)
 	return uc.repo.GetByID(ctx, order.ID)
 }
 
@@ -702,12 +706,21 @@ func (uc *ReleaseOrderManager) Update(
 		QueuePosition:         0,
 		QueuedReason:          "",
 		Remark:                strings.TrimSpace(input.Remark),
-		CreatorUserID:         existing.CreatorUserID,
-		TriggeredBy:           existing.TriggeredBy,
-		StartedAt:             nil,
-		FinishedAt:            nil,
-		CreatedAt:             existing.CreatedAt,
-		UpdatedAt:             now,
+		// 编辑不清空创建时解析的 HEAD 快照：更新链路会整行回写这些列，
+		// 保留原值才不会把已经落库的提交信息抹掉（本次改动不做编辑后的重新解析）。
+		HeadCommitSHA:    existing.HeadCommitSHA,
+		HeadCommitRef:    existing.HeadCommitRef,
+		HeadChangeSHA:    existing.HeadChangeSHA,
+		HeadChangeTitle:  existing.HeadChangeTitle,
+		HeadChangeAuthor: existing.HeadChangeAuthor,
+		HeadChangeAt:     existing.HeadChangeAt,
+		HeadChangeURL:    existing.HeadChangeURL,
+		CreatorUserID:    existing.CreatorUserID,
+		TriggeredBy:      existing.TriggeredBy,
+		StartedAt:        nil,
+		FinishedAt:       nil,
+		CreatedAt:        existing.CreatedAt,
+		UpdatedAt:        now,
 	}
 
 	executions = uc.buildCreateExecutions(order.ID, now, templateBindings)
@@ -1891,6 +1904,9 @@ func (uc *ReleaseOrderManager) createRecoveryOrder(
 			return domain.ReleaseOrder{}, err
 		}
 	}
+	// 回滚/重放同样是一张新发布单，落库的 HEAD 快照与手工建单保持一致。
+	// 这里没有现成的应用记录，后台任务会自己按 application_id 读取仓库地址。
+	uc.scheduleReleaseOrderHeadCommit(ctx, order, "")
 	return uc.repo.GetByID(ctx, order.ID)
 }
 
@@ -2484,6 +2500,88 @@ func (uc *ReleaseOrderManager) Build(ctx context.Context, id string, operatorUse
 // Deploy 封装当前模块的业务处理逻辑。
 func (uc *ReleaseOrderManager) Deploy(ctx context.Context, id string, operatorUserID string, operatorName string) (domain.ReleaseOrder, error) {
 	return uc.dispatchOrder(ctx, id, ReleaseOrderDispatchActionDeploy, operatorUserID, operatorName)
+}
+
+// AutoDeployBuiltOrder 给「构建并发布」的自动化补上 CI 与 CD 之间的那一步。
+//
+// 平台的普通发布单是故意在构建完成后停下来等人工确认的（见 release_order_track.go），
+// 自动化没有人在旁边点「发布」，所以由这里在构建成功后把部署派发出去。
+//
+// 返回值语义：
+//   - dispatched=true：本次已经把部署派发出去了；
+//   - dispatched=false, err=nil：还没到该派发的时候（构建未完成 / 部署已在跑），下轮再看；
+//   - err!=nil：到了该派发的时候但派不动（并发锁被占、审批未过等），调用方记录原因后重试。
+func (uc *ReleaseOrderManager) AutoDeployBuiltOrder(
+	ctx context.Context,
+	orderID string,
+	operatorUserID string,
+	operatorName string,
+) (bool, error) {
+	orderID = strings.TrimSpace(orderID)
+	if orderID == "" {
+		return false, nil
+	}
+	order, err := uc.repo.GetByID(ctx, orderID)
+	if err != nil {
+		if errors.Is(err, domain.ErrOrderNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	if order.Status != domain.OrderStatusBuiltWaitingDeploy {
+		return false, nil
+	}
+	executions, err := uc.repo.ListExecutions(ctx, order.ID)
+	if err != nil {
+		return false, err
+	}
+	hasCD := false
+	for _, item := range executions {
+		switch item.PipelineScope {
+		case domain.PipelineScopeCI:
+			if item.Status != domain.ExecutionStatusSuccess {
+				return false, nil
+			}
+		case domain.PipelineScopeCD:
+			hasCD = true
+			if item.Status != domain.ExecutionStatusPending {
+				return false, nil
+			}
+		}
+	}
+	if !hasCD {
+		return false, nil
+	}
+	// 等待 CD 审批时不能抢跑：派发会把单子推进审批态，反而让审批通过后的续跑失效。
+	// 这里只做「不抢跑」，审批通过后的部署仍由既有审批流负责。
+	if reason, gated, gateErr := uc.autoDeployApprovalGateReason(ctx, order.ID); gateErr != nil {
+		return false, gateErr
+	} else if gated {
+		return false, errors.New(reason)
+	}
+	if _, err := uc.Deploy(ctx, order.ID, operatorUserID, operatorName); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// autoDeployApprovalGateReason 判断发布单是否正卡在 CD 前的审批门上。
+func (uc *ReleaseOrderManager) autoDeployApprovalGateReason(ctx context.Context, orderID string) (string, bool, error) {
+	instance, err := uc.repo.GetApprovalFlowInstanceByOrderID(ctx, orderID)
+	if errors.Is(err, domain.ErrApprovalFlowInstanceNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if instance.CurrentGate != domain.ApprovalFlowGateBeforeCD {
+		return "", false, nil
+	}
+	switch instance.Status {
+	case domain.ApprovalFlowInstanceStatusCompleted, domain.ApprovalFlowInstanceStatusRejected:
+		return "", false, nil
+	}
+	return "等待 CD 前审批通过后自动部署", true, nil
 }
 
 // dispatchOrder 封装当前模块的业务处理逻辑。

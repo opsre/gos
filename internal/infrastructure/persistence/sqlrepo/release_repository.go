@@ -69,8 +69,16 @@ func (r *ReleaseRepository) InitSchema(ctx context.Context) error {
 			Description: "align approval flow table collations with release orders",
 			Up:          r.alignApprovalFlowCollation,
 		},
+		schemaMigration{
+			Version:     releaseOrderHeadCommitMigrationVersion,
+			Description: "add the release order head commit snapshot columns",
+			Up:          r.migrateReleaseOrderHeadCommitColumns,
+		},
 	)
 }
+
+// releaseOrderHeadCommitMigrationVersion 是「发布单 HEAD 快照列」的迁移版本号。
+const releaseOrderHeadCommitMigrationVersion = "20260918_02_release_order_head_commit"
 
 // releaseSchemaStatements 封装当前模块的业务处理逻辑。
 func releaseSchemaStatements(dbDriver string) ([]string, error) {
@@ -99,6 +107,13 @@ func releaseSchemaStatements(dbDriver string) ([]string, error) {
 	pipeline_id VARCHAR(64) NOT NULL DEFAULT '',
 	env_code VARCHAR(50) NOT NULL,
 	git_ref VARCHAR(200) NOT NULL DEFAULT '',
+	head_commit_sha VARCHAR(64) NOT NULL DEFAULT '',
+	head_commit_ref VARCHAR(128) NOT NULL DEFAULT '',
+	head_change_sha VARCHAR(64) NOT NULL DEFAULT '',
+	head_change_title VARCHAR(500) NOT NULL DEFAULT '',
+	head_change_author VARCHAR(128) NOT NULL DEFAULT '',
+	head_change_at BIGINT NULL,
+	head_change_url VARCHAR(500) NOT NULL DEFAULT '',
 	image_tag VARCHAR(200) NOT NULL DEFAULT '',
 	trigger_type VARCHAR(50) NOT NULL,
 	status VARCHAR(50) NOT NULL DEFAULT 'pending',
@@ -382,6 +397,13 @@ func releaseSchemaStatements(dbDriver string) ([]string, error) {
 	pipeline_id TEXT NOT NULL DEFAULT '',
 	env_code TEXT NOT NULL,
 	git_ref TEXT NOT NULL DEFAULT '',
+	head_commit_sha TEXT NOT NULL DEFAULT '',
+	head_commit_ref TEXT NOT NULL DEFAULT '',
+	head_change_sha TEXT NOT NULL DEFAULT '',
+	head_change_title TEXT NOT NULL DEFAULT '',
+	head_change_author TEXT NOT NULL DEFAULT '',
+	head_change_at INTEGER NULL,
+	head_change_url TEXT NOT NULL DEFAULT '',
 	image_tag TEXT NOT NULL DEFAULT '',
 	trigger_type TEXT NOT NULL,
 	status TEXT NOT NULL DEFAULT 'pending',
@@ -1303,6 +1325,77 @@ WHERE (creator_user_id IS NULL OR TRIM(creator_user_id) = '')
 	}
 }
 
+// releaseOrderHeadCommitColumnMigration 是 release_order 上一列的补列语句。
+type releaseOrderHeadCommitColumnMigration struct {
+	column string
+	ddl    string
+}
+
+// migrateReleaseOrderHeadCommitColumns 给已经部署过的库补齐「发布单 HEAD 快照」列。
+// 每条语句都先做列存在性判断，因此在新库（CREATE TABLE 已经带了这些列）和重复执行时都是幂等的。
+func (r *ReleaseRepository) migrateReleaseOrderHeadCommitColumns(ctx context.Context) error {
+	for _, migration := range releaseOrderHeadCommitColumnMigrations(r.dbDriver) {
+		exists, err := r.releaseOrderColumnExists(ctx, migration.column)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		if _, err := r.db.ExecContext(ctx, migration.ddl); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// releaseOrderHeadCommitColumnMigrations 返回两个驱动的补列语句。
+// 两边不能共用：MySQL 的 VARCHAR 长度上限和默认值写法与 SQLite 的 TEXT 不同，
+// 且 SQLite 不接受带 AFTER 的列定位。
+func releaseOrderHeadCommitColumnMigrations(dbDriver string) []releaseOrderHeadCommitColumnMigration {
+	switch dbDriver {
+	case "mysql":
+		return []releaseOrderHeadCommitColumnMigration{
+			{"head_commit_sha", `ALTER TABLE release_order ADD COLUMN head_commit_sha VARCHAR(64) NOT NULL DEFAULT '' AFTER git_ref;`},
+			{"head_commit_ref", `ALTER TABLE release_order ADD COLUMN head_commit_ref VARCHAR(128) NOT NULL DEFAULT '' AFTER head_commit_sha;`},
+			{"head_change_sha", `ALTER TABLE release_order ADD COLUMN head_change_sha VARCHAR(64) NOT NULL DEFAULT '' AFTER head_commit_ref;`},
+			{"head_change_title", `ALTER TABLE release_order ADD COLUMN head_change_title VARCHAR(500) NOT NULL DEFAULT '' AFTER head_change_sha;`},
+			{"head_change_author", `ALTER TABLE release_order ADD COLUMN head_change_author VARCHAR(128) NOT NULL DEFAULT '' AFTER head_change_title;`},
+			{"head_change_at", `ALTER TABLE release_order ADD COLUMN head_change_at BIGINT NULL AFTER head_change_author;`},
+			{"head_change_url", `ALTER TABLE release_order ADD COLUMN head_change_url VARCHAR(500) NOT NULL DEFAULT '' AFTER head_change_at;`},
+		}
+	case "sqlite":
+		return []releaseOrderHeadCommitColumnMigration{
+			{"head_commit_sha", `ALTER TABLE release_order ADD COLUMN head_commit_sha TEXT NOT NULL DEFAULT '';`},
+			{"head_commit_ref", `ALTER TABLE release_order ADD COLUMN head_commit_ref TEXT NOT NULL DEFAULT '';`},
+			{"head_change_sha", `ALTER TABLE release_order ADD COLUMN head_change_sha TEXT NOT NULL DEFAULT '';`},
+			{"head_change_title", `ALTER TABLE release_order ADD COLUMN head_change_title TEXT NOT NULL DEFAULT '';`},
+			{"head_change_author", `ALTER TABLE release_order ADD COLUMN head_change_author TEXT NOT NULL DEFAULT '';`},
+			{"head_change_at", `ALTER TABLE release_order ADD COLUMN head_change_at INTEGER NULL;`},
+			{"head_change_url", `ALTER TABLE release_order ADD COLUMN head_change_url TEXT NOT NULL DEFAULT '';`},
+		}
+	default:
+		return nil
+	}
+}
+
+// releaseOrderColumnExists 判断 release_order 上是否已存在该列，两个驱动各用自己的元数据查询。
+func (r *ReleaseRepository) releaseOrderColumnExists(ctx context.Context, column string) (bool, error) {
+	switch r.dbDriver {
+	case "mysql":
+		return r.mysqlColumnExists(ctx, "release_order", column)
+	case "sqlite":
+		columns, err := r.sqliteTableColumns(ctx, "release_order")
+		if err != nil {
+			return false, err
+		}
+		_, ok := columns[column]
+		return ok, nil
+	default:
+		return false, fmt.Errorf("unsupported db driver: %s", r.dbDriver)
+	}
+}
+
 // mysqlColumnExists 封装当前模块的业务处理逻辑。
 func (r *ReleaseRepository) mysqlColumnExists(ctx context.Context, table, column string) (bool, error) {
 	const q = `
@@ -1496,8 +1589,8 @@ func (r *ReleaseRepository) Create(
 	const insertOrder = `
 INSERT INTO release_order (
 	id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code,
-	git_ref, image_tag, trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
+	git_ref, head_commit_sha, head_commit_ref, head_change_sha, head_change_title, head_change_author, head_change_at, head_change_url, image_tag, trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
 
 	_, err = tx.ExecContext(
 		ctx,
@@ -1523,6 +1616,13 @@ INSERT INTO release_order (
 		order.PipelineID,
 		order.EnvCode,
 		order.GitRef,
+		order.HeadCommitSHA,
+		order.HeadCommitRef,
+		order.HeadChangeSHA,
+		order.HeadChangeTitle,
+		order.HeadChangeAuthor,
+		nullableUnixNano(order.HeadChangeAt),
+		order.HeadChangeURL,
 		order.ImageTag,
 		string(order.TriggerType),
 		string(order.Status),
@@ -1655,7 +1755,7 @@ func (r *ReleaseRepository) UpdateEditable(
 	const updateOrder = `
 UPDATE release_order
 SET release_name = ?, previous_order_no = ?, operation_type = ?, source_order_id = ?, source_order_no = ?, is_concurrent = ?, concurrent_batch_no = ?, concurrent_batch_name = ?, concurrent_batch_seq = ?, application_id = ?, application_name = ?, template_id = ?, template_name = ?, delivery_engine = ?, strategy_snapshot_json = ?, binding_id = ?, pipeline_id = ?, env_code = ?,
-	git_ref = ?, image_tag = ?, trigger_type = ?, status = ?, approval_required = ?, approval_mode = ?, approval_approver_ids_json = ?, approval_approver_names_json = ?, approved_at = ?, approved_by = ?, rejected_at = ?, rejected_by = ?, rejected_reason = ?, remark = ?, creator_user_id = ?, triggered_by = ?, executor_user_id = ?, executor_name = ?, started_at = ?, finished_at = ?, created_at = ?, updated_at = ?
+	git_ref = ?, head_commit_sha = ?, head_commit_ref = ?, head_change_sha = ?, head_change_title = ?, head_change_author = ?, head_change_at = ?, head_change_url = ?, image_tag = ?, trigger_type = ?, status = ?, approval_required = ?, approval_mode = ?, approval_approver_ids_json = ?, approval_approver_names_json = ?, approved_at = ?, approved_by = ?, rejected_at = ?, rejected_by = ?, rejected_reason = ?, remark = ?, creator_user_id = ?, triggered_by = ?, executor_user_id = ?, executor_name = ?, started_at = ?, finished_at = ?, created_at = ?, updated_at = ?
 WHERE id = ?;`
 
 	res, err := tx.ExecContext(
@@ -1680,6 +1780,13 @@ WHERE id = ?;`
 		order.PipelineID,
 		order.EnvCode,
 		order.GitRef,
+		order.HeadCommitSHA,
+		order.HeadCommitRef,
+		order.HeadChangeSHA,
+		order.HeadChangeTitle,
+		order.HeadChangeAuthor,
+		nullableUnixNano(order.HeadChangeAt),
+		order.HeadChangeURL,
 		order.ImageTag,
 		string(order.TriggerType),
 		string(order.Status),
@@ -1812,10 +1919,52 @@ INSERT INTO release_order_step (
 	return nil
 }
 
+// UpdateHeadCommit 写入发布单创建时解析出来的 HEAD 快照列。
+// 有意不改 updated_at：发布单此时可能已经在排队，改 updated_at 会打乱同应用同环境的排队顺序。
+func (r *ReleaseRepository) UpdateHeadCommit(
+	ctx context.Context,
+	orderID string,
+	head domain.ReleaseOrderHeadCommit,
+) error {
+	orderID = strings.TrimSpace(orderID)
+	if orderID == "" {
+		return domain.ErrOrderNotFound
+	}
+	const q = `
+UPDATE release_order
+SET head_commit_sha = ?, head_commit_ref = ?, head_change_sha = ?, head_change_title = ?, head_change_author = ?, head_change_at = ?, head_change_url = ?
+WHERE id = ?;`
+
+	res, err := r.db.ExecContext(
+		ctx,
+		q,
+		strings.TrimSpace(head.CommitSHA),
+		strings.TrimSpace(head.CommitRef),
+		strings.TrimSpace(head.ChangeSHA),
+		strings.TrimSpace(head.ChangeTitle),
+		strings.TrimSpace(head.ChangeAuthor),
+		nullableUnixNano(head.ChangeAt),
+		strings.TrimSpace(head.ChangeURL),
+		orderID,
+	)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		// 发布单在解析期间被删除：这只是一次后台补写，调用方按「订单已不存在」处理即可。
+		return domain.ErrOrderNotFound
+	}
+	return nil
+}
+
 // GetByID 查询并返回指定资源数据。
 func (r *ReleaseRepository) GetByID(ctx context.Context, id string) (domain.ReleaseOrder, error) {
 	const q = `
-SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, git_ref, image_tag,
+SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, git_ref, head_commit_sha, head_commit_ref, head_change_sha, head_change_title, head_change_author, head_change_at, head_change_url, image_tag,
 	trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
 FROM release_order
 WHERE id = ?;`
@@ -1924,7 +2073,7 @@ func (r *ReleaseRepository) List(ctx context.Context, filter domain.ListFilter) 
 	}
 
 	listQuery := `
-SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, git_ref, image_tag,
+SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, git_ref, head_commit_sha, head_commit_ref, head_change_sha, head_change_title, head_change_author, head_change_at, head_change_url, image_tag,
 	trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
 FROM release_order`
 	if len(where) > 0 {
@@ -2144,7 +2293,7 @@ WHERE (
 	}
 
 	const listQuery = `
-SELECT DISTINCT ro.id, ro.order_no, ro.release_name, ro.previous_order_no, ro.operation_type, ro.source_order_id, ro.source_order_no, ro.is_concurrent, ro.concurrent_batch_no, ro.concurrent_batch_name, ro.concurrent_batch_seq, ro.application_id, ro.application_name, ro.template_id, ro.template_name, ro.delivery_engine, ro.strategy_snapshot_json, ro.binding_id, ro.pipeline_id, ro.env_code, ro.git_ref, ro.image_tag,
+SELECT DISTINCT ro.id, ro.order_no, ro.release_name, ro.previous_order_no, ro.operation_type, ro.source_order_id, ro.source_order_no, ro.is_concurrent, ro.concurrent_batch_no, ro.concurrent_batch_name, ro.concurrent_batch_seq, ro.application_id, ro.application_name, ro.template_id, ro.template_name, ro.delivery_engine, ro.strategy_snapshot_json, ro.binding_id, ro.pipeline_id, ro.env_code, ro.git_ref, ro.head_commit_sha, ro.head_commit_ref, ro.head_change_sha, ro.head_change_title, ro.head_change_author, ro.head_change_at, ro.head_change_url, ro.image_tag,
 	ro.trigger_type, ro.status, ro.approval_required, ro.approval_mode, ro.approval_approver_ids_json, ro.approval_approver_names_json, ro.approved_at, ro.approved_by, ro.rejected_at, ro.rejected_by, ro.rejected_reason, ro.remark, ro.creator_user_id, ro.triggered_by, ro.executor_user_id, ro.executor_name, ro.started_at, ro.finished_at, ro.created_at, ro.updated_at
 FROM release_order ro
 WHERE (
@@ -2923,7 +3072,7 @@ func (r *ReleaseRepository) ListByConcurrentBatchNo(ctx context.Context, batchNo
 		return []domain.ReleaseOrder{}, nil
 	}
 	const q = `
-SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, git_ref, image_tag,
+SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, git_ref, head_commit_sha, head_commit_ref, head_change_sha, head_change_title, head_change_author, head_change_at, head_change_url, image_tag,
 	trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
 FROM release_order
 WHERE concurrent_batch_no = ?
@@ -2964,6 +3113,55 @@ func (r *ReleaseRepository) FindActiveOrderByApplicationEnv(
 		return domain.ReleaseOrder{}, domain.ErrOrderNotFound
 	}
 	return items[0], nil
+}
+
+// FindOpenOrderByApplicationEnv returns the oldest order of this application/env that has not
+// reached a terminal state yet. Unlike the dispatch-facing blocking query, it also counts orders
+// that were created but never dispatched (pending/approved), because the release automation must
+// not pile a second release on top of a manual one that is still waiting in front of it.
+func (r *ReleaseRepository) FindOpenOrderByApplicationEnv(
+	ctx context.Context,
+	applicationID string,
+	envCode string,
+	excludeReleaseOrderID string,
+) (domain.ReleaseOrder, error) {
+	applicationID = strings.TrimSpace(applicationID)
+	envCode = strings.TrimSpace(envCode)
+	if applicationID == "" || envCode == "" {
+		return domain.ReleaseOrder{}, domain.ErrOrderNotFound
+	}
+	const q = `
+SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, git_ref, head_commit_sha, head_commit_ref, head_change_sha, head_change_title, head_change_author, head_change_at, head_change_url, image_tag,
+	trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
+FROM release_order
+WHERE application_id = ?
+  AND env_code = ?
+  AND id <> ?
+  AND status IN (?, ?, ?, ?, ?, ?, ?)
+ORDER BY created_at ASC, id ASC
+LIMIT 1;`
+	row := r.db.QueryRowContext(
+		ctx,
+		q,
+		applicationID,
+		envCode,
+		strings.TrimSpace(excludeReleaseOrderID),
+		string(domain.OrderStatusPending),
+		string(domain.OrderStatusApproved),
+		string(domain.OrderStatusQueued),
+		string(domain.OrderStatusBuilding),
+		string(domain.OrderStatusRunning),
+		string(domain.OrderStatusDeploying),
+		string(domain.OrderStatusBuiltWaitingDeploy),
+	)
+	item, err := scanReleaseOrder(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.ReleaseOrder{}, domain.ErrOrderNotFound
+		}
+		return domain.ReleaseOrder{}, err
+	}
+	return item, nil
 }
 
 // CountActiveOrdersByApplicationEnv 封装当前模块的业务处理逻辑。
@@ -3008,7 +3206,7 @@ func (r *ReleaseRepository) listBlockingOrdersByApplicationEnv(
 	}
 
 	const q = `
-SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, git_ref, image_tag,
+SELECT id, order_no, release_name, previous_order_no, operation_type, source_order_id, source_order_no, is_concurrent, concurrent_batch_no, concurrent_batch_name, concurrent_batch_seq, application_id, application_name, template_id, template_name, delivery_engine, strategy_snapshot_json, binding_id, pipeline_id, env_code, git_ref, head_commit_sha, head_commit_ref, head_change_sha, head_change_title, head_change_author, head_change_at, head_change_url, image_tag,
 	trigger_type, status, approval_required, approval_mode, approval_approver_ids_json, approval_approver_names_json, approved_at, approved_by, rejected_at, rejected_by, rejected_reason, remark, creator_user_id, triggered_by, executor_user_id, executor_name, started_at, finished_at, created_at, updated_at
 FROM release_order
 WHERE application_id = ?
@@ -4899,6 +5097,7 @@ func scanReleaseOrder(s scanner) (domain.ReleaseOrder, error) {
 		rejectedAt        sql.NullInt64
 		startedAt         sql.NullInt64
 		finishedAt        sql.NullInt64
+		headChangeAt      sql.NullInt64
 		createdAt         int64
 		updatedAt         int64
 	)
@@ -4924,6 +5123,13 @@ func scanReleaseOrder(s scanner) (domain.ReleaseOrder, error) {
 		&item.PipelineID,
 		&item.EnvCode,
 		&item.GitRef,
+		&item.HeadCommitSHA,
+		&item.HeadCommitRef,
+		&item.HeadChangeSHA,
+		&item.HeadChangeTitle,
+		&item.HeadChangeAuthor,
+		&headChangeAt,
+		&item.HeadChangeURL,
 		&item.ImageTag,
 		&triggerType,
 		&status,
@@ -4974,6 +5180,10 @@ func scanReleaseOrder(s scanner) (domain.ReleaseOrder, error) {
 	if finishedAt.Valid {
 		t := time.Unix(0, finishedAt.Int64).UTC()
 		item.FinishedAt = &t
+	}
+	if headChangeAt.Valid {
+		t := time.Unix(0, headChangeAt.Int64).UTC()
+		item.HeadChangeAt = &t
 	}
 	item.CreatedAt = time.Unix(0, createdAt).UTC()
 	item.UpdatedAt = time.Unix(0, updatedAt).UTC()

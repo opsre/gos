@@ -43,12 +43,14 @@ const (
 	TriggerTypeManual   TriggerType = "manual"
 	TriggerTypeWebhook  TriggerType = "webhook"
 	TriggerTypeSchedule TriggerType = "schedule"
+	// TriggerTypeAutomation 标记由「发布自动化」轮询分支 HEAD 后自动创建的发布单。
+	TriggerTypeAutomation TriggerType = "automation"
 )
 
 // Valid 封装当前模块的业务处理逻辑。
 func (t TriggerType) Valid() bool {
 	switch t {
-	case TriggerTypeManual, TriggerTypeWebhook, TriggerTypeSchedule:
+	case TriggerTypeManual, TriggerTypeWebhook, TriggerTypeSchedule, TriggerTypeAutomation:
 		return true
 	default:
 		return false
@@ -291,14 +293,38 @@ type ReleaseOrder struct {
 	QueuePosition         int
 	QueuedReason          string
 	Remark                string
-	CreatorUserID         string
-	TriggeredBy           string
-	ExecutorUserID        string
-	ExecutorName          string
-	StartedAt             *time.Time
-	FinishedAt            *time.Time
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
+	// HeadCommit* / HeadChange* 是发布单创建时解析一次并落库的仓库 HEAD 快照，
+	// 列表与详情只读库、不再实时拉 Git；历史发布单保持空值，由前端显示占位。
+	HeadCommitSHA    string
+	HeadCommitRef    string
+	HeadChangeSHA    string
+	HeadChangeTitle  string
+	HeadChangeAuthor string
+	HeadChangeAt     *time.Time
+	HeadChangeURL    string
+	CreatorUserID    string
+	TriggeredBy      string
+	ExecutorUserID   string
+	ExecutorName     string
+	StartedAt        *time.Time
+	FinishedAt       *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+// ReleaseOrderHeadCommit 是发布单创建时解析出来的仓库 HEAD 快照，
+// 由 GitCommitManager.ResolveHeadCommit 产出、创建流程异步写库。
+type ReleaseOrderHeadCommit struct {
+	// CommitSHA / CommitRef 记录创建瞬间分支 HEAD 的提交与分支名。
+	CommitSHA string
+	CommitRef string
+	// ChangeSHA 是 HEAD 之前（含 HEAD）最新一条非 merge 提交。
+	// ChangeAt 为空表示提交时间不可用。
+	ChangeSHA    string
+	ChangeTitle  string
+	ChangeAuthor string
+	ChangeAt     *time.Time
+	ChangeURL    string
 }
 
 type ScheduleMode string

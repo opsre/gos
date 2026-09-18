@@ -3728,7 +3728,7 @@ onBeforeUnmount(() => {
 }
 
 .release-template-table :deep(.ant-table-cell-fix-right) {
-  background: rgba(255, 255, 255, 0.96) !important;
+  background: #f8f9fe !important;
   box-shadow: -12px 0 24px rgba(15, 23, 42, 0.04);
 }
 

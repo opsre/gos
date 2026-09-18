@@ -29,6 +29,7 @@ const ReleaseOrderDetailView = () => import('../views/release/ReleaseOrderDetail
 const ReleaseOrderListView = () => import('../views/release/ReleaseOrderListView.vue')
 const ReleaseOrderSearchView = () => import('../views/release/ReleaseOrderSearchView.vue')
 const ReleaseOrderScheduleView = () => import('../views/release/ReleaseOrderScheduleView.vue')
+const ReleaseAutomationView = () => import('../views/release/ReleaseAutomationView.vue')
 const ReleaseApprovalWorkbenchView = () => import('../views/release/ReleaseApprovalWorkbenchView.vue')
 const ApprovalFlowManagementView = () => import('../views/release/ApprovalFlowManagementView.vue')
 const ReleaseTemplateView = () => import('../views/release/ReleaseTemplateView.vue')
@@ -87,7 +88,7 @@ export const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/release-search',
+      redirect: '/applications',
     },
     {
       path: '/login',
@@ -263,6 +264,15 @@ export const router = createRouter({
           name: 'release-order-schedules',
           component: ReleaseOrderScheduleView,
           meta: { title: '预约发布' },
+        },
+        {
+          path: '/release-automations',
+          name: 'release-automation-list',
+          component: ReleaseAutomationView,
+          meta: {
+            title: '自动化',
+            permission: ['release.automation.view', 'release.automation.manage'],
+          },
         },
         {
           path: '/releases/new',

@@ -315,6 +315,13 @@ CREATE TABLE IF NOT EXISTS `release_order` (
     `pipeline_id` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '关联管线ID',
     `env_code` VARCHAR(50) NOT NULL COMMENT '目标环境代码',
     `git_ref` VARCHAR(200) NOT NULL DEFAULT '' COMMENT 'Git引用: 分支/tag/commit',
+    `head_commit_sha` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '创建时分支HEAD提交SHA',
+    `head_commit_ref` VARCHAR(128) NOT NULL DEFAULT '' COMMENT '创建时解析HEAD使用的分支引用',
+    `head_change_sha` VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'HEAD之前(含HEAD)最新一条非merge提交SHA',
+    `head_change_title` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '非merge提交标题',
+    `head_change_author` VARCHAR(128) NOT NULL DEFAULT '' COMMENT '非merge提交作者',
+    `head_change_at` BIGINT NULL COMMENT '非merge提交时间，Unix纳秒时间戳',
+    `head_change_url` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '非merge提交页面地址',
     `image_tag` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '镜像版本标签',
     `trigger_type` VARCHAR(50) NOT NULL COMMENT '触发类型: manual=手动, scheduled=定时, webhook= webhook触发, api=API触发',
     `status` VARCHAR(50) NOT NULL DEFAULT 'pending' COMMENT '发布单状态: pending/pending_approval/approving/approved/running/success/failed/cancelled',
@@ -757,6 +764,37 @@ CREATE TABLE IF NOT EXISTS `release_order_schedule_approval_record` (
     PRIMARY KEY (`id`),
     KEY `idx_release_order_schedule_approval_record_schedule_created` (`schedule_id`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='发布单计划审批记录表';
+
+-- --------------------------------------------------------
+-- 27B. 发布模块 - release_automation (发布自动化配置表)
+-- 应用 + 环境 + 分支唯一：后台轮询该分支 HEAD，发现新提交就自动建发布单并按派发方式触发。
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `release_automation` (
+    `id` VARCHAR(64) NOT NULL COMMENT '配置唯一标识',
+    `name` VARCHAR(100) NOT NULL COMMENT '配置名称',
+    `application_id` VARCHAR(64) NOT NULL COMMENT '关联应用ID',
+    `application_name` VARCHAR(128) NOT NULL DEFAULT '' COMMENT '应用名称快照',
+    `template_id` VARCHAR(64) NOT NULL COMMENT '发布模板ID',
+    `template_name` VARCHAR(128) NOT NULL DEFAULT '' COMMENT '发布模板名称快照',
+    `env_code` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '目标环境代码',
+    `git_ref` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '监听的分支/tag',
+    `dispatch_mode` VARCHAR(32) NOT NULL DEFAULT 'build' COMMENT '派发方式: build=仅构建, build_deploy=构建并部署, execute=仅发布',
+    `enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用轮询',
+    `params_json` TEXT NOT NULL COMMENT '建单参数JSON数组',
+    `remark` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '备注',
+    `last_seen_sha` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '轮询基线：最近一次已处理的HEAD sha',
+    `last_triggered_sha` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '最近一次真正建单时的HEAD sha',
+    `last_order_id` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '最近一次自动创建的发布单ID',
+    `last_checked_at` BIGINT NULL COMMENT '最近一次检查时间，Unix纳秒时间戳，未检查过为空',
+    `last_error` VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '最近一次检查的可读原因（git读取失败/已有在途单等）',
+    `creator_user_id` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '配置创建人，自动建单时作为发起人',
+    `creator_name` VARCHAR(128) NOT NULL DEFAULT '' COMMENT '配置创建人名称',
+    `created_at` BIGINT NOT NULL COMMENT '创建时间，Unix纳秒时间戳',
+    `updated_at` BIGINT NOT NULL COMMENT '更新时间，Unix纳秒时间戳',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_release_automation_app_env_ref` (`application_id`, `env_code`, `git_ref`),
+    KEY `idx_release_automation_enabled_checked` (`enabled`, `last_checked_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='发布自动化配置表';
 
 -- --------------------------------------------------------
 -- 28. Agent模块 - agent_bootstrap_token (Agent引导令牌表)

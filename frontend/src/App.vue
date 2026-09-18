@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { ArrowLeftOutlined } from '@ant-design/icons-vue'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
+import { onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { installScrollbarAutoHide } from './utils/scrollbar-auto-hide'
 
 const route = useRoute()
 const router = useRouter()
+
+onMounted(() => {
+  installScrollbarAutoHide()
+})
 
 function goBack() {
   router.back()

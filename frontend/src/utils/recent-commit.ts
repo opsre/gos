@@ -1,20 +1,8 @@
 import dayjs from 'dayjs'
 
-// 后端只回传简短错误信息（如 credential not configured），这里补齐成用户可读的中文提示。
-export function recentCommitErrorText(raw: string): string {
-  const text = String(raw || '').trim()
-  if (!text) {
-    return '暂时无法获取最近提交'
-  }
-  const lowered = text.toLowerCase()
-  if (lowered.includes('credential') || text.includes('凭证')) {
-    return '未配置 Git 凭证'
-  }
-  return text
-}
-
+// 提交信息在创建发布单时已落库（head_change_* 字段），前端只做展示格式化。
 // 提交时间同时给出相对时间与绝对时间，便于快速判断新旧并核对具体时刻。
-export function formatRecentCommitTime(value: string): string {
+export function formatRecentCommitTime(value?: string | null): string {
   if (!value) {
     return '-'
   }
@@ -23,6 +11,11 @@ export function formatRecentCommitTime(value: string): string {
     return '-'
   }
   return `${formatRelativeCommitTime(parsed)} · ${parsed.format('YYYY-MM-DD HH:mm:ss')}`
+}
+
+// 短 sha 统一截前 7 位，兼容后端直接回传完整 sha 或已截断的短 sha。
+export function shortCommitSHA(value?: string | null): string {
+  return String(value || '').trim().slice(0, 7)
 }
 
 function formatRelativeCommitTime(target: dayjs.Dayjs): string {
