@@ -128,6 +128,23 @@ test('release detail uses publish label to continue cd after only-build', () => 
   )
 })
 
+test('release detail keeps full publish visible while precheck is temporarily blocked', () => {
+  const canExecuteBlock = source.match(
+    /const canExecute = computed\(([\s\S]*?)\n\);/,
+  )
+  assert.ok(canExecuteBlock, 'detail page should define full release availability')
+  assert.doesNotMatch(
+    canExecuteBlock[1],
+    /precheckBlocked/,
+    'precheck results should not hide the full publish action because dispatch rechecks them on click',
+  )
+  assert.match(
+    source,
+    /if \(!skipPrecheck && precheckBlocked\.value\) \{[\s\S]*当前发布单未通过发布前预检/,
+    'dispatch should still block and explain a failed precheck after the publish action is clicked',
+  )
+})
+
 test('release detail backgrounds preserve hero and redesign non-hero sections', () => {
   const cardRule = extractStyleRule('.detail-card')
   assert.match(

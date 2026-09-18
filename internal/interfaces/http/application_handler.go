@@ -14,6 +14,7 @@ import (
 
 	"gos/internal/application/usecase"
 	domain "gos/internal/domain/application"
+	gitcredentialdomain "gos/internal/domain/gitcredential"
 	projectdomain "gos/internal/domain/project"
 	userdomain "gos/internal/domain/user"
 )
@@ -824,6 +825,10 @@ func writeHTTPError(c *gin.Context, err error) {
 	case errors.Is(err, userdomain.ErrUserNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, domain.ErrKeyDuplicated):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, gitcredentialdomain.ErrNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+	case errors.Is(err, gitcredentialdomain.ErrNameDuplicated):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, usecase.ErrReferencedConflict):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})

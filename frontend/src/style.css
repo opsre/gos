@@ -902,3 +902,72 @@ body .app-layout .app-content .ant-table-wrapper.ant-table-wrapper .ant-paginati
   font-size: 13px;
   line-height: 1.7;
 }
+
+/* 「最近提交」的元信息色块：提交者/时间/发布时点/分支当时HEAD/仓库各用一色，避免
+   一长串灰字。列表 tooltip 与发布详情共用这套类。 */
+.git-commit-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.git-commit-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.git-commit-chip-label {
+  flex: none;
+  opacity: 0.7;
+}
+
+.git-commit-chip-value {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-commit-chip--author {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.git-commit-chip--time {
+  border-color: #e2e8f0;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.git-commit-chip--asof {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.git-commit-chip--head {
+  border-color: #ddd6fe;
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
+.git-commit-chip--repo {
+  border-color: #99f6e4;
+  background: #f0fdfa;
+  color: #0f766e;
+}
+
+.git-commit-chip--mono .git-commit-chip-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}

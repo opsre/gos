@@ -14,6 +14,7 @@ const ArtifactRepositoryConfigView = () => import('../views/artifact/ArtifactRep
 const ArgoCDManagementView = () => import('../views/component/ArgoCDManagementView.vue')
 const ArgoCDApplicationManagementView = () => import('../views/component/ArgoCDApplicationManagementView.vue')
 const GitOpsManagementView = () => import('../views/component/GitOpsManagementView.vue')
+const GitCredentialManagementView = () => import('../views/component/GitCredentialManagementView.vue')
 const GitOpsTutorialView = () => import('../views/help/GitOpsTutorialView.vue')
 const JenkinsManagementView = () => import('../views/component/JenkinsManagementView.vue')
 const PipelineRuleManagementView = () => import('../views/component/PipelineRuleManagementView.vue')
@@ -187,6 +188,12 @@ export const router = createRouter({
           name: 'gitops-management',
           component: GitOpsManagementView,
           meta: { title: 'GitOps管理', permission: ['component.gitops.view', 'component.gitops.manage'] },
+        },
+        {
+          path: '/components/credentials',
+          name: 'git-credential-management',
+          component: GitCredentialManagementView,
+          meta: { title: '凭证管理', permission: ['component.credential.view', 'component.credential.manage'] },
         },
         {
           path: '/help/gitops',

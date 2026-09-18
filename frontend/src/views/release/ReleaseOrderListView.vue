@@ -39,6 +39,7 @@ import {
   deployReleaseOrder,
   executeReleaseOrder,
   getReleaseOrderApprovalFlow,
+  getReleaseOrderRecentCommits,
   getReleaseOrderStats,
   getReleaseOrderByID,
   getReleaseOrderPrecheck,
@@ -60,15 +61,19 @@ import type {
   ReleaseOrderApprovalFlowTask,
   ReleaseOrderBusinessStatus,
   ReleaseOrderExecution,
+  ReleaseCommitChip,
+  ReleaseOrderGitCommit,
   ReleaseOrderPipelineStage,
   ReleaseOrderParam,
   ReleaseOrderPrecheck,
+  ReleaseOrderRecentCommits,
   ReleaseOrderStatus,
   ReleaseOrderDispatchAction,
   ReplayReleaseOrderPayload,
   ReleaseTriggerType,
 } from "../../types/release";
 import { extractHTTPErrorMessage } from "../../utils/http-error";
+import { formatRecentCommitTime, recentCommitErrorText } from "../../utils/recent-commit";
 
 echarts.use([BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer]);
 
@@ -96,6 +101,14 @@ interface ReleaseRealtimeProgress {
   source: "pipeline" | "argocd" | "status";
   tone: ReleaseRealtimeProgressTone;
 }
+
+// 「最近提交」列每次批量查询的提交条数上限，和后端 limit 参数保持一致。
+const RECENT_COMMIT_LIMIT = 5;
+// 轮询时最近提交的最短复用时间，避免每 10s 都去触发后端 Git 查询。
+const RECENT_COMMIT_REFRESH_INTERVAL_MS = 60_000;
+// 失败后的重试间隔比成功缓存短：后端冷启动时首个请求可能超时，等满一分钟才重试会让
+// 该列长时间空白，缩短到 15s 可以让预热完成后的下一轮轮询尽快补上。
+const RECENT_COMMIT_RETRY_INTERVAL_MS = 15_000;
 
 
 const route = useRoute();
@@ -173,6 +186,11 @@ let durationTimer: number | undefined;
 const realtimeProgressMap = reactive<Record<string, ReleaseRealtimeProgress>>({});
 const realtimeProgressMaxPercent = reactive<Record<string, number>>({});
 const realtimeProgressInflight = new Set<string>();
+// 发布单最近提交按订单 id 缓存，批量接口一次查询当前页可见行。
+const recentCommitsMap = reactive<Record<string, ReleaseOrderRecentCommits>>({});
+const recentCommitsInflight = new Set<string>();
+const recentCommitsFetchedAt = new Map<string, number>();
+let recentCommitsRequestSeq = 0;
 const approvalFlowByOrderID = reactive<Record<string, ReleaseOrderApprovalFlow | null>>({});
 const approvalFlowLoadingByOrderID = reactive<Record<string, boolean>>({});
 const approvalFlowLoadedByOrderID = reactive<Record<string, boolean>>({});
@@ -252,6 +270,7 @@ const initialColumns: TableColumnsType<ReleaseOrder> = [
     key: "application_name",
     width: 130,
   },
+  { title: "最近提交", key: "recent_commit", width: 180 },
   { title: "操作", key: "actions", width: 160 },
 ];
 const { columns } = useResizableColumns(initialColumns, {
@@ -1127,6 +1146,166 @@ async function loadVisibleOrderRealtimeProgress(
 
 function realtimeProgress(record: ReleaseOrder) {
   return realtimeProgressMap[record.id] || fallbackRealtimeProgress(record);
+}
+
+// 批量拉取当前页可见发布单的最近提交。默认只补齐缺失/失败/已过期的订单，
+// 避免 10s 轮询反复触发后端 Git 查询；用户主动查询或翻页时强制刷新。
+async function loadVisibleOrderRecentCommits(
+  records: ReleaseOrder[],
+  options?: { force?: boolean },
+) {
+  const requestSeq = ++recentCommitsRequestSeq;
+  const currentIDs = new Set(records.map((item) => item.id));
+
+  Object.keys(recentCommitsMap).forEach((id) => {
+    if (!currentIDs.has(id)) {
+      delete recentCommitsMap[id];
+      recentCommitsInflight.delete(id);
+      recentCommitsFetchedAt.delete(id);
+    }
+  });
+
+  const targets = records.filter((record) => {
+    if (recentCommitsInflight.has(record.id)) {
+      return false;
+    }
+    if (options?.force) {
+      return true;
+    }
+    const existing = recentCommitsMap[record.id];
+    if (!existing || existing.error) {
+      return true;
+    }
+    const fetchedAt = recentCommitsFetchedAt.get(record.id) || 0;
+    return Date.now() - fetchedAt >= RECENT_COMMIT_REFRESH_INTERVAL_MS;
+  });
+
+  if (!targets.length) {
+    return;
+  }
+
+  const targetIDs = targets.map((record) => record.id);
+  targetIDs.forEach((id) => recentCommitsInflight.add(id));
+
+  try {
+    const response = await getReleaseOrderRecentCommits(targetIDs, RECENT_COMMIT_LIMIT);
+    if (requestSeq !== recentCommitsRequestSeq) {
+      return;
+    }
+    const visibleIDs = currentIDs;
+    const returnedIDs = new Set(Object.keys(response.data || {}));
+    Object.entries(response.data || {}).forEach(([orderID, item]) => {
+      if (visibleIDs.has(orderID)) {
+        recentCommitsMap[orderID] = item;
+        recentCommitsFetchedAt.set(orderID, Date.now());
+      }
+    });
+    // 后端未返回的订单同样按已查询处理，避免下一轮轮询立刻重试。
+    targetIDs.forEach((id) => {
+      if (!returnedIDs.has(id)) {
+        recentCommitsFetchedAt.set(id, Date.now());
+      }
+    });
+  } catch {
+    // 提交信息属于辅助信息，失败时保持单元格为空由后续轮询重试，不弹提示打断用户；
+    // 失败的重试窗口按 15s 计（而不是成功的 60s），冷启动预热完成后能尽快补齐。
+    const retryAt = Date.now() - (RECENT_COMMIT_REFRESH_INTERVAL_MS - RECENT_COMMIT_RETRY_INTERVAL_MS);
+    targetIDs.forEach((id) => recentCommitsFetchedAt.set(id, retryAt));
+  } finally {
+    targetIDs.forEach((id) => recentCommitsInflight.delete(id));
+  }
+}
+
+function recentCommits(record: ReleaseOrder) {
+  return recentCommitsMap[record.id] || null;
+}
+
+// 「Merge branch … into …」只是把分支并回主干的动作，读不出这次发布改了什么，
+// 所以展示时跳过这类合并提交，取该时点之前最后一条真实改动。
+function isMergeCommit(commit: ReleaseOrderGitCommit | null | undefined) {
+  return /^merge\b/i.test(String(commit?.title || "").trim());
+}
+
+function recentCommitAnchor(record: ReleaseOrder): ReleaseOrderGitCommit | null {
+  return recentCommits(record)?.commits?.[0] || null;
+}
+
+function recentCommitItem(record: ReleaseOrder): ReleaseOrderGitCommit | null {
+  const commits = recentCommits(record)?.commits || [];
+  if (commits.length === 0) {
+    return null;
+  }
+  return commits.find((item) => !isMergeCommit(item)) || commits[0];
+}
+
+// 还没有拿到后端结果时（首次加载或冷启动重试中）显示「获取中…」，避免与
+// 「确实没有提交」的 - 混淆。
+function recentCommitPending(record: ReleaseOrder) {
+  return !recentCommits(record);
+}
+
+function recentCommitRepositoryText(record: ReleaseOrder) {
+  const info = recentCommits(record);
+  if (!info) {
+    return "";
+  }
+  return [info.repository, info.ref].filter(Boolean).join(" · ");
+}
+
+function recentCommitTooltipTitle(record: ReleaseOrder) {
+  const info = recentCommits(record);
+  if (!info) {
+    return "正在获取最近提交";
+  }
+  if (info.error) {
+    return recentCommitErrorText(info.error);
+  }
+  return recentCommitItem(record)?.title || "暂无提交记录";
+}
+
+// tooltip 里的元信息按「提交者 / 提交时间 / 发布时点 / 分支当时 HEAD / 仓库」分成色块，
+// 比一长串灰字更容易一眼区分；发布时点与分支 HEAD 只在能确定时给出。
+function recentCommitChips(record: ReleaseOrder): ReleaseCommitChip[] {
+  const info = recentCommits(record);
+  if (!info || info.error) {
+    return [];
+  }
+  const commit = recentCommitItem(record);
+  const chips: ReleaseCommitChip[] = [];
+  if (commit?.author_name) {
+    chips.push({ key: "author", tone: "author", label: "提交者", value: commit.author_name });
+  }
+  if (commit?.committed_at) {
+    chips.push({
+      key: "time",
+      tone: "time",
+      label: "提交时间",
+      value: formatRecentCommitTime(commit.committed_at),
+    });
+  }
+  const asOf = String(info.as_of || "").trim();
+  if (asOf && dayjs(asOf).isValid()) {
+    chips.push({
+      key: "asof",
+      tone: "asof",
+      label: "发布时点",
+      value: dayjs(asOf).format("YYYY-MM-DD HH:mm"),
+    });
+  }
+  const anchor = recentCommitAnchor(record);
+  if (anchor && commit && anchor.sha !== commit.sha) {
+    chips.push({
+      key: "head",
+      tone: "head",
+      label: "分支当时 HEAD",
+      value: anchor.short_sha || anchor.sha.slice(0, 7),
+    });
+  }
+  const repository = recentCommitRepositoryText(record);
+  if (repository) {
+    chips.push({ key: "repo", tone: "repo", label: "仓库", value: repository });
+  }
+  return chips;
 }
 
 function releaseOrderEffectRowClassName(record: ReleaseOrder) {
@@ -2146,6 +2325,8 @@ async function loadReleaseOrders(options?: { silent?: boolean; force?: boolean }
     );
     lastLoadedAt.value = dayjs().format("YYYY-MM-DD HH:mm:ss");
     void loadSpotlightOrders({ silent: true });
+    // 跟随既有列表刷新节奏补齐最近提交；主动查询/翻页时强制刷新缓存。
+    void loadVisibleOrderRecentCommits(response.data, { force: !silent });
   } catch (error) {
     if (!silent) {
       message.error(extractHTTPErrorMessage(error, "发布单列表加载失败"));
@@ -2295,6 +2476,15 @@ function handleEdit(record: ReleaseOrder) {
     return;
   }
   void router.push(`/releases/${record.id}/edit`);
+}
+
+// 单号即详情入口：列表操作列在最右侧，窄屏需要横向滚动才能点到「详情」。
+function openReleaseOrderDetail(record: ReleaseOrder) {
+  void router.push({
+    name: "release-order-detail",
+    params: { id: record.id },
+    query: buildReleaseListQuery(),
+  });
 }
 
 function handleSearch() {
@@ -3259,7 +3449,7 @@ function handleOverviewChartResize() {
         :data-source="dataSource"
         :loading="loading"
         :pagination="false"
-        :scroll="{ x: 1175 }"
+        :scroll="{ x: 1355 }"
         @expand="handleApprovalFlowExpand"
       >
         <template #expandedRowRender="{ record }">
@@ -3376,11 +3566,21 @@ function handleOverviewChartResize() {
                 <button
                   class="release-order-no-trigger"
                   type="button"
-                  @click.stop="copyReleaseOrderNo(record.order_no)"
+                  :title="`查看 ${record.order_no} 详情`"
+                  @click.stop="openReleaseOrderDetail(record)"
                 >
                   <span class="release-order-no-text">
                     <span class="release-order-no-text-value">{{ record.order_no }}</span>
                   </span>
+                </button>
+                <button
+                  class="release-order-no-copy"
+                  type="button"
+                  aria-label="复制发布单号"
+                  title="复制发布单号"
+                  @click.stop="copyReleaseOrderNo(record.order_no)"
+                >
+                  <CopyOutlined aria-hidden="true" />
                 </button>
                 <a-popover
                   v-if="String(record.remark || '').trim()"
@@ -3451,6 +3651,51 @@ function handleOverviewChartResize() {
           </template>
           <template v-else-if="column.key === 'created_at'">
             {{ formatTime(record.created_at) }}
+          </template>
+          <template v-else-if="column.key === 'recent_commit'">
+            <div class="release-recent-commit-cell">
+              <a-tooltip placement="topLeft" overlay-class-name="release-recent-commit-tooltip">
+                <template #title>
+                  <div class="release-recent-commit-tip">
+                    <div class="release-recent-commit-tip-title">
+                      {{ recentCommitTooltipTitle(record) }}
+                    </div>
+                    <div v-if="recentCommitChips(record).length" class="git-commit-chips">
+                      <span
+                        v-for="chip in recentCommitChips(record)"
+                        :key="chip.key"
+                        class="git-commit-chip"
+                        :class="[
+                          `git-commit-chip--${chip.tone}`,
+                          chip.tone === 'head' ? 'git-commit-chip--mono' : '',
+                        ]"
+                      >
+                        <span class="git-commit-chip-label">{{ chip.label }}</span>
+                        <span class="git-commit-chip-value">{{ chip.value }}</span>
+                      </span>
+                    </div>
+                  </div>
+                </template>
+                <a
+                  v-if="recentCommitItem(record)"
+                  class="release-recent-commit-link"
+                  :href="recentCommitItem(record)?.web_url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  @click.stop
+                >
+                  <span class="release-recent-commit-sha">
+                    {{ recentCommitItem(record)?.short_sha }}
+                  </span>
+                  <span class="release-recent-commit-title">
+                    {{ recentCommitItem(record)?.title }}
+                  </span>
+                </a>
+                <span v-else class="release-recent-commit-empty">{{
+                  recentCommitPending(record) ? "获取中…" : "-"
+                }}</span>
+              </a-tooltip>
+            </div>
           </template>
           <template v-else-if="column.key === 'trigger_type'">
             {{ triggerTypeText(record.trigger_type) }}
@@ -5080,6 +5325,33 @@ function handleOverviewChartResize() {
   text-align: left;
 }
 
+.release-order-no-copy {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(100, 116, 139, 0.85);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.release-order-effect-row:hover .release-order-no-copy,
+.release-order-no-copy:focus-visible {
+  opacity: 1;
+}
+
+.release-order-no-copy:hover {
+  background: rgba(148, 163, 184, 0.18);
+  color: rgba(30, 64, 175, 0.95);
+}
+
 .release-order-no-main {
   display: flex;
   min-width: 0;
@@ -5226,6 +5498,67 @@ function handleOverviewChartResize() {
   color: #64748b;
   font-size: 12px;
   font-weight: 600;
+}
+
+/* 「最近提交」列：短 sha + 标题单行截断，完整信息交给 tooltip。 */
+.release-recent-commit-cell {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.release-recent-commit-link {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  color: #334155;
+}
+
+.release-recent-commit-link:hover,
+.release-recent-commit-link:focus-visible {
+  color: #2563eb;
+}
+
+.release-recent-commit-sha {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(241, 245, 249, 0.96);
+  color: #475569;
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.release-recent-commit-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.release-recent-commit-empty {
+  color: #94a3b8;
+}
+
+.release-recent-commit-tip {
+  display: grid;
+  gap: 4px;
+  max-width: 320px;
+}
+
+.release-recent-commit-tip-title {
+  color: #0f172a;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.release-recent-commit-tip-meta {
+  color: #64748b;
+  font-size: 12px;
+  word-break: break-all;
 }
 
 .release-row-actions {

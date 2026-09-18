@@ -38,6 +38,7 @@ import type {
   ReleaseOrderStatsResponse,
   ReleaseOrderPrecheckResponse,
   ReleaseOrderRealtimeSnapshotResponse,
+  ReleaseOrderRecentCommitsResponse,
   ReplayReleaseOrderPayload,
   ReleaseOrderPipelineStageListResponse,
   ReleaseOrderPipelineStageLogResponse,
@@ -198,6 +199,30 @@ export async function listAppReleaseStateSummaries(
       params: {
         application_ids: applicationIDs.join(","),
       },
+    },
+  );
+  return response.data;
+}
+
+export async function getReleaseOrderRecentCommits(
+  orderIDs: string[],
+  limit = 5,
+): Promise<ReleaseOrderRecentCommitsResponse> {
+  const ids = orderIDs
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  if (ids.length === 0) {
+    return { data: {} };
+  }
+  const response = await http.get<ReleaseOrderRecentCommitsResponse>(
+    "/release-orders/recent-commits",
+    {
+      params: {
+        order_ids: ids.join(","),
+        limit,
+      },
+      // 首次访问某个仓库需要浅克隆（冷缓存），给后端留出比默认 10s 更宽裕的预算。
+      timeout: 60_000,
     },
   );
   return response.data;

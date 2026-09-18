@@ -301,16 +301,26 @@ test('release status badges use readable soft colors, icons, and a separate live
   )
 })
 
-test('release order number truncates and copies on click', () => {
+test('release order number opens the detail while copy stays available', () => {
   assert.match(
     source,
     /async function copyReleaseOrderNo\(orderNo: string\)/,
-    'order number should expose a copy handler',
+    'order number should keep a copy handler',
   )
   assert.match(
     source,
-    /class="release-order-no-trigger"[\s\S]*?@click.stop="copyReleaseOrderNo\(record\.order_no\)"/,
-    'order number trigger button should copy on click',
+    /class="release-order-no-trigger"[\s\S]*?@click.stop="openReleaseOrderDetail\(record\)"/,
+    'order number trigger button should open the release order detail',
+  )
+  assert.match(
+    source,
+    /class="release-order-no-copy"[\s\S]*?@click.stop="copyReleaseOrderNo\(record\.order_no\)"/,
+    'copy action should move to its own icon button beside the order number',
+  )
+  assert.match(
+    source,
+    /function openReleaseOrderDetail\(record: ReleaseOrder\)[\s\S]*?name: "release-order-detail"[\s\S]*?query: buildReleaseListQuery\(\)/,
+    'opening the detail should keep the current list query so returning to the list restores filters',
   )
   assert.doesNotMatch(
     source,

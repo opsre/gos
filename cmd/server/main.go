@@ -19,9 +19,11 @@ import (
 	"gos/internal/bootstrap"
 	argocddomain "gos/internal/domain/argocdapp"
 	gitopsdomain "gos/internal/domain/gitops"
+	releasedomain "gos/internal/domain/release"
 	aiinfra "gos/internal/infrastructure/ai"
 	argocdinfra "gos/internal/infrastructure/argocd"
 	configstore "gos/internal/infrastructure/configstore"
+	"gos/internal/infrastructure/gitcli"
 	gitopsinfra "gos/internal/infrastructure/gitops"
 	"gos/internal/infrastructure/jenkins"
 	"gos/internal/infrastructure/persistence/sqlrepo"
@@ -91,6 +93,10 @@ func main() {
 	artifactRepositoryRepo := sqlrepo.NewArtifactRepositoryConfigRepository(db, cfg.Database.Driver)
 	if err := bootstrap.InitSchema(artifactRepositoryRepo); err != nil {
 		log.Fatalf("init artifact repository schema: %v", err)
+	}
+	gitCredentialRepo := sqlrepo.NewGitCredentialRepository(db, cfg.Database.Driver)
+	if err := bootstrap.InitSchema(gitCredentialRepo); err != nil {
+		log.Fatalf("init git credential schema: %v", err)
 	}
 
 	executorParamRepo := sqlrepo.NewExecutorParamRepository(db, cfg.Database.Driver)
@@ -242,6 +248,18 @@ func main() {
 	)
 	artifactRepositoryHandler := httpapi.NewArtifactRepositoryHandler(
 		usecase.NewArtifactRepositoryManager(artifactRepositoryRepo),
+		authSessionManager,
+	)
+	gitCommitManager := usecase.NewGitCommitManager(releaseRepo, repo, gitCredentialRepo)
+	// 「发布单最近提交」里 auth_type=password 的凭证走 git 协议读取：目标 GitLab 的
+	// API v4 对 Basic 账号密码和「PRIVATE-TOKEN: 密码」都返回 401，但同一账号可以正常
+	// clone/fetch 仓库。镜像缓存目录使用默认值 os.TempDir()/gos-git-cache。
+	gitCommitManager.SetGitCLIClientFactory(func(cfg gitcli.Config) usecase.GitCommitFetcher {
+		return gitcli.NewClient(cfg)
+	})
+	gitCredentialHandler := httpapi.NewGitCredentialHandler(
+		usecase.NewGitCredentialManager(gitCredentialRepo),
+		gitCommitManager,
 		authSessionManager,
 	)
 	notificationHandler := httpapi.NewNotificationHandler(
@@ -427,6 +445,7 @@ func main() {
 		argocdHandler,
 		gitopsHandler,
 		artifactRepositoryHandler,
+		gitCredentialHandler,
 		platformParamHandler,
 		notificationHandler,
 		executorParamHandler,
@@ -447,6 +466,15 @@ func main() {
 	serverErr := make(chan error, 1)
 	go func() {
 		serverErr <- server.Serve(listener)
+	}()
+	// 冷启动预热：进程刚启动时 git 镜像缓存（os.TempDir()/gos-git-cache）是空的，
+	// 列表的第一个请求要为每个仓库冷克隆（大仓库可达一分钟），超过前端 60s 超时后
+	// 该列会空白。后台先把最新发布单涉及的仓库拉一遍，用户打开列表即可命中热缓存。
+	go func() {
+		time.Sleep(5 * time.Second)
+		warmCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		warmReleaseOrderCommits(warmCtx, releaseRepo, gitCommitManager)
 	}()
 	log.Printf(
 		"server listening on %s (env=%s db=%s jenkins_enabled=%t)",
@@ -642,4 +670,52 @@ func (c argoCDUsecaseClient) BuildApplicationURL(name string) string {
 		return ""
 	}
 	return c.client.BuildApplicationURL(name)
+}
+
+// warmReleaseOrderCommits 预热「最近提交」：把最新若干发布单涉及的仓库先拉一遍。
+// 进程重启后镜像缓存为空，首次列表请求若为每个仓库冷克隆，很容易超过前端的请求超时；
+// 预热只在后台跑一次（最多 10 分钟），失败只记录日志，不影响任何接口。
+func warmReleaseOrderCommits(
+	ctx context.Context,
+	releaseRepo releasedomain.Repository,
+	commits *usecase.GitCommitManager,
+) {
+	if releaseRepo == nil || commits == nil {
+		return
+	}
+	const warmOrderLimit = 20
+	orders, _, err := releaseRepo.List(ctx, releasedomain.ListFilter{Page: 1, PageSize: warmOrderLimit})
+	if err != nil {
+		log.Printf("warm recent commits: list orders failed: %v", err)
+		return
+	}
+	orderIDs := make([]string, 0, len(orders))
+	for _, item := range orders {
+		orderIDs = append(orderIDs, item.ID)
+	}
+	if len(orderIDs) == 0 {
+		return
+	}
+	startedAt := time.Now()
+	result, err := commits.RecentCommits(ctx, usecase.GitCommitQuery{OrderIDs: orderIDs, Limit: 5})
+	if err != nil {
+		log.Printf("warm recent commits: failed: %v", err)
+		return
+	}
+	resolved := 0
+	failed := 0
+	for _, item := range result {
+		if item.Error != "" {
+			failed++
+			continue
+		}
+		resolved++
+	}
+	log.Printf(
+		"warm recent commits: orders=%d resolved=%d failed=%d elapsed=%s",
+		len(orderIDs),
+		resolved,
+		failed,
+		time.Since(startedAt).Truncate(time.Millisecond),
+	)
 }

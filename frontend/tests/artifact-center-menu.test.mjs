@@ -17,7 +17,7 @@ test('artifact center exposes repository configuration navigation', () => {
   )
   assert.match(
     routerSource,
-    /path:\s*'\/artifacts\/repositories'[\s\S]*name:\s*'artifact-repository-config'[\s\S]*component:\s*ArtifactRepositoryConfigView[\s\S]*meta:\s*\{\s*title:\s*'制品配置',\s*permission:\s*'artifact_repo\.manage'\s*\}/,
+    /path:\s*'\/artifacts\/repositories'[\s\S]*name:\s*'artifact-repository-config'[\s\S]*component:\s*ArtifactRepositoryConfigView[\s\S]*meta:\s*\{\s*title:\s*'制品库配置',\s*permission:\s*'artifact_repo\.manage'\s*\}/,
     'router should expose the artifact repository configuration route',
   )
   assert.match(
@@ -37,7 +37,7 @@ test('artifact center exposes repository configuration navigation', () => {
   )
   assert.match(
     layoutSource,
-    /key="artifact-center"[\s\S]*<template #title>制品中心<\/template>[\s\S]*key="artifact-repository-config"[\s\S]*@click="goToArtifactRepositoryConfig"[\s\S]*制品配置/,
+    /key="artifact-center"[\s\S]*<template #title>制品中心<\/template>[\s\S]*key="artifact-repository-config"[\s\S]*@click="goToArtifactRepositoryConfig"[\s\S]*制品库配置/,
     'sidebar should render the artifact center first-level menu and configuration child item',
   )
 })

@@ -10,11 +10,15 @@ const apiSource = readFileSync(artifactAPIURL, 'utf8')
 const typeSource = readFileSync(artifactTypeURL, 'utf8')
 
 test('artifact repository config page can add oss repositories from a form', () => {
-  assert.match(typeSource, /export type ArtifactRepositoryType = 'oss'/, 'repository type should reserve a typed OSS value')
+  assert.match(
+    typeSource,
+    /export type ArtifactRepositoryType = 'oss' \| 'ftp' \| 'sftp'/,
+    'repository type should reserve typed OSS and file transfer values',
+  )
   assert.match(
     source,
-    /const repositoryTypeOptions = \[\s*\{\s*label:\s*'OSS 对象存储',\s*value:\s*'oss'\s*\},\s*\]/,
-    'form should expose OSS as the selectable repository type',
+    /const repositoryTypeOptions = \[\s*\{\s*label:\s*'OSS 对象存储',\s*value:\s*'oss'\s*\},\s*\{\s*label:\s*'FTP 文件服务',\s*value:\s*'ftp'\s*\},\s*\{\s*label:\s*'SFTP 文件服务',\s*value:\s*'sftp'\s*\},\s*\]/,
+    'form should expose OSS, FTP and SFTP as selectable repository types',
   )
   assert.match(source, /function openCreateRepositoryModal\(\)[\s\S]*repositoryForm\.type = 'oss'/, 'create modal should default to OSS type')
   assert.match(
@@ -70,7 +74,7 @@ test('artifact repository config page can add oss repositories from a form', () 
   )
   assert.match(source, /<a-input v-model:value="repositoryForm\.endpoint"/, 'form should collect OSS endpoint')
   assert.match(source, /<a-input v-model:value="repositoryForm\.bucket"/, 'form should collect OSS bucket')
-  assert.match(source, /<a-input-password v-model:value="repositoryForm\.access_key_secret"/, 'form should collect OSS secret safely')
+  assert.match(source, /<a-input-password\s+v-model:value="repositoryForm\.access_key_secret"/, 'form should collect OSS secret safely')
   assert.match(source, /message\.success\('制品库已新增'\)/, 'submit should tell the user the repository was added')
 })
 
@@ -149,4 +153,130 @@ test('artifact repository acl selector uses a light selection style', () => {
     /\.artifact-acl-radio[\s\S]*background:\s*#1677ff|\.artifact-acl-radio[\s\S]*color:\s*#fff/,
     'ACL selector should not introduce dark Ant primary selected colors',
   )
+})
+
+test('artifact repository config page collects ftp and sftp connection fields', () => {
+  assert.match(
+    source,
+    /const isObjectStorageType = \(type: ArtifactRepositoryType\) => type === 'oss'/,
+    'page should branch form fields on whether the type is object storage',
+  )
+  assert.match(
+    source,
+    /const supportsPrivateKey = \(type: ArtifactRepositoryType\) => type === 'sftp'/,
+    'only sftp should offer a private key field',
+  )
+  assert.match(
+    source,
+    /const supportsEPSVSwitch = \(type: ArtifactRepositoryType\) => type === 'ftp'/,
+    'only ftp should offer the EPSV compatibility switch',
+  )
+  // Remote types are addressed by host plus port rather than by an endpoint URL.
+  assert.match(source, /<a-input v-model:value="repositoryForm\.endpoint" placeholder="例如 10\.8\.0\.14 或 sftp\.example\.com"/, 'remote form should collect a bare host address')
+  assert.match(source, /v-model:value="repositoryForm\.port"/, 'remote form should collect the port separately')
+  assert.match(source, /<a-input v-model:value="repositoryForm\.username"/, 'remote form should collect the login user')
+  assert.match(source, /<a-input-password\s+v-model:value="repositoryForm\.password"/, 'remote form should collect the password safely')
+  assert.match(source, /<a-textarea[\s\S]*v-model:value="repositoryForm\.private_key"/, 'sftp form should accept a PEM private key')
+  assert.match(source, /v-model:checked="repositoryForm\.disable_epsv"/, 'ftp form should expose the EPSV compatibility switch')
+  assert.match(source, /v-model:value="repositoryForm\.host_key_fingerprint"/, 'sftp form should accept an optional host key fingerprint')
+})
+
+test('artifact repository payload only sends the fields of the selected type', () => {
+  assert.match(
+    source,
+    /if \(isObjectStorageType\(repositoryForm\.type\)\) \{[\s\S]*payload\.bucket[\s\S]*payload\.access_key_id[\s\S]*payload\.access_key_secret[\s\S]*return payload/,
+    'object storage payload should carry bucket and access keys',
+  )
+  assert.match(
+    source,
+    /payload\.username = repositoryForm\.username\.trim\(\)[\s\S]*payload\.password = repositoryForm\.password\.trim\(\)/,
+    'remote payload should carry the shared username and password',
+  )
+  assert.match(
+    source,
+    /if \(supportsPrivateKey\(repositoryForm\.type\)\) \{[\s\S]*payload\.private_key[\s\S]*payload\.host_key_fingerprint/,
+    'sftp payload should carry the private key and fingerprint',
+  )
+})
+
+test('artifact repository page never round-trips stored credentials', () => {
+  // The API stopped returning secrets; the page must not read them back either.
+  assert.doesNotMatch(source, /record\.access_key_secret/, 'page must not read a secret off the repository row')
+  assert.doesNotMatch(source, /detailRepository\.access_key_secret/, 'detail drawer must not render a secret value')
+  assert.doesNotMatch(typeSource, /access_key_secret: string\n/, 'repository type must not declare a secret value')
+  assert.match(
+    source,
+    /repositoryForm\.access_key_secret = ''/,
+    'edit form should leave the secret blank so blank means keep the stored value',
+  )
+  assert.match(
+    source,
+    /repositoryForm\.password = ''[\s\S]*repositoryForm\.private_key = ''/,
+    'edit form should leave remote credentials blank as well',
+  )
+  assert.match(
+    source,
+    /formatCredentialState\(record\.secret_configured\)/,
+    'table should show credential state instead of the secret',
+  )
+  assert.match(source, /function formatCredentialState\(configured: boolean\)/, 'page should format credential state')
+  assert.doesNotMatch(source, /maskSecret/, 'masked-secret rendering should be gone now that the API omits secrets')
+})
+
+test('artifact repository connectivity check validates the selected type', () => {
+  assert.match(
+    source,
+    /function validateRepositoryConnectionInput\(\) \{[\s\S]*isObjectStorageType\(repositoryForm\.type\)[\s\S]*请输入 AccessKey Secret/,
+    'object storage pre-check should still require the access key secret',
+  )
+  assert.match(
+    source,
+    /supportsPrivateKey\(repositoryForm\.type\)[\s\S]*请输入密码或私钥/,
+    'sftp pre-check should accept either a password or a private key',
+  )
+  assert.match(
+    source,
+    /return '请输入密码或私钥'/,
+    'sftp pre-check should report the combined requirement',
+  )
+})
+
+// A file transfer repository has no bucket, so any picker still interpolating
+// the bucket renders "name ()". Every caller must go through the shared helper.
+test('artifact repository pickers share one label builder', () => {
+  const labelSource = readFileSync(new URL('../src/utils/artifact-repository-label.ts', import.meta.url), 'utf8')
+  assert.match(
+    labelSource,
+    /repository\.type === 'oss' \? repository\.bucket : repository\.endpoint/,
+    'the shared helper should fall back to the host for types without a bucket',
+  )
+  assert.match(
+    labelSource,
+    /return descriptor \? `\$\{repository\.name\} \(\$\{descriptor\}\)` : repository\.name/,
+    'the shared helper should omit empty parentheses when there is no descriptor',
+  )
+
+  const pickerPaths = [
+    '../src/views/artifact/ArtifactCenterView.vue',
+    '../src/views/application/ApplicationCreateView.vue',
+    '../src/views/application/ApplicationEditView.vue',
+  ]
+  for (const relativePath of pickerPaths) {
+    const pickerSource = readFileSync(new URL(relativePath, import.meta.url), 'utf8')
+    assert.match(
+      pickerSource,
+      /import \{ formatArtifactRepositoryLabel \} from '\.\.\/\.\.\/utils\/artifact-repository-label'/,
+      `${relativePath} should use the shared repository label helper`,
+    )
+    assert.match(
+      pickerSource,
+      /label: formatArtifactRepositoryLabel\(item\)/,
+      `${relativePath} should build the option label through the shared helper`,
+    )
+    assert.doesNotMatch(
+      pickerSource,
+      /\$\{[^}]*\.name\} \(\$\{[^}]*\.bucket\}\)/,
+      `${relativePath} must not interpolate the bucket directly`,
+    )
+  }
 })

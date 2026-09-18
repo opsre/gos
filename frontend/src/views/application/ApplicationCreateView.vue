@@ -8,6 +8,7 @@ import { listArtifactRepositories } from '../../api/artifact-repository'
 import { listProjects } from '../../api/project'
 import { listUserOptions } from '../../api/user'
 import type { ApplicationPayload } from '../../types/application'
+import { formatArtifactRepositoryLabel } from '../../utils/artifact-repository-label'
 import { extractHTTPErrorMessage } from '../../utils/http-error'
 import ApplicationForm from './ApplicationForm.vue'
 
@@ -56,7 +57,7 @@ async function loadArtifactRepositoryOptions() {
   try {
     const response = await listArtifactRepositories({ page: 1, page_size: 100 })
     artifactRepositoryOptions.value = response.data.map((item) => ({
-      label: `${item.name} (${item.bucket})`,
+      label: formatArtifactRepositoryLabel(item),
       value: item.id,
     }))
   } catch (error) {

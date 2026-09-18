@@ -23,10 +23,16 @@ interface ArtifactRepositoryFormState {
   name: string
   type: ArtifactRepositoryType
   endpoint: string
+  port: number | null
   bucket: string
   directory: string
   access_key_id: string
   access_key_secret: string
+  username: string
+  password: string
+  private_key: string
+  disable_epsv: boolean
+  host_key_fingerprint: string
   acl: ArtifactRepositoryACL
   status: ArtifactRepositoryStatus
 }
@@ -46,6 +52,8 @@ const repositoryModalViewportInset = ref(0)
 
 const repositoryTypeOptions = [
   { label: 'OSS 对象存储', value: 'oss' },
+  { label: 'FTP 文件服务', value: 'ftp' },
+  { label: 'SFTP 文件服务', value: 'sftp' },
 ]
 
 const statusOptions = [
@@ -68,23 +76,61 @@ const repositoryForm = reactive<ArtifactRepositoryFormState>({
   name: '',
   type: 'oss',
   endpoint: '',
+  port: null,
   bucket: '',
   directory: '',
   access_key_id: '',
   access_key_secret: '',
+  username: '',
+  password: '',
+  private_key: '',
+  disable_epsv: false,
+  host_key_fingerprint: '',
   acl: 'private',
   status: 'enabled',
 })
 
-const repositoryFormRules = {
-  name: [{ required: true, message: '请输入制品库名称', trigger: 'blur' }],
-  type: [{ required: true, message: '请选择制品库类型', trigger: 'change' }],
-  endpoint: [{ required: true, message: '请输入 OSS Endpoint', trigger: 'blur' }],
-  bucket: [{ required: true, message: '请输入 Bucket', trigger: 'blur' }],
-  access_key_id: [{ required: true, message: '请输入 AccessKey ID', trigger: 'blur' }],
-  access_key_secret: [{ required: true, message: '请输入 AccessKey Secret', trigger: 'blur' }],
-  acl: [{ required: true, message: '请选择 ACL', trigger: 'change' }],
-}
+// Object storage keeps its own credential pair; the file transfer types share a
+// username plus either a password or an SSH private key.
+const isObjectStorageType = (type: ArtifactRepositoryType) => type === 'oss'
+const supportsPrivateKey = (type: ArtifactRepositoryType) => type === 'sftp'
+const supportsEPSVSwitch = (type: ArtifactRepositoryType) => type === 'ftp'
+
+const creatingRepository = computed(() => editorMode.value === 'create')
+
+// The editing row carries the only credential state the API exposes, since the
+// secret values themselves are never returned.
+const editingRepository = computed(
+  () => artifactRepositories.value.find((item) => item.id === editingRepositoryID.value) || null,
+)
+const editingRepositorySecretConfigured = computed(() => editingRepository.value?.secret_configured ?? false)
+const editingRepositoryPrivateKeyConfigured = computed(() => editingRepository.value?.private_key_configured ?? false)
+
+// Secrets are stored once and never returned, so on edit a blank field means
+// "keep the stored value" and must not be required.
+const repositoryFormRules = computed(() => {
+  const rules: Record<string, unknown[]> = {
+    name: [{ required: true, message: '请输入制品库名称', trigger: 'blur' }],
+    type: [{ required: true, message: '请选择制品库类型', trigger: 'change' }],
+    endpoint: [{ required: true, message: '请输入连接地址', trigger: 'blur' }],
+  }
+  if (isObjectStorageType(repositoryForm.type)) {
+    rules.bucket = [{ required: true, message: '请输入 Bucket', trigger: 'blur' }]
+    rules.access_key_id = [{ required: true, message: '请输入 AccessKey ID', trigger: 'blur' }]
+    rules.acl = [{ required: true, message: '请选择 ACL', trigger: 'change' }]
+    if (creatingRepository.value) {
+      rules.access_key_secret = [{ required: true, message: '请输入 AccessKey Secret', trigger: 'blur' }]
+    }
+    return rules
+  }
+  rules.username = [{ required: true, message: '请输入用户名', trigger: 'blur' }]
+  if (repositoryForm.type === 'ftp' && creatingRepository.value) {
+    rules.password = [{ required: true, message: '请输入密码', trigger: 'blur' }]
+  }
+  // SFTP accepts either a password or a private key, which a field-level rule
+  // cannot express; the backend reports the combined requirement instead.
+  return rules
+})
 
 const tableLocale = computed(() => ({
   emptyText: '暂无制品库配置',
@@ -124,10 +170,16 @@ function resetRepositoryForm() {
   repositoryForm.name = ''
   repositoryForm.type = 'oss'
   repositoryForm.endpoint = ''
+  repositoryForm.port = null
   repositoryForm.bucket = ''
   repositoryForm.directory = ''
   repositoryForm.access_key_id = ''
   repositoryForm.access_key_secret = ''
+  repositoryForm.username = ''
+  repositoryForm.password = ''
+  repositoryForm.private_key = ''
+  repositoryForm.disable_epsv = false
+  repositoryForm.host_key_fingerprint = ''
   repositoryForm.acl = 'private'
   repositoryForm.status = 'enabled'
   repositoryFormRef.value?.clearValidate()
@@ -151,24 +203,63 @@ function normalizeDirectory(value: string) {
 }
 
 function buildRepositoryPayload(): ArtifactRepositoryPayload {
-  return {
+  const payload: ArtifactRepositoryPayload = {
     name: repositoryForm.name.trim(),
     type: repositoryForm.type,
     endpoint: repositoryForm.endpoint.trim(),
-    bucket: repositoryForm.bucket.trim(),
     directory: normalizeDirectory(repositoryForm.directory),
-    access_key_id: repositoryForm.access_key_id.trim(),
-    access_key_secret: repositoryForm.access_key_secret.trim(),
     acl: repositoryForm.acl,
     status: repositoryForm.status,
   }
+  if (repositoryForm.port !== null && repositoryForm.port > 0) {
+    payload.port = repositoryForm.port
+  }
+  if (isObjectStorageType(repositoryForm.type)) {
+    payload.bucket = repositoryForm.bucket.trim()
+    payload.access_key_id = repositoryForm.access_key_id.trim()
+    payload.access_key_secret = repositoryForm.access_key_secret.trim()
+    return payload
+  }
+  payload.username = repositoryForm.username.trim()
+  payload.password = repositoryForm.password.trim()
+  if (supportsPrivateKey(repositoryForm.type)) {
+    payload.private_key = repositoryForm.private_key.trim()
+    payload.host_key_fingerprint = repositoryForm.host_key_fingerprint.trim()
+  }
+  if (supportsEPSVSwitch(repositoryForm.type)) {
+    payload.disable_epsv = repositoryForm.disable_epsv
+  }
+  return payload
 }
 
 function formatRepositoryType(type: ArtifactRepositoryType) {
   if (type === 'oss') {
     return 'OSS 对象存储'
   }
+  if (type === 'ftp') {
+    return 'FTP 文件服务'
+  }
+  if (type === 'sftp') {
+    return 'SFTP 文件服务'
+  }
   return type
+}
+
+// Remote types carry a port and are addressed by host rather than by a bucket,
+// so the table renders the effective address and hides object storage columns.
+function formatRepositoryEndpoint(record: ArtifactRepository) {
+  if (isObjectStorageType(record.type)) {
+    return record.endpoint
+  }
+  return record.port > 0 ? `${record.endpoint}:${record.port}` : record.endpoint
+}
+
+function formatRepositoryBucket(record: ArtifactRepository) {
+  return isObjectStorageType(record.type) ? record.bucket : '—'
+}
+
+function formatRepositoryACL(record: ArtifactRepository) {
+  return isObjectStorageType(record.type) ? formatACL(record.acl) : '—'
 }
 
 function formatStatus(status: ArtifactRepositoryStatus) {
@@ -183,21 +274,26 @@ function statusColor(status: ArtifactRepositoryStatus) {
   return status === 'enabled' ? 'green' : 'default'
 }
 
-function maskSecret(value: string) {
-  if (!value) {
-    return '-'
-  }
-  return '••••••••'
+function formatCredentialState(configured: boolean) {
+  return configured ? '已配置' : '未配置'
 }
 
 function populateRepositoryForm(record: ArtifactRepository) {
   repositoryForm.name = record.name
   repositoryForm.type = record.type
   repositoryForm.endpoint = record.endpoint
+  repositoryForm.port = record.port > 0 ? record.port : null
   repositoryForm.bucket = record.bucket
   repositoryForm.directory = record.directory === '/' ? '' : record.directory
   repositoryForm.access_key_id = record.access_key_id
-  repositoryForm.access_key_secret = record.access_key_secret
+  // The API never returns credentials, so every secret starts blank and a blank
+  // field means "keep the stored value" on save.
+  repositoryForm.access_key_secret = ''
+  repositoryForm.username = record.username
+  repositoryForm.password = ''
+  repositoryForm.private_key = ''
+  repositoryForm.disable_epsv = record.disable_epsv
+  repositoryForm.host_key_fingerprint = record.host_key_fingerprint
   repositoryForm.acl = record.acl
   repositoryForm.status = record.status
   repositoryFormRef.value?.clearValidate()
@@ -269,14 +365,31 @@ async function submitRepository() {
 }
 
 function validateRepositoryConnectionInput() {
-  const requiredFields = [
-    { value: repositoryForm.endpoint, message: '请输入 OSS Endpoint' },
-    { value: repositoryForm.bucket, message: '请输入 Bucket' },
-    { value: repositoryForm.access_key_id, message: '请输入 AccessKey ID' },
-    { value: repositoryForm.access_key_secret, message: '请输入 AccessKey Secret' },
-  ]
+  const requiredFields = [{ value: repositoryForm.endpoint, message: '请输入连接地址' }]
+  if (isObjectStorageType(repositoryForm.type)) {
+    requiredFields.push(
+      { value: repositoryForm.bucket, message: '请输入 Bucket' },
+      { value: repositoryForm.access_key_id, message: '请输入 AccessKey ID' },
+      { value: repositoryForm.access_key_secret, message: '请输入 AccessKey Secret' },
+    )
+  } else {
+    requiredFields.push({ value: repositoryForm.username, message: '请输入用户名' })
+    if (supportsPrivateKey(repositoryForm.type)) {
+      // A saved SFTP repository may authenticate with a stored private key the
+      // browser never sees, so only demand a password when no key is supplied.
+      if (!repositoryForm.password.trim() && !repositoryForm.private_key.trim()) {
+        return '请输入密码或私钥'
+      }
+    } else {
+      requiredFields.push({ value: repositoryForm.password, message: '请输入密码' })
+    }
+  }
   const missing = requiredFields.find((field) => !String(field.value || '').trim())
   return missing?.message || ''
+}
+
+function handleRepositoryTypeChange() {
+  repositoryFormRef.value?.clearValidate()
 }
 
 async function testRepositoryConnection() {
@@ -395,18 +508,24 @@ onBeforeUnmount(() => {
             <span class="repository-name-icon"><CloudServerOutlined /></span>
             <span>
               <span class="repository-name">{{ record.name }}</span>
-              <span class="repository-secret">AK {{ maskSecret(record.access_key_secret) }}</span>
+              <span class="repository-secret">凭据 {{ formatCredentialState(record.secret_configured) }}</span>
             </span>
           </div>
         </template>
         <template v-else-if="column.key === 'type'">
           <a-tag>{{ formatRepositoryType(record.type) }}</a-tag>
         </template>
+        <template v-else-if="column.key === 'endpoint'">
+          {{ formatRepositoryEndpoint(record) }}
+        </template>
+        <template v-else-if="column.key === 'bucket'">
+          {{ formatRepositoryBucket(record) }}
+        </template>
         <template v-else-if="column.key === 'directory'">
           {{ record.directory || '/' }}
         </template>
         <template v-else-if="column.key === 'acl'">
-          <a-tag>{{ formatACL(record.acl) }}</a-tag>
+          <a-tag>{{ formatRepositoryACL(record) }}</a-tag>
         </template>
         <template v-else-if="column.key === 'status'">
           <a-tag :color="statusColor(record.status)">{{ formatStatus(record.status) }}</a-tag>
@@ -497,7 +616,7 @@ onBeforeUnmount(() => {
               <template #label>
                 <span class="artifact-form-label">制品库类型<a-tag class="artifact-required-tag">必填</a-tag></span>
               </template>
-              <a-select v-model:value="repositoryForm.type" :options="repositoryTypeOptions" />
+              <a-select v-model:value="repositoryForm.type" :options="repositoryTypeOptions" @change="handleRepositoryTypeChange" />
             </a-form-item>
             <a-form-item name="status">
               <template #label>
@@ -505,7 +624,7 @@ onBeforeUnmount(() => {
               </template>
               <a-select v-model:value="repositoryForm.status" :options="statusOptions" />
             </a-form-item>
-            <a-form-item name="acl">
+            <a-form-item v-if="isObjectStorageType(repositoryForm.type)" name="acl">
               <template #label>
                 <span class="artifact-form-label">默认 ACL<a-tag class="artifact-required-tag">必填</a-tag></span>
               </template>
@@ -517,7 +636,7 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
-        <section class="artifact-form-panel">
+        <section v-if="isObjectStorageType(repositoryForm.type)" class="artifact-form-panel">
           <div class="artifact-form-panel-title">OSS 连接</div>
           <div class="artifact-form-grid">
             <a-form-item name="endpoint">
@@ -541,21 +660,120 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
+        <section v-else class="artifact-form-panel">
+          <div class="artifact-form-panel-title">{{ repositoryForm.type === 'ftp' ? 'FTP 连接' : 'SFTP 连接' }}</div>
+          <div class="artifact-form-grid">
+            <a-form-item name="endpoint">
+              <template #label>
+                <span class="artifact-form-label">主机地址<a-tag class="artifact-required-tag">必填</a-tag></span>
+              </template>
+              <a-input v-model:value="repositoryForm.endpoint" placeholder="例如 10.8.0.14 或 sftp.example.com" />
+            </a-form-item>
+            <a-form-item name="port">
+              <template #label>
+                <span class="artifact-form-label">端口</span>
+              </template>
+              <a-input-number
+                v-model:value="repositoryForm.port"
+                class="artifact-port-input"
+                :min="1"
+                :max="65535"
+                :placeholder="repositoryForm.type === 'ftp' ? '默认 21' : '默认 22'"
+              />
+            </a-form-item>
+            <a-form-item name="directory">
+              <template #label>
+                <span class="artifact-form-label">{{ repositoryForm.type === 'ftp' ? '远端目录' : '远端路径' }}</span>
+              </template>
+              <a-input v-model:value="repositoryForm.directory" placeholder="例如 releases/jar，可为空表示登录目录" />
+            </a-form-item>
+            <a-form-item v-if="supportsEPSVSwitch(repositoryForm.type)" name="disable_epsv">
+              <template #label>
+                <span class="artifact-form-label">兼容模式</span>
+              </template>
+              <a-checkbox v-model:checked="repositoryForm.disable_epsv">
+                禁用 EPSV，改用 PASV
+              </a-checkbox>
+            </a-form-item>
+          </div>
+        </section>
+
         <section class="artifact-form-panel">
           <div class="artifact-form-panel-title">访问凭证</div>
           <div class="artifact-form-grid">
-            <a-form-item name="access_key_id">
-              <template #label>
-                <span class="artifact-form-label">AccessKey ID<a-tag class="artifact-required-tag">必填</a-tag></span>
-              </template>
-              <a-input v-model:value="repositoryForm.access_key_id" placeholder="请输入 AccessKey ID" />
-            </a-form-item>
-            <a-form-item name="access_key_secret">
-              <template #label>
-                <span class="artifact-form-label">AccessKey Secret<a-tag class="artifact-required-tag">必填</a-tag></span>
-              </template>
-              <a-input-password v-model:value="repositoryForm.access_key_secret" autocomplete="new-password" placeholder="请输入 AccessKey Secret" />
-            </a-form-item>
+            <template v-if="isObjectStorageType(repositoryForm.type)">
+              <a-form-item name="access_key_id">
+                <template #label>
+                  <span class="artifact-form-label">AccessKey ID<a-tag class="artifact-required-tag">必填</a-tag></span>
+                </template>
+                <a-input v-model:value="repositoryForm.access_key_id" placeholder="请输入 AccessKey ID" />
+              </a-form-item>
+              <a-form-item name="access_key_secret">
+                <template #label>
+                  <span class="artifact-form-label">
+                    AccessKey Secret<a-tag class="artifact-required-tag">必填</a-tag>
+                    <a-tag v-if="!creatingRepository" class="artifact-credential-tag">
+                      {{ formatCredentialState(editingRepositorySecretConfigured) }}
+                    </a-tag>
+                  </span>
+                </template>
+                <a-input-password
+                  v-model:value="repositoryForm.access_key_secret"
+                  autocomplete="new-password"
+                  :placeholder="creatingRepository ? '请输入 AccessKey Secret' : '留空沿用原值'"
+                />
+              </a-form-item>
+            </template>
+            <template v-else>
+              <a-form-item name="username">
+                <template #label>
+                  <span class="artifact-form-label">用户名<a-tag class="artifact-required-tag">必填</a-tag></span>
+                </template>
+                <a-input v-model:value="repositoryForm.username" placeholder="请输入登录用户名" />
+              </a-form-item>
+              <a-form-item name="password">
+                <template #label>
+                  <span class="artifact-form-label">
+                    密码<a-tag class="artifact-required-tag">必填</a-tag>
+                    <a-tag v-if="!creatingRepository" class="artifact-credential-tag">
+                      {{ formatCredentialState(editingRepositorySecretConfigured) }}
+                    </a-tag>
+                  </span>
+                </template>
+                <a-input-password
+                  v-model:value="repositoryForm.password"
+                  autocomplete="new-password"
+                  :placeholder="creatingRepository ? '请输入密码' : '留空沿用原值'"
+                />
+              </a-form-item>
+              <a-form-item
+                v-if="supportsPrivateKey(repositoryForm.type)"
+                name="private_key"
+                class="artifact-form-item-wide"
+              >
+                <template #label>
+                  <span class="artifact-form-label">
+                    私钥
+                    <a-tag v-if="!creatingRepository" class="artifact-credential-tag">
+                      {{ formatCredentialState(editingRepositoryPrivateKeyConfigured) }}
+                    </a-tag>
+                  </span>
+                </template>
+                <a-textarea
+                  v-model:value="repositoryForm.private_key"
+                  :rows="4"
+                  :placeholder="creatingRepository ? '粘贴 PEM 私钥，与密码二选一' : '留空沿用原值'"
+                />
+                <div class="artifact-form-help-text">私钥受口令保护时暂不支持，请使用未加密私钥或密码认证。</div>
+              </a-form-item>
+              <a-form-item v-if="supportsPrivateKey(repositoryForm.type)" name="host_key_fingerprint">
+                <template #label>
+                  <span class="artifact-form-label">主机密钥指纹</span>
+                </template>
+                <a-input v-model:value="repositoryForm.host_key_fingerprint" placeholder="例如 SHA256:xxxx，留空则不校验" />
+                <div class="artifact-form-help-text">留空时平台不校验 SSH 主机密钥，填写后按指纹校验。</div>
+              </a-form-item>
+            </template>
           </div>
         </section>
       </a-form>
@@ -583,27 +801,43 @@ onBeforeUnmount(() => {
         </div>
         <div class="artifact-detail-row">
           <span>默认 ACL</span>
-          <strong>{{ formatACL(detailRepository.acl) }}</strong>
+          <strong>{{ formatRepositoryACL(detailRepository) }}</strong>
         </div>
         <div class="artifact-detail-row">
-          <span>Endpoint</span>
-          <strong>{{ detailRepository.endpoint }}</strong>
+          <span>{{ isObjectStorageType(detailRepository.type) ? 'Endpoint' : '主机地址' }}</span>
+          <strong>{{ formatRepositoryEndpoint(detailRepository) }}</strong>
         </div>
-        <div class="artifact-detail-row">
+        <div v-if="isObjectStorageType(detailRepository.type)" class="artifact-detail-row">
           <span>Bucket</span>
           <strong>{{ detailRepository.bucket }}</strong>
         </div>
         <div class="artifact-detail-row">
-          <span>目录前缀</span>
+          <span>{{ isObjectStorageType(detailRepository.type) ? '目录前缀' : '远端路径' }}</span>
           <strong>{{ detailRepository.directory || '/' }}</strong>
         </div>
-        <div class="artifact-detail-row">
+        <div v-if="isObjectStorageType(detailRepository.type)" class="artifact-detail-row">
           <span>AccessKey ID</span>
           <strong>{{ detailRepository.access_key_id }}</strong>
         </div>
+        <div v-else class="artifact-detail-row">
+          <span>用户名</span>
+          <strong>{{ detailRepository.username }}</strong>
+        </div>
         <div class="artifact-detail-row">
-          <span>AccessKey Secret</span>
-          <strong>{{ maskSecret(detailRepository.access_key_secret) }}</strong>
+          <span>{{ isObjectStorageType(detailRepository.type) ? 'AccessKey Secret' : '密码' }}</span>
+          <strong>{{ formatCredentialState(detailRepository.secret_configured) }}</strong>
+        </div>
+        <div v-if="supportsPrivateKey(detailRepository.type)" class="artifact-detail-row">
+          <span>私钥</span>
+          <strong>{{ formatCredentialState(detailRepository.private_key_configured) }}</strong>
+        </div>
+        <div v-if="supportsPrivateKey(detailRepository.type)" class="artifact-detail-row">
+          <span>主机密钥指纹</span>
+          <strong>{{ detailRepository.host_key_fingerprint || '未校验' }}</strong>
+        </div>
+        <div v-if="supportsEPSVSwitch(detailRepository.type)" class="artifact-detail-row">
+          <span>兼容模式</span>
+          <strong>{{ detailRepository.disable_epsv ? '禁用 EPSV，改用 PASV' : '默认' }}</strong>
         </div>
       </div>
     </a-drawer>
@@ -874,6 +1108,25 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px 14px;
+}
+
+/* The private key textarea spans the full panel width. */
+.artifact-form-item-wide {
+  grid-column: 1 / -1;
+}
+
+.artifact-port-input {
+  width: 100%;
+}
+
+.artifact-credential-tag {
+  margin-inline-start: 0;
+}
+
+.artifact-form-help-text {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #7b8798;
 }
 
 .artifact-form-label {

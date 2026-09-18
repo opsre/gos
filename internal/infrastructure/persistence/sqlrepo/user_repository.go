@@ -380,6 +380,8 @@ func (r *UserRepository) ensureBuiltinPermissions(ctx context.Context, now time.
 		{ID: "perm-component-gitops-manage", Code: "component.gitops.manage", Name: "管理GitOps", Module: "component", Action: "gitops_manage", Description: "编辑 GitOps 提交信息模版"},
 		{ID: "perm-component-agent-view", Code: "component.agent.view", Name: "查看Agent管理", Module: "component", Action: "agent_view", Description: "查看 Agent 列表、心跳和任务状态"},
 		{ID: "perm-component-agent-manage", Code: "component.agent.manage", Name: "管理Agent", Module: "component", Action: "agent_manage", Description: "新增、编辑和维护 Agent 实例"},
+		{ID: "perm-component-credential-view", Code: "component.credential.view", Name: "查看凭证管理", Module: "component", Action: "credential_view", Description: "查看 Git 凭证列表"},
+		{ID: "perm-component-credential-manage", Code: "component.credential.manage", Name: "管理凭证", Module: "component", Action: "credential_manage", Description: "新增编辑删除 Git 凭证与连接测试"},
 		{ID: "perm-release-view", Code: "release.view", Name: "查看发布单", Module: "release", Action: "view", Description: "查看发布单列表/详情"},
 		{ID: "perm-release-param-snapshot-view", Code: "release.param_snapshot.view", Name: "查看参数快照", Module: "release", Action: "param_snapshot_view", Description: "查看发布详情中的参数快照"},
 		{ID: "perm-release-template-manage", Code: "release.template.manage", Name: "管理发布模板", Module: "release", Action: "template_manage", Description: "发布模板增删改查"},

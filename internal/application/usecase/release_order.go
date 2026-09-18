@@ -1390,6 +1390,13 @@ func (uc *ReleaseOrderManager) resolveApplicationArtifactParamValues(
 	if repo.Status != "" && repo.Status != artifactrepodomain.StatusEnabled {
 		return nil, fmt.Errorf("%w: artifact repository is disabled", ErrInvalidInput)
 	}
+	// Only object storage maps onto the oss_* pipeline params. Emitting them for
+	// a repository type that has no bucket or access key would push blank values
+	// into the pipeline and fail there with no useful explanation, so refuse here
+	// rather than injecting empty parameters silently.
+	if !repo.RepositoryType.UsesObjectStorage() {
+		return nil, fmt.Errorf("%w: artifact repository type %s cannot be injected into pipeline params yet", ErrInvalidInput, repo.RepositoryType)
+	}
 	put("oss_endpoint", repo.Endpoint)
 	put("oss_bucket", repo.Bucket)
 	put("oss_dir", firstNonEmpty(strings.TrimSpace(app.ArtifactDirectory), strings.TrimSpace(repo.Directory)))

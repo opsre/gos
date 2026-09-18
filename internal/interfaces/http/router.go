@@ -26,6 +26,7 @@ func NewRouter(
 	argocdHandler *ArgoCDHandler,
 	gitopsHandler *GitOpsHandler,
 	artifactRepositoryHandler *ArtifactRepositoryHandler,
+	gitCredentialHandler *GitCredentialHandler,
 	platformParamHandler *PlatformParamHandler,
 	notificationHandler *NotificationHandler,
 	executorParamHandler *ExecutorParamHandler,
@@ -52,6 +53,7 @@ func NewRouter(
 	registerArgoCDRoutes(router, argocdHandler)
 	registerGitOpsRoutes(router, gitopsHandler)
 	registerArtifactRepositoryRoutes(router, artifactRepositoryHandler)
+	registerGitCredentialRoutes(router, gitCredentialHandler)
 	registerPlatformParamRoutes(router, platformParamHandler)
 	registerNotificationRoutes(router, notificationHandler)
 	registerExecutorParamRoutes(router, executorParamHandler)
@@ -155,6 +157,14 @@ func registerArtifactRepositoryRoutes(router gin.IRouter, artifactRepositoryHand
 		return
 	}
 	artifactRepositoryHandler.RegisterRoutes(router)
+}
+
+// registerGitCredentialRoutes 封装当前模块的业务处理逻辑。
+func registerGitCredentialRoutes(router gin.IRouter, gitCredentialHandler *GitCredentialHandler) {
+	if gitCredentialHandler == nil {
+		return
+	}
+	gitCredentialHandler.RegisterRoutes(router)
 }
 
 // registerPlatformParamRoutes 封装当前模块的业务处理逻辑。

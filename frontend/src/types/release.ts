@@ -625,6 +625,48 @@ export interface ReleaseOrderArtifactMetadataListResponse {
   data: ReleaseOrderArtifactMetadata[];
 }
 
+export interface ReleaseOrderGitCommit {
+  sha: string;
+  short_sha: string;
+  title: string;
+  message?: string;
+  author_name: string;
+  author_email?: string;
+  committed_at: string;
+  web_url: string;
+}
+
+// 「最近提交」的元信息色块：列表 tooltip 与发布详情共用同一套渲染与配色。
+export type ReleaseCommitChipTone = "author" | "time" | "asof" | "head" | "repo";
+
+export interface ReleaseCommitChip {
+  key: string;
+  tone: ReleaseCommitChipTone;
+  label: string;
+  value: string;
+}
+
+export interface ReleaseOrderRecentCommits {
+  order_id: string;
+  application_id: string;
+  application_name?: string;
+  repository: string;
+  provider: string;
+  ref: string;
+  /** 时点(RFC3339)：发布单执行开始/创建时刻，commits 是该时点的分支最新提交；
+   * 为空表示未启用时点筛选，commits 即当前最新提交。 */
+  as_of?: string;
+  web_url: string;
+  credential_id?: string;
+  credential_name?: string;
+  commits: ReleaseOrderGitCommit[];
+  error?: string;
+}
+
+export interface ReleaseOrderRecentCommitsResponse {
+  data: Record<string, ReleaseOrderRecentCommits>;
+}
+
 export interface ReleaseOrderRealtimeSnapshot {
   version: string;
   generated_at: string;

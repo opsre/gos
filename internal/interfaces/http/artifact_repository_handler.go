@@ -34,30 +34,47 @@ func (h *ArtifactRepositoryHandler) RegisterRoutes(router gin.IRouter) {
 }
 
 type ArtifactRepositoryRequest struct {
-	Name            string `json:"name"`
-	RepositoryType  string `json:"type"`
-	Endpoint        string `json:"endpoint"`
-	Bucket          string `json:"bucket"`
-	Directory       string `json:"directory"`
-	AccessKeyID     string `json:"access_key_id"`
-	AccessKeySecret string `json:"access_key_secret"`
-	ACL             string `json:"acl"`
-	Status          string `json:"status"`
+	Name               string `json:"name"`
+	RepositoryType     string `json:"type"`
+	Endpoint           string `json:"endpoint"`
+	Port               int    `json:"port"`
+	Bucket             string `json:"bucket"`
+	Directory          string `json:"directory"`
+	AccessKeyID        string `json:"access_key_id"`
+	AccessKeySecret    string `json:"access_key_secret"`
+	Username           string `json:"username"`
+	Password           string `json:"password"`
+	PrivateKey         string `json:"private_key"`
+	DisableEPSV        bool   `json:"disable_epsv"`
+	HostKeyFingerprint string `json:"host_key_fingerprint"`
+	ACL                string `json:"acl"`
+	Status             string `json:"status"`
 }
 
+// ArtifactRepositoryResponse deliberately carries no credential value. This
+// module used to echo the object storage secret to the browser, which is the one
+// place the platform diverged from the "never return a secret" convention that
+// GitOps, ArgoCD, Agent, notification and AI model config all follow. The two
+// configured flags let the UI show credential state without the secret itself,
+// and a blank credential on update means "keep the stored one".
 type ArtifactRepositoryResponse struct {
-	ID              string    `json:"id"`
-	Name            string    `json:"name"`
-	RepositoryType  string    `json:"type"`
-	Endpoint        string    `json:"endpoint"`
-	Bucket          string    `json:"bucket"`
-	Directory       string    `json:"directory"`
-	AccessKeyID     string    `json:"access_key_id"`
-	AccessKeySecret string    `json:"access_key_secret"`
-	ACL             string    `json:"acl"`
-	Status          string    `json:"status"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID                   string    `json:"id"`
+	Name                 string    `json:"name"`
+	RepositoryType       string    `json:"type"`
+	Endpoint             string    `json:"endpoint"`
+	Port                 int       `json:"port"`
+	Bucket               string    `json:"bucket"`
+	Directory            string    `json:"directory"`
+	AccessKeyID          string    `json:"access_key_id"`
+	Username             string    `json:"username"`
+	DisableEPSV          bool      `json:"disable_epsv"`
+	HostKeyFingerprint   string    `json:"host_key_fingerprint"`
+	SecretConfigured     bool      `json:"secret_configured"`
+	PrivateKeyConfigured bool      `json:"private_key_configured"`
+	ACL                  string    `json:"acl"`
+	Status               string    `json:"status"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 type ArtifactRepositoryDataResponse struct {
@@ -85,17 +102,7 @@ func (h *ArtifactRepositoryHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
-	item, err := h.manager.Create(c.Request.Context(), usecase.CreateArtifactRepositoryInput{
-		Name:            req.Name,
-		RepositoryType:  domain.RepositoryType(strings.TrimSpace(req.RepositoryType)),
-		Endpoint:        req.Endpoint,
-		Bucket:          req.Bucket,
-		Directory:       req.Directory,
-		AccessKeyID:     req.AccessKeyID,
-		AccessKeySecret: req.AccessKeySecret,
-		ACL:             domain.ACL(strings.TrimSpace(req.ACL)),
-		Status:          domain.Status(strings.TrimSpace(req.Status)),
-	})
+	item, err := h.manager.Create(c.Request.Context(), toArtifactRepositoryInput(req))
 	if err != nil {
 		writeArtifactRepositoryHTTPError(c, err)
 		return
@@ -112,17 +119,7 @@ func (h *ArtifactRepositoryHandler) TestConnection(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
-	result, err := h.manager.TestConnection(c.Request.Context(), usecase.CreateArtifactRepositoryInput{
-		Name:            req.Name,
-		RepositoryType:  domain.RepositoryType(strings.TrimSpace(req.RepositoryType)),
-		Endpoint:        req.Endpoint,
-		Bucket:          req.Bucket,
-		Directory:       req.Directory,
-		AccessKeyID:     req.AccessKeyID,
-		AccessKeySecret: req.AccessKeySecret,
-		ACL:             domain.ACL(strings.TrimSpace(req.ACL)),
-		Status:          domain.Status(strings.TrimSpace(req.Status)),
-	})
+	result, err := h.manager.TestConnection(c.Request.Context(), toArtifactRepositoryInput(req))
 	if err != nil {
 		writeArtifactRepositoryHTTPError(c, err)
 		return
@@ -191,17 +188,7 @@ func (h *ArtifactRepositoryHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
-	item, err := h.manager.Update(c.Request.Context(), c.Param("id"), domain.UpdateInput{
-		Name:            req.Name,
-		RepositoryType:  domain.RepositoryType(strings.TrimSpace(req.RepositoryType)),
-		Endpoint:        req.Endpoint,
-		Bucket:          req.Bucket,
-		Directory:       req.Directory,
-		AccessKeyID:     req.AccessKeyID,
-		AccessKeySecret: req.AccessKeySecret,
-		ACL:             domain.ACL(strings.TrimSpace(req.ACL)),
-		Status:          domain.Status(strings.TrimSpace(req.Status)),
-	})
+	item, err := h.manager.Update(c.Request.Context(), c.Param("id"), toArtifactRepositoryInput(req))
 	if err != nil {
 		writeArtifactRepositoryHTTPError(c, err)
 		return
@@ -220,21 +207,56 @@ func (h *ArtifactRepositoryHandler) Delete(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+func toArtifactRepositoryInput(req ArtifactRepositoryRequest) usecase.ArtifactRepositoryInput {
+	return usecase.ArtifactRepositoryInput{
+		Name:               req.Name,
+		RepositoryType:     domain.RepositoryType(strings.TrimSpace(req.RepositoryType)),
+		Endpoint:           req.Endpoint,
+		Port:               req.Port,
+		Bucket:             req.Bucket,
+		Directory:          req.Directory,
+		AccessKeyID:        req.AccessKeyID,
+		AccessKeySecret:    req.AccessKeySecret,
+		Username:           req.Username,
+		Password:           req.Password,
+		PrivateKey:         req.PrivateKey,
+		DisableEPSV:        req.DisableEPSV,
+		HostKeyFingerprint: req.HostKeyFingerprint,
+		ACL:                domain.ACL(strings.TrimSpace(req.ACL)),
+		Status:             domain.Status(strings.TrimSpace(req.Status)),
+	}
+}
+
 func toArtifactRepositoryResponse(item domain.ArtifactRepository) ArtifactRepositoryResponse {
 	return ArtifactRepositoryResponse{
-		ID:              item.ID,
-		Name:            item.Name,
-		RepositoryType:  string(item.RepositoryType),
-		Endpoint:        item.Endpoint,
-		Bucket:          item.Bucket,
-		Directory:       item.Directory,
-		AccessKeyID:     item.AccessKeyID,
-		AccessKeySecret: item.AccessKeySecret,
-		ACL:             string(item.ACL),
-		Status:          string(item.Status),
-		CreatedAt:       item.CreatedAt,
-		UpdatedAt:       item.UpdatedAt,
+		ID:                   item.ID,
+		Name:                 item.Name,
+		RepositoryType:       string(item.RepositoryType),
+		Endpoint:             item.Endpoint,
+		Port:                 item.Port,
+		Bucket:               item.Bucket,
+		Directory:            item.Directory,
+		AccessKeyID:          item.AccessKeyID,
+		Username:             item.Username,
+		DisableEPSV:          item.DisableEPSV,
+		HostKeyFingerprint:   item.HostKeyFingerprint,
+		SecretConfigured:     artifactRepositorySecretConfigured(item),
+		PrivateKeyConfigured: strings.TrimSpace(item.PrivateKey) != "",
+		ACL:                  string(item.ACL),
+		Status:               string(item.Status),
+		CreatedAt:            item.CreatedAt,
+		UpdatedAt:            item.UpdatedAt,
 	}
+}
+
+// artifactRepositorySecretConfigured reports whether the credential this
+// repository type actually uses is present, so the UI can show one state tag
+// next to the matching input.
+func artifactRepositorySecretConfigured(item domain.ArtifactRepository) bool {
+	if item.RepositoryType.UsesObjectStorage() {
+		return strings.TrimSpace(item.AccessKeySecret) != ""
+	}
+	return strings.TrimSpace(item.Password) != ""
 }
 
 func writeArtifactRepositoryHTTPError(c *gin.Context, err error) {

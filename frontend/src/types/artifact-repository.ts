@@ -1,4 +1,4 @@
-export type ArtifactRepositoryType = 'oss'
+export type ArtifactRepositoryType = 'oss' | 'ftp' | 'sftp'
 export type ArtifactRepositoryACL = 'private' | 'public-read'
 export type ArtifactRepositoryStatus = 'enabled' | 'disabled'
 
@@ -7,10 +7,17 @@ export interface ArtifactRepository {
   name: string
   type: ArtifactRepositoryType
   endpoint: string
+  port: number
   bucket: string
   directory: string
   access_key_id: string
-  access_key_secret: string
+  username: string
+  disable_epsv: boolean
+  host_key_fingerprint: string
+  // Credentials are never returned by the API; these flags only report whether
+  // one is stored so the form can show state without the secret.
+  secret_configured: boolean
+  private_key_configured: boolean
   acl: ArtifactRepositoryACL
   status: ArtifactRepositoryStatus
   created_at: string
@@ -21,10 +28,17 @@ export interface ArtifactRepositoryPayload {
   name: string
   type: ArtifactRepositoryType
   endpoint: string
-  bucket: string
-  directory: string
-  access_key_id: string
-  access_key_secret: string
+  port?: number
+  bucket?: string
+  directory?: string
+  access_key_id?: string
+  // Blank means "keep the stored secret" when editing.
+  access_key_secret?: string
+  username?: string
+  password?: string
+  private_key?: string
+  disable_epsv?: boolean
+  host_key_fingerprint?: string
   acl: ArtifactRepositoryACL
   status: ArtifactRepositoryStatus
 }

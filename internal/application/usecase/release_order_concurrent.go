@@ -212,7 +212,7 @@ func (uc *ReleaseOrderManager) getStoredConcurrentBatchProgress(
 			Status:              order.Status,
 			OperationType:       order.OperationType,
 			ConcurrentBatchSeq:  order.ConcurrentBatchSeq,
-			QueueState:          resolveConcurrentBatchQueueState(order.Status, hasRunning),
+			QueueState:          resolveEndedBatchQueueState(resolveConcurrentBatchQueueState(order.Status, hasRunning), executions),
 			HasRunningExecution: hasRunning,
 			StartedAt:           order.StartedAt,
 			FinishedAt:          order.FinishedAt,
@@ -253,6 +253,7 @@ func (uc *ReleaseOrderManager) getStoredConcurrentBatchProgress(
 			Status:              current.Status,
 			OperationType:       current.OperationType,
 			ConcurrentBatchSeq:  current.ConcurrentBatchSeq,
+			QueueState:          resolveEndedBatchQueueState(resolveConcurrentBatchQueueState(current.Status, hasRunning), executions),
 			HasRunningExecution: hasRunning,
 			StartedAt:           current.StartedAt,
 			FinishedAt:          current.FinishedAt,
@@ -263,14 +264,6 @@ func (uc *ReleaseOrderManager) getStoredConcurrentBatchProgress(
 	}
 
 	for _, indexes := range grouped {
-		for _, idx := range indexes {
-			current := &items[idx].item
-			if current.Status.IsTerminal() {
-				current.QueueState = resolveConcurrentBatchQueueState(current.Status, current.HasRunningExecution)
-				continue
-			}
-			current.QueueState = resolveConcurrentBatchQueueState(current.Status, current.HasRunningExecution)
-		}
 		queuePosition := 0
 		for _, idx := range indexes {
 			current := &items[idx].item
@@ -426,6 +419,44 @@ func hasRunningExecution(executions []domain.ReleaseOrderExecution) bool {
 		}
 	}
 	return false
+}
+
+// resolveEndedBatchQueueState 在整单执行已经全部结束时，避免批次项停留在排队中/待调度。
+// 失败或取消后的发布单会被追踪器短暂停在 running 状态以等待下一轮收敛，这段窗口里
+// 批次进度不应再把它当成仍在排队的单。
+func resolveEndedBatchQueueState(
+	state ReleaseOrderConcurrentBatchQueueState,
+	executions []domain.ReleaseOrderExecution,
+) ReleaseOrderConcurrentBatchQueueState {
+	switch state {
+	case ReleaseOrderConcurrentBatchQueueStateQueued, ReleaseOrderConcurrentBatchQueueStatePending:
+	default:
+		return state
+	}
+	if len(executions) == 0 {
+		return state
+	}
+	hasFailed := false
+	hasCancelled := false
+	for _, item := range executions {
+		if !item.Status.IsTerminal() {
+			return state
+		}
+		switch item.Status {
+		case domain.ExecutionStatusFailed:
+			hasFailed = true
+		case domain.ExecutionStatusCancelled:
+			hasCancelled = true
+		}
+	}
+	switch {
+	case hasFailed:
+		return ReleaseOrderConcurrentBatchQueueStateFailed
+	case hasCancelled:
+		return ReleaseOrderConcurrentBatchQueueStateCancelled
+	default:
+		return state
+	}
 }
 
 // shouldQueueInConcurrentBatch 封装当前模块的业务处理逻辑。

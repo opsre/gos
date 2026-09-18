@@ -23,6 +23,7 @@ import { listProjects } from '../../api/project'
 import type { Application } from '../../types/application'
 import type { ReleaseOrderArtifactMetadataSummary } from '../../types/artifact'
 import type { ArtifactRepository } from '../../types/artifact-repository'
+import { formatArtifactRepositoryLabel } from '../../utils/artifact-repository-label'
 import type { Project } from '../../types/project'
 import { extractHTTPErrorMessage } from '../../utils/http-error'
 
@@ -272,7 +273,7 @@ async function loadRepositories() {
   try {
     const response = await listArtifactRepositories({ page: 1, page_size: 200, status: 'enabled' })
     repositoryOptions.value = (response.data || []).map((item: ArtifactRepository) => ({
-      label: item.bucket ? `${item.name} (${item.bucket})` : item.name,
+      label: formatArtifactRepositoryLabel(item),
       value: item.id,
     }))
     const firstRepositoryID = repositoryOptions.value[0]?.value

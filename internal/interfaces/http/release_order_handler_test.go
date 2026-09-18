@@ -93,6 +93,53 @@ func TestDeriveReleaseBusinessStatusUsesActiveExecutionPhase(t *testing.T) {
 			want:   domain.ReleaseBusinessStatusQueued,
 		},
 		{
+			name:   "settling failed release projects failure instead of the queue it was parked on",
+			status: domain.OrderStatusRunning,
+			executions: []domain.ReleaseOrderExecution{
+				{
+					PipelineScope: domain.PipelineScopeCI,
+					Provider:      "jenkins",
+					Status:        domain.ExecutionStatusFailed,
+					BuildURL:      "https://jenkins.example/job/ci/42/",
+				},
+				{
+					PipelineScope: domain.PipelineScopeCD,
+					Provider:      "jenkins",
+					Status:        domain.ExecutionStatusSkipped,
+				},
+			},
+			want: domain.ReleaseBusinessStatusDeployFailed,
+		},
+		{
+			name:   "settling cancelled release projects cancellation",
+			status: domain.OrderStatusRunning,
+			executions: []domain.ReleaseOrderExecution{{
+				PipelineScope: domain.PipelineScopeCI,
+				Provider:      "jenkins",
+				Status:        domain.ExecutionStatusCancelled,
+				BuildURL:      "https://jenkins.example/job/ci/43/",
+			}},
+			want: domain.ReleaseBusinessStatusCancelled,
+		},
+		{
+			name:   "running release whose cd never started keeps the queue projection",
+			status: domain.OrderStatusRunning,
+			executions: []domain.ReleaseOrderExecution{
+				{
+					PipelineScope: domain.PipelineScopeCI,
+					Provider:      "jenkins",
+					Status:        domain.ExecutionStatusFailed,
+					BuildURL:      "https://jenkins.example/job/ci/44/",
+				},
+				{
+					PipelineScope: domain.PipelineScopeCD,
+					Provider:      "jenkins",
+					Status:        domain.ExecutionStatusPending,
+				},
+			},
+			want: domain.ReleaseBusinessStatusQueued,
+		},
+		{
 			name:   "terminal order wins over stale execution",
 			status: domain.OrderStatusDeploySuccess,
 			executions: []domain.ReleaseOrderExecution{{

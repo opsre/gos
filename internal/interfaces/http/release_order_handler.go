@@ -3300,6 +3300,13 @@ func deriveReleaseBusinessStatus(
 	if runningStatus, ok := deriveRunningExecutionBusinessStatus(executions); ok {
 		return runningStatus
 	}
+	// The tracker parks a settling order on OrderStatusRunning so the next sync
+	// still picks it up before the order reaches its terminal status. Once every
+	// execution has ended, project that outcome: a release whose CI failed must
+	// not keep showing the queue/phase status it was parked on.
+	if terminalStatus, ok := deriveEndedExecutionBusinessStatus(executions); ok {
+		return terminalStatus
+	}
 
 	switch status {
 	case domain.OrderStatusBuilding:
@@ -3312,6 +3319,35 @@ func deriveReleaseBusinessStatus(
 		return domain.ReleaseBusinessStatusQueued
 	default:
 		return domain.ReleaseBusinessStatusPendingExecution
+	}
+}
+
+func deriveEndedExecutionBusinessStatus(
+	executions []domain.ReleaseOrderExecution,
+) (domain.ReleaseBusinessStatus, bool) {
+	if len(executions) == 0 {
+		return "", false
+	}
+	hasFailed := false
+	hasCancelled := false
+	for _, execution := range executions {
+		if !execution.Status.IsTerminal() {
+			return "", false
+		}
+		switch execution.Status {
+		case domain.ExecutionStatusFailed:
+			hasFailed = true
+		case domain.ExecutionStatusCancelled:
+			hasCancelled = true
+		}
+	}
+	switch {
+	case hasFailed:
+		return domain.ReleaseBusinessStatusDeployFailed, true
+	case hasCancelled:
+		return domain.ReleaseBusinessStatusCancelled, true
+	default:
+		return "", false
 	}
 }
 

@@ -42,6 +42,7 @@ import {
   getLatestReleaseOrderPipelineStageDiagnosis,
   getReleaseOrderPrecheck,
   getReleaseOrderPipelineStageLog,
+  getReleaseOrderRecentCommits,
   listReleaseOrderArtifactMetadata,
   listReleaseOrderApprovalRecords,
   listReleaseOrderExecutions,
@@ -77,6 +78,9 @@ import type {
   ReleaseOrderRealtimeSnapshot,
   ReleaseOrderValueProgress,
   ReleaseOrderValueProgressStatus,
+  ReleaseCommitChip,
+  ReleaseOrderGitCommit,
+  ReleaseOrderRecentCommits,
   ReleaseOrderPipelineStage,
   ReleaseOrderPipelineStageDiagnosis,
   ReleaseOrderPipelineStageDiagnosisAction,
@@ -90,6 +94,7 @@ import type {
   ReleaseTriggerType,
 } from "../../types/release";
 import { extractHTTPErrorMessage } from "../../utils/http-error";
+import { formatRecentCommitTime, recentCommitErrorText } from "../../utils/recent-commit";
 import { notifyReleaseApprovalTasksChanged } from "../../utils/release-approval-events";
 
 const route = useRoute();
@@ -98,6 +103,8 @@ const authStore = useAuthStore();
 // Avoid duplicate stage requests when a full detail refresh is explicitly requested.
 const PIPELINE_STAGE_REFRESH_INTERVAL_MS = 5000;
 const PRECHECK_REFRESH_INTERVAL_MS = 5_000;
+// 「最近提交」按需展示的提交条数上限，与后端 limit 参数保持一致。
+const RECENT_COMMIT_LIMIT = 5;
 
 type ScopeLogState = {
   text: string;
@@ -170,6 +177,9 @@ const steps = ref<ReleaseOrderStep[]>([]);
 const executions = ref<ReleaseOrderExecution[]>([]);
 const artifactMetadata = ref<ReleaseOrderArtifactMetadata[]>([]);
 const artifactMetadataLoading = ref(false);
+const recentCommits = ref<ReleaseOrderRecentCommits | null>(null);
+const recentCommitsLoading = ref(false);
+const recentCommitsRequestError = ref("");
 const pipelineStages = ref<ReleaseOrderPipelineStage[]>([]);
 const precheck = ref<ReleaseOrderPrecheck | null>(null);
 const precheckLoading = ref(false);
@@ -562,8 +572,7 @@ const canExecute = computed(
     canExecutePermission.value &&
     (currentBusinessStatus.value === "pending_execution" ||
       currentBusinessStatus.value === "approved") &&
-    !executeLocked.value &&
-    !precheckBlocked.value,
+    !executeLocked.value,
 );
 const supportsStagedDispatch = computed(() => {
   if (!order.value) {
@@ -2864,6 +2873,12 @@ async function loadDetail(options?: { silent?: boolean }) {
       );
     }
 
+    // 最近提交属于辅助信息：单独 try/catch，失败只记入 detailErrors，不阻塞详情渲染。
+    const recentCommitsError = await loadReleaseOrderRecentCommits(orderID.value, silent);
+    if (recentCommitsError) {
+      detailErrors.push(`最近提交：${recentCommitsError}`);
+    }
+
     await Promise.all([loadApprovalRecords({ silent: true }), loadApprovalFlow({ silent: true })]);
     if (orderResp.data.is_concurrent) {
       await loadConcurrentBatchProgress({ silent });
@@ -2909,6 +2924,95 @@ async function loadDetail(options?: { silent?: boolean }) {
     }
   }
 }
+
+async function loadReleaseOrderRecentCommits(id: string, silent: boolean): Promise<string> {
+  if (!silent) {
+    recentCommitsLoading.value = true;
+  }
+  try {
+    const response = await getReleaseOrderRecentCommits([id], RECENT_COMMIT_LIMIT);
+    recentCommits.value = response.data?.[id] || null;
+    recentCommitsRequestError.value = "";
+    return "";
+  } catch (error) {
+    recentCommits.value = null;
+    const message = extractHTTPErrorMessage(error, "加载失败");
+    recentCommitsRequestError.value = message;
+    return message;
+  } finally {
+    if (!silent) {
+      recentCommitsLoading.value = false;
+    }
+  }
+}
+
+// 「Merge branch … into …」只说明分支被并回主干，看不出这次发布改了什么，因此
+// 详情里同样优先列出真实改动；全部都是合并提交时再退回原列表。
+function recentCommitList(commits: ReleaseOrderRecentCommits | null): ReleaseOrderGitCommit[] {
+  const items = (commits?.commits || []).slice(0, RECENT_COMMIT_LIMIT);
+  const changes = items.filter((item) => !/^merge\b/i.test(String(item.title || "").trim()));
+  return changes.length > 0 ? changes : items;
+}
+
+// 发布时点分支上的 HEAD：列表跳过了合并提交，这里把当时的分支头单独标出来。
+function recentCommitHeaderChips(commits: ReleaseOrderRecentCommits | null): ReleaseCommitChip[] {
+  if (!commits || commits.error) {
+    return [];
+  }
+  const chips: ReleaseCommitChip[] = [];
+  const asOf = String(commits.as_of || "").trim();
+  if (asOf && dayjs(asOf).isValid()) {
+    chips.push({
+      key: "asof",
+      tone: "asof",
+      label: "发布时点",
+      value: dayjs(asOf).format("YYYY-MM-DD HH:mm"),
+    });
+  }
+  const anchor = (commits.commits || [])[0];
+  const shown = recentCommitList(commits);
+  if (anchor && !shown.some((item) => item.sha === anchor.sha)) {
+    chips.push({
+      key: "head",
+      tone: "head",
+      label: "分支当时 HEAD",
+      value: anchor.short_sha || anchor.sha.slice(0, 7),
+    });
+  }
+  return chips;
+}
+
+// 每条提交的提交者与提交时间同样用色块区分。
+function recentCommitItemChips(commit: ReleaseOrderGitCommit): ReleaseCommitChip[] {
+  const chips: ReleaseCommitChip[] = [];
+  if (commit.author_name) {
+    chips.push({ key: "author", tone: "author", label: "提交者", value: commit.author_name });
+  }
+  if (commit.committed_at) {
+    chips.push({
+      key: "time",
+      tone: "time",
+      label: "提交时间",
+      value: formatRecentCommitTime(commit.committed_at),
+    });
+  }
+  return chips;
+}
+
+function recentCommitRepositoryText(commits: ReleaseOrderRecentCommits | null) {
+  if (!commits) {
+    return "";
+  }
+  return [commits.repository, commits.ref].filter(Boolean).join(" · ");
+}
+
+// 后端错误码与请求失败都要落到同一处提示位置，避免整块区域空白。
+const recentCommitHint = computed(() => {
+  if (recentCommitsRequestError.value) {
+    return recentCommitErrorText(recentCommitsRequestError.value);
+  }
+  return recentCommitErrorText(String(recentCommits.value?.error || ""));
+});
 
 async function clearFastExecuteQuery() {
   if (!fastExecuteRequested.value) {
@@ -4059,6 +4163,81 @@ onBeforeUnmount(() => {
                   </template>
                 </a-descriptions-item>
               </a-descriptions>
+            </section>
+
+            <section class="detail-inline-section">
+              <div class="detail-inline-section-header">
+                <div class="detail-inline-section-title">最近提交</div>
+                <div class="detail-inline-section-summary detail-recent-commit-repo">
+                  <span v-if="recentCommitRepositoryText(recentCommits)">
+                    {{ recentCommitRepositoryText(recentCommits) }}
+                  </span>
+                  <a
+                    v-if="recentCommits?.web_url"
+                    class="detail-recent-commit-repo-link"
+                    :href="recentCommits.web_url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    打开仓库
+                  </a>
+                </div>
+              </div>
+
+              <a-skeleton v-if="recentCommitsLoading" active :paragraph="{ rows: 2 }" />
+
+              <div
+                v-else-if="recentCommitHeaderChips(recentCommits).length"
+                class="git-commit-chips detail-recent-commit-chips"
+              >
+                <span
+                  v-for="chip in recentCommitHeaderChips(recentCommits)"
+                  :key="chip.key"
+                  class="git-commit-chip"
+                  :class="[
+                    `git-commit-chip--${chip.tone}`,
+                    chip.tone === 'head' ? 'git-commit-chip--mono' : '',
+                  ]"
+                >
+                  <span class="git-commit-chip-label">{{ chip.label }}</span>
+                  <span class="git-commit-chip-value">{{ chip.value }}</span>
+                </span>
+              </div>
+
+              <div v-if="recentCommitsLoading" />
+
+              <div v-else-if="recentCommitList(recentCommits).length > 0" class="detail-recent-commit-list">
+                <div
+                  v-for="commit in recentCommitList(recentCommits)"
+                  :key="commit.sha"
+                  class="detail-recent-commit-item"
+                >
+                  <a
+                    class="detail-recent-commit-sha"
+                    :href="commit.web_url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {{ commit.short_sha }}
+                  </a>
+                  <div class="detail-recent-commit-main">
+                    <div class="detail-recent-commit-title">{{ commit.title }}</div>
+                    <div class="git-commit-chips detail-recent-commit-meta">
+                      <span
+                        v-for="chip in recentCommitItemChips(commit)"
+                        :key="chip.key"
+                        class="git-commit-chip"
+                        :class="`git-commit-chip--${chip.tone}`"
+                      >
+                        <span class="git-commit-chip-label">{{ chip.label }}</span>
+                        <span class="git-commit-chip-value">{{ chip.value }}</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-else class="detail-recent-commit-hint">{{ recentCommitHint }}</div>
             </section>
 
             <section class="detail-inline-section">
@@ -7311,6 +7490,90 @@ onBeforeUnmount(() => {
 .detail-inline-section-extra {
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+/* 最近提交：右上角显示仓库路径与分支，正文为紧凑的单行提交列表。 */
+.detail-recent-commit-repo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 0;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-recent-commit-chips {
+  margin-bottom: 8px;
+}
+
+.detail-recent-commit-repo-link {
+  flex: none;
+  color: #2563eb;
+  font-weight: 700;
+}
+
+.detail-recent-commit-list {
+  display: grid;
+  gap: 8px;
+}
+
+.detail-recent-commit-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.72);
+}
+
+.detail-recent-commit-item:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.detail-recent-commit-sha {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(241, 245, 249, 0.96);
+  color: #475569;
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.detail-recent-commit-sha:hover,
+.detail-recent-commit-sha:focus-visible {
+  color: #2563eb;
+}
+
+.detail-recent-commit-main {
+  min-width: 0;
+}
+
+.detail-recent-commit-title {
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-recent-commit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.detail-recent-commit-hint {
+  color: #64748b;
+  font-size: 13px;
 }
 
 .detail-collapse :deep(.ant-collapse-item) {

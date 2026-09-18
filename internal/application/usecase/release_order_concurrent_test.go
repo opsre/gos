@@ -235,3 +235,93 @@ func TestConcurrentBatchQueueStateTreatsUnstartedFullReleaseAsQueued(t *testing.
 		t.Fatalf("running state=%s, want %s", got, ReleaseOrderConcurrentBatchQueueStateExecuting)
 	}
 }
+
+func TestResolveEndedBatchQueueStateUsesEndedExecutions(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 9, 17, 5, 44, 25, 0, time.UTC)
+	failedAndSkipped := []domain.ReleaseOrderExecution{
+		testReleaseExecution("ro-1", "exec-1-ci", domain.PipelineScopeCI, domain.ExecutionStatusFailed, now),
+		testReleaseExecution("ro-1", "exec-1-cd", domain.PipelineScopeCD, domain.ExecutionStatusSkipped, now),
+	}
+	if got := resolveEndedBatchQueueState(ReleaseOrderConcurrentBatchQueueStateQueued, failedAndSkipped); got != ReleaseOrderConcurrentBatchQueueStateFailed {
+		t.Fatalf("ended failure state=%s, want %s", got, ReleaseOrderConcurrentBatchQueueStateFailed)
+	}
+
+	cancelled := []domain.ReleaseOrderExecution{
+		testReleaseExecution("ro-2", "exec-2-ci", domain.PipelineScopeCI, domain.ExecutionStatusCancelled, now),
+	}
+	if got := resolveEndedBatchQueueState(ReleaseOrderConcurrentBatchQueueStatePending, cancelled); got != ReleaseOrderConcurrentBatchQueueStateCancelled {
+		t.Fatalf("ended cancelled state=%s, want %s", got, ReleaseOrderConcurrentBatchQueueStateCancelled)
+	}
+
+	stillRunning := []domain.ReleaseOrderExecution{
+		testReleaseExecution("ro-3", "exec-3-ci", domain.PipelineScopeCI, domain.ExecutionStatusRunning, now),
+		testReleaseExecution("ro-3", "exec-3-cd", domain.PipelineScopeCD, domain.ExecutionStatusPending, now),
+	}
+	if got := resolveEndedBatchQueueState(ReleaseOrderConcurrentBatchQueueStateQueued, stillRunning); got != ReleaseOrderConcurrentBatchQueueStateQueued {
+		t.Fatalf("in-flight state=%s, want %s", got, ReleaseOrderConcurrentBatchQueueStateQueued)
+	}
+
+	if got := resolveEndedBatchQueueState(ReleaseOrderConcurrentBatchQueueStateExecuting, failedAndSkipped); got != ReleaseOrderConcurrentBatchQueueStateExecuting {
+		t.Fatalf("executing state=%s, want %s", got, ReleaseOrderConcurrentBatchQueueStateExecuting)
+	}
+	if got := resolveEndedBatchQueueState(ReleaseOrderConcurrentBatchQueueStateQueued, nil); got != ReleaseOrderConcurrentBatchQueueStateQueued {
+		t.Fatalf("execution-less state=%s, want %s", got, ReleaseOrderConcurrentBatchQueueStateQueued)
+	}
+}
+
+func TestConcurrentBatchProgressFailsOrderSettlingAfterFailure(t *testing.T) {
+	t.Parallel()
+
+	manager, repo := newReleaseOrderManagerForCancelTest(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 17, 5, 44, 25, 0, time.UTC)
+
+	failedOrder := testReleaseOrder("ro-batch-failed", "RO-BATCH-FAILED", domain.OrderStatusRunning, now)
+	failedOrder.IsConcurrent = true
+	failedOrder.ConcurrentBatchNo = "CB-20260917054117-73AE3C"
+	failedOrder.ConcurrentBatchName = "并发发布"
+	failedOrder.ConcurrentBatchSeq = 1
+	failedOrder.ApplicationName = "韦二-mcs-product-web"
+	failedExecutions := []domain.ReleaseOrderExecution{
+		testReleaseExecution(failedOrder.ID, "exec-failed-ci", domain.PipelineScopeCI, domain.ExecutionStatusFailed, now),
+		testReleaseExecution(failedOrder.ID, "exec-failed-cd", domain.PipelineScopeCD, domain.ExecutionStatusSkipped, now),
+	}
+	if err := repo.Create(ctx, failedOrder, failedExecutions, nil, nil); err != nil {
+		t.Fatalf("create failed order failed: %v", err)
+	}
+
+	runningOrder := testReleaseOrder("ro-batch-running", "RO-BATCH-RUNNING", domain.OrderStatusDeploying, now)
+	runningOrder.IsConcurrent = true
+	runningOrder.ConcurrentBatchNo = failedOrder.ConcurrentBatchNo
+	runningOrder.ConcurrentBatchName = failedOrder.ConcurrentBatchName
+	runningOrder.ConcurrentBatchSeq = 2
+	runningOrder.ApplicationID = "app-2"
+	runningOrder.ApplicationName = "韦二-mcs-product-app"
+	runningExecutions := []domain.ReleaseOrderExecution{
+		testReleaseExecution(runningOrder.ID, "exec-running-ci", domain.PipelineScopeCI, domain.ExecutionStatusRunning, now),
+		testReleaseExecution(runningOrder.ID, "exec-running-cd", domain.PipelineScopeCD, domain.ExecutionStatusPending, now),
+	}
+	if err := repo.Create(ctx, runningOrder, runningExecutions, nil, nil); err != nil {
+		t.Fatalf("create running order failed: %v", err)
+	}
+
+	progress, err := manager.GetConcurrentBatchProgress(ctx, failedOrder.ID)
+	if err != nil {
+		t.Fatalf("GetConcurrentBatchProgress failed: %v", err)
+	}
+	if progress.Total != 2 || progress.Failed != 1 || progress.Executing != 1 || progress.Queued != 0 {
+		t.Fatalf("progress = %#v, want one failed and one executing without queue", progress)
+	}
+	states := make(map[string]ReleaseOrderConcurrentBatchQueueState, len(progress.Items))
+	for _, item := range progress.Items {
+		states[item.OrderNo] = item.QueueState
+	}
+	if states[failedOrder.OrderNo] != ReleaseOrderConcurrentBatchQueueStateFailed {
+		t.Fatalf("settling failed order state=%s, want %s", states[failedOrder.OrderNo], ReleaseOrderConcurrentBatchQueueStateFailed)
+	}
+	if states[runningOrder.OrderNo] != ReleaseOrderConcurrentBatchQueueStateExecuting {
+		t.Fatalf("running peer state=%s, want %s", states[runningOrder.OrderNo], ReleaseOrderConcurrentBatchQueueStateExecuting)
+	}
+}
