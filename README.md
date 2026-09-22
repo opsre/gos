@@ -10,7 +10,7 @@ GOS 不替代 Jenkins、ArgoCD 或 Agent，而是它们上层的发布治理层�
 
 ### 🌐 在线体验
 
-**[http://36.151.150.63:5174](http://36.151.150.63:5174/)**　账号 `admin`　密码 `admin123`
+**[点击进入在线体验](http://36.151.150.63:5174/login?username=admin&password=admin123)**（打开即自动登录）
 
 体验环境数据会定期清理，请勿录入生产凭据或敏感信息。
 
@@ -160,6 +160,12 @@ flowchart LR
 - [应用接入向导](docs/first-release-onboarding.md)
 - [Swagger / OpenAPI](docs/swagger.yaml)
 - 需求与设计文档：`docss/后端/`、`docss/前端/`、`docss/样式规范/`
+
+## 💬 联系
+
+<p>
+  <img alt="WeChat 13025452443" src="https://img.shields.io/badge/WeChat-13025452443-07C160?logo=wechat&logoColor=white" />
+</p>
 
 ## License
 
