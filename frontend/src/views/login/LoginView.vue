@@ -2,7 +2,7 @@
 import { LockOutlined, UserOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import type { FormInstance, Rule } from 'ant-design-vue/es/form'
-import { reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 import { extractHTTPErrorMessage } from '../../utils/http-error'
@@ -42,6 +42,31 @@ async function handleSubmit() {
   } finally {
     submitting.value = false
   }
+}
+
+// 分享/演示链接可以直接带账号密码（?username=&password=），打开即自动登录。
+// 取完值立刻把凭据从地址栏抹掉，避免留在浏览历史里。
+onMounted(() => {
+  const username = readQueryValue(route.query.username).trim()
+  const password = readQueryValue(route.query.password)
+  if (!username || !password) {
+    return
+  }
+
+  formState.username = username
+  formState.password = password
+  const restQuery = { ...route.query }
+  delete restQuery.username
+  delete restQuery.password
+  void router.replace({ path: route.path, query: restQuery })
+  void handleSubmit()
+})
+
+function readQueryValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.length > 0 ? String(value[0] ?? '') : ''
+  }
+  return value == null ? '' : String(value)
 }
 </script>
 
