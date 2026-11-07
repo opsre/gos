@@ -69,6 +69,13 @@ cfg = {
         "startup_max_retries": env_int("GOS_DB_STARTUP_MAX_RETRIES", 20),
         "startup_retry_interval_sec": env_int("GOS_DB_STARTUP_RETRY_INTERVAL_SEC", 3),
     },
+    "metrics": {
+        "enabled": env_bool("GOS_METRICS_ENABLED", False),
+        "bearer_token": env("GOS_METRICS_BEARER_TOKEN", ""),
+        "refresh_interval_sec": env_int("GOS_METRICS_REFRESH_INTERVAL_SEC", 30),
+        "collection_timeout_sec": env_int("GOS_METRICS_COLLECTION_TIMEOUT_SEC", 5),
+        "business_sources": json.loads(env("GOS_METRICS_BUSINESS_SOURCES", "[]")),
+    },
     "jenkins": {
         "enabled": env_bool("GOS_JENKINS_ENABLED", False),
         "base_url": env("GOS_JENKINS_BASE_URL", "http://127.0.0.1:8080/"),

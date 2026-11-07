@@ -5,24 +5,96 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 )
 
 type SystemManagementSettingsStore interface {
 	LoadCurrentSiteURL(ctx context.Context) (string, error)
-	SaveCurrentSiteURL(ctx context.Context, value string) error
+	LoadMetricsAuthEnabled(ctx context.Context) (*bool, error)
+	SaveSystemManagementSettings(ctx context.Context, currentSiteURL string, metricsAuthEnabled *bool) error
 }
 
 type SystemManagementSettingsOutput struct {
-	CurrentSiteURL string `json:"current_site_url"`
+	CurrentSiteURL         string `json:"current_site_url"`
+	MetricsAuthEnabled     bool   `json:"metrics_auth_enabled"`
+	MetricsEnabled         bool   `json:"metrics_enabled"`
+	MetricsTokenConfigured bool   `json:"metrics_token_configured"`
+}
+
+type SystemManagementMetricsOptions struct {
+	Enabled               bool
+	TokenConfigured       bool
+	AuthRequiredByDefault bool
 }
 
 type QuerySystemManagementSettings struct {
-	store SystemManagementSettingsStore
+	store              SystemManagementSettingsStore
+	metrics            SystemManagementMetricsOptions
+	metricsMu          sync.Mutex
+	metricsAuthEnabled atomic.Bool
 }
 
 // NewQuerySystemManagementSettings 创建并返回系统管理设置查询组件。
-func NewQuerySystemManagementSettings(store SystemManagementSettingsStore) *QuerySystemManagementSettings {
-	return &QuerySystemManagementSettings{store: store}
+func NewQuerySystemManagementSettings(store SystemManagementSettingsStore, options ...SystemManagementMetricsOptions) *QuerySystemManagementSettings {
+	uc := &QuerySystemManagementSettings{store: store}
+	if len(options) > 0 {
+		uc.metrics = options[0]
+	}
+	uc.metricsAuthEnabled.Store(uc.metrics.AuthRequiredByDefault)
+	return uc
+}
+
+// MetricsAuthRequired reads the active policy without database I/O on scrapes.
+func (uc *QuerySystemManagementSettings) MetricsAuthRequired() bool {
+	return uc.metricsAuthEnabled.Load()
+}
+
+func (uc *QuerySystemManagementSettings) loadMetricsAuthEnabled(ctx context.Context) (bool, error) {
+	stored, err := uc.store.LoadMetricsAuthEnabled(ctx)
+	if err != nil {
+		return false, err
+	}
+	if stored == nil {
+		return uc.metrics.AuthRequiredByDefault, nil
+	}
+	return *stored, nil
+}
+
+// RefreshMetricsAuthPolicy loads persisted changes, including those made by
+// another server replica. Failed reads retain the last successfully loaded policy.
+func (uc *QuerySystemManagementSettings) RefreshMetricsAuthPolicy(ctx context.Context) error {
+	uc.metricsMu.Lock()
+	defer uc.metricsMu.Unlock()
+	enabled, err := uc.loadMetricsAuthEnabled(ctx)
+	if err != nil {
+		return err
+	}
+	uc.metricsAuthEnabled.Store(enabled)
+	return nil
+}
+
+func (uc *QuerySystemManagementSettings) RunMetricsAuthPolicy(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			refreshCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			_ = uc.RefreshMetricsAuthPolicy(refreshCtx)
+			cancel()
+		}
+	}
+}
+
+func (uc *QuerySystemManagementSettings) output(currentSiteURL string) SystemManagementSettingsOutput {
+	return SystemManagementSettingsOutput{
+		CurrentSiteURL: strings.TrimSpace(currentSiteURL), MetricsAuthEnabled: uc.MetricsAuthRequired(),
+		MetricsEnabled: uc.metrics.Enabled, MetricsTokenConfigured: uc.metrics.TokenConfigured,
+	}
 }
 
 // Execute 查询系统管理设置。
@@ -34,13 +106,15 @@ func (uc *QuerySystemManagementSettings) Execute(ctx context.Context) (SystemMan
 	if err != nil {
 		return SystemManagementSettingsOutput{}, err
 	}
-	return SystemManagementSettingsOutput{
-		CurrentSiteURL: strings.TrimSpace(currentSiteURL),
-	}, nil
+	if err := uc.RefreshMetricsAuthPolicy(ctx); err != nil {
+		return SystemManagementSettingsOutput{}, err
+	}
+	return uc.output(currentSiteURL), nil
 }
 
 type UpdateSystemManagementSettingsInput struct {
-	CurrentSiteURL string
+	CurrentSiteURL     string
+	MetricsAuthEnabled *bool
 }
 
 type UpdateSystemManagementSettings struct {
@@ -68,10 +142,23 @@ func (uc *UpdateSystemManagementSettings) Execute(
 	if err != nil {
 		return SystemManagementSettingsOutput{}, err
 	}
-	if err := uc.store.SaveCurrentSiteURL(ctx, currentSiteURL); err != nil {
+	uc.reader.metricsMu.Lock()
+	defer uc.reader.metricsMu.Unlock()
+	currentAuth, err := uc.reader.loadMetricsAuthEnabled(ctx)
+	if err != nil {
 		return SystemManagementSettingsOutput{}, err
 	}
-	return uc.reader.Execute(ctx)
+	if input.MetricsAuthEnabled != nil && *input.MetricsAuthEnabled && !currentAuth && !uc.reader.metrics.TokenConfigured {
+		return SystemManagementSettingsOutput{}, fmt.Errorf("%w: 开启指标访问鉴权前，请先配置采集 Token", ErrInvalidInput)
+	}
+	if err := uc.store.SaveSystemManagementSettings(ctx, currentSiteURL, input.MetricsAuthEnabled); err != nil {
+		return SystemManagementSettingsOutput{}, err
+	}
+	if input.MetricsAuthEnabled != nil {
+		currentAuth = *input.MetricsAuthEnabled
+	}
+	uc.reader.metricsAuthEnabled.Store(currentAuth)
+	return uc.reader.output(currentSiteURL), nil
 }
 
 func normalizeCurrentSiteURL(value string) (string, error) {

@@ -6,8 +6,10 @@ const layoutURL = new URL('../src/layouts/AppLayout.vue', import.meta.url)
 const source = readFileSync(layoutURL, 'utf8')
 
 test('sider footer displays the current release version', () => {
-  assert.match(source, /<span>v1\.3\.4<\/span>/, 'sider footer should display v1.3.4')
-  assert.doesNotMatch(source, /<span>v1\.3\.3<\/span>/, 'sider footer should not display the previous version')
+  const metadata = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  assert.match(metadata.version, /^\d+\.\d+\.\d+$/, 'package should declare a release version')
+  assert.match(source, /import \{ version as appVersion \} from '\.\.\/\.\.\/package\.json'/, 'footer should read the package release version')
+  assert.match(source, /<span>v\{\{ appVersion \}\}<\/span>/, 'sider footer should display the package version')
 })
 
 test('collapsed sider clears controlled submenu open keys', () => {

@@ -4,6 +4,8 @@
 
 **一张发布单，串起交付全链路。**
 
+源码最新版本：[v1.3.6](https://github.com/opsre/gos/releases/tag/v1.3.6) · [版本说明](docs/releases/v1.3.6.md)。
+
 GOS 不替代 Jenkins、ArgoCD 或 Agent，而是它们上层的发布治理层：把散落在各系统里的发布执行，收口成可审批、可追踪、可审计的发布单。
 
 ![Go 1.25+](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)![Vue 3](https://img.shields.io/badge/Vue-3-42B883?logo=vue.js&logoColor=white)![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)![MySQL / SQLite](https://img.shields.io/badge/MySQL%20%2F%20SQLite-supported-4479A1)![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)![Docker Pulls](https://img.shields.io/docker/pulls/yl10115658529/gos-release?logo=docker&label=Docker%20Pulls&color=2496ED&cacheSeconds=300)![Jenkins](https://img.shields.io/badge/Jenkins-sync-D24939?logo=jenkins&logoColor=white)![ArgoCD](https://img.shields.io/badge/ArgoCD-GitOps-EF7B4D?logo=argo&logoColor=white)![GOS Agent](https://img.shields.io/badge/GOS%20Agent-active-111827)![License MIT](https://img.shields.io/badge/License-MIT-3DA639)
@@ -38,10 +40,13 @@ GOS 不替代 Jenkins、ArgoCD 或 Agent，而是它们上层的发布治理层�
 - **发布自动化**：给应用配好发布模板、参数与分支，后台盯着分支提交，有新提交自动建单并按「仅构建 / 构建并发布 / 仅发布」派发；手工单在途时自动让路，构建完成的单子自动续跑部署。
 - **制品沉淀**：CI 产物统一归档到制品中心，`gos_artifact_url` 可沿用至 CD、GitOps 和 Hook。
 - **权限与审计**：应用、环境、模板、制品库、通知分层授权，参数、执行、制品和通知结果全程留痕。
+- **时序指标**：统一 `/metrics` 输出项目、应用、环境维度的发布统计、CI/CD 结果与耗时、审批和 Agent 状态，支持 HTTP JSON 业务指标接入及系统设置中的鉴权开关。
 
 ## Docker 部署
 
 单容器同时提供前端页面和后端 API；MySQL、Jenkins、ArgoCD、GitOps 建议继续使用外部已有服务。
+
+以下镜像示例使用已发布的 `v1.3.5`。使用 `v1.3.6` 的指标功能时，请检出对应源码并运行 `docker build -t gos-release:v1.3.6 .`，启动命令中的镜像名称相应改为 `gos-release:v1.3.6`。
 
 ### 1. 拉取镜像
 
@@ -160,6 +165,7 @@ flowchart LR
 - [应用接入向导](docs/first-release-onboarding.md)
 - [MCP 客户端接入与发布操作](docs/mcp-release-guide.md)
 - [Swagger / OpenAPI](docs/swagger.yaml)
+- [Prometheus 指标接口与 Grafana 查询](docs/metrics.md)：项目 / 应用 / 环境定位、发布治理和业务指标接入
 - 需求与设计文档：`docss/后端/`、`docss/前端/`、`docss/样式规范/`
 
 ## 💬 联系

@@ -14,7 +14,7 @@ import (
 	agentdomain "gos/internal/domain/agent"
 )
 
-const defaultAgentOfflineAfter = 45 * time.Second
+const defaultAgentOfflineAfter = agentdomain.DefaultOfflineAfter
 
 type AgentManager struct {
 	repo         agentdomain.Repository
@@ -839,19 +839,7 @@ func residentTaskPriority(status agentdomain.TaskStatus) int {
 
 // resolveAgentRuntimeState 解析上下文数据，得到后续流程需要的结果。
 func resolveAgentRuntimeState(item agentdomain.Instance, now time.Time, offlineAfter time.Duration) agentdomain.RuntimeState {
-	switch item.Status {
-	case agentdomain.StatusDisabled:
-		return agentdomain.RuntimeStateDisabled
-	case agentdomain.StatusMaintenance:
-		return agentdomain.RuntimeStateMaintenance
-	}
-	if item.LastHeartbeatAt.IsZero() || now.Sub(item.LastHeartbeatAt) > offlineAfter {
-		return agentdomain.RuntimeStateOffline
-	}
-	if strings.TrimSpace(item.CurrentTaskID) != "" {
-		return agentdomain.RuntimeStateBusy
-	}
-	return agentdomain.RuntimeStateOnline
+	return agentdomain.ResolveRuntimeState(item, now, offlineAfter)
 }
 
 // normalizeAgentTags 标准化输入值，保证后续逻辑使用统一格式。

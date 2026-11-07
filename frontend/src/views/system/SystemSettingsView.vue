@@ -50,7 +50,10 @@ const gitopsConfig = reactive({
 
 const systemManagementForm = reactive({
   current_site_url: '',
+  metrics_auth_enabled: true,
 })
+const metricsEnabled = ref(false)
+const metricsTokenConfigured = ref(false)
 
 const envOptions = computed(() => envConfigs.value.map((item) => item.code))
 
@@ -163,6 +166,9 @@ async function loadSystemManagementSettings() {
   try {
     const response = await getSystemManagementSettings()
     systemManagementForm.current_site_url = response.data.current_site_url || ''
+    systemManagementForm.metrics_auth_enabled = response.data.metrics_auth_enabled
+    metricsEnabled.value = response.data.metrics_enabled
+    metricsTokenConfigured.value = response.data.metrics_token_configured
   } catch (error) {
     message.error(extractHTTPErrorMessage(error, '系统管理设置加载失败'))
   } finally {
@@ -187,8 +193,12 @@ async function saveSystemManagementSettings() {
   try {
     const response = await updateSystemManagementSettings({
       current_site_url: currentSiteURL,
+      metrics_auth_enabled: systemManagementForm.metrics_auth_enabled,
     })
     systemManagementForm.current_site_url = response.data.current_site_url || ''
+    systemManagementForm.metrics_auth_enabled = response.data.metrics_auth_enabled
+    metricsEnabled.value = response.data.metrics_enabled
+    metricsTokenConfigured.value = response.data.metrics_token_configured
     message.success('系统管理设置已保存')
   } catch (error) {
     message.error(extractHTTPErrorMessage(error, '系统管理设置保存失败'))
@@ -608,6 +618,31 @@ onMounted(() => {
                 />
                 <div class="settings-field-help">
                   填写用户访问当前平台时使用的完整 HTTP 或 HTTPS 地址。
+                </div>
+              </a-form-item>
+            </a-form>
+          </a-card>
+          <a-card :loading="systemManagementLoading" :bordered="false" class="settings-card" style="margin-top: 16px">
+            <template #title>指标访问</template>
+            <a-form layout="vertical">
+              <a-form-item label="指标访问鉴权">
+                <a-switch
+                  v-model:checked="systemManagementForm.metrics_auth_enabled"
+                  checked-children="开启"
+                  un-checked-children="关闭"
+                  :disabled="systemManagementSaving || (!metricsTokenConfigured && !systemManagementForm.metrics_auth_enabled)"
+                />
+                <div class="settings-field-help">
+                  {{ systemManagementForm.metrics_auth_enabled
+                    ? '开启后，访问 /metrics 需要携带采集 Token。'
+                    : '关闭后，无需登录或 Token 即可直接访问 /metrics。' }}
+                  保存后立即生效。
+                </div>
+                <div v-if="!metricsTokenConfigured" class="settings-field-help">
+                  尚未配置采集 Token，可关闭鉴权直接访问指标；配置 Token 后可重新开启鉴权。
+                </div>
+                <div v-if="!metricsEnabled" class="settings-field-help">
+                  指标接口当前未启用，启用后此设置生效。
                 </div>
               </a-form-item>
             </a-form>

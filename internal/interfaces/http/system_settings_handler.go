@@ -55,7 +55,8 @@ type UpdateReleaseSettingsRequest struct {
 }
 
 type UpdateSystemManagementSettingsRequest struct {
-	CurrentSiteURL string `json:"current_site_url"`
+	CurrentSiteURL     string `json:"current_site_url"`
+	MetricsAuthEnabled *bool  `json:"metrics_auth_enabled"`
 }
 
 // GetSystemManagementSettings 获取系统管理设置。
@@ -95,7 +96,8 @@ func (h *SystemSettingsHandler) UpdateSystemManagementSettings(c *gin.Context) {
 		return
 	}
 	output, err := h.systemManagementUpdate.Execute(c.Request.Context(), usecase.UpdateSystemManagementSettingsInput{
-		CurrentSiteURL: req.CurrentSiteURL,
+		CurrentSiteURL:     req.CurrentSiteURL,
+		MetricsAuthEnabled: req.MetricsAuthEnabled,
 	})
 	if err != nil {
 		switch {

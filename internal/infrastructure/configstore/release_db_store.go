@@ -18,6 +18,7 @@ const (
 	releaseSettingsKeyConcurrency   = "release_concurrency"
 	releaseSettingsKeyGitOpsConfig  = "release_gitops_config"
 	systemSettingsKeyCurrentSiteURL = "system_current_site_url"
+	systemSettingsKeyMetricsAuth    = "system_metrics_auth_enabled"
 	settingsUpdatedAtSQLiteLayout   = "2006-01-02 15:04:05"
 )
 
@@ -233,6 +234,14 @@ func (s *DatabaseReleaseStore) saveJSONSetting(ctx context.Context, key string, 
 	if s == nil || s.db == nil {
 		return fmt.Errorf("release settings store db is nil")
 	}
+	return s.saveJSONSettingWithExecutor(ctx, s.db, key, value)
+}
+
+type settingsExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func (s *DatabaseReleaseStore) saveJSONSettingWithExecutor(ctx context.Context, executor settingsExecutor, key string, value interface{}) error {
 	payload, err := json.Marshal(value)
 	if err != nil {
 		return fmt.Errorf("encode system setting %s failed: %w", key, err)
@@ -240,13 +249,13 @@ func (s *DatabaseReleaseStore) saveJSONSetting(ctx context.Context, key string, 
 	now := time.Now().UTC()
 	switch strings.ToLower(strings.TrimSpace(s.driver)) {
 	case "mysql":
-		_, err = s.db.ExecContext(ctx, `
+		_, err = executor.ExecContext(ctx, `
 INSERT INTO system_settings (setting_key, setting_value, updated_at)
 VALUES (?, CAST(? AS JSON), ?)
 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = VALUES(updated_at)
 `, strings.TrimSpace(key), string(payload), now)
 	default:
-		_, err = s.db.ExecContext(ctx, `
+		_, err = executor.ExecContext(ctx, `
 INSERT INTO system_settings (setting_key, setting_value, updated_at)
 VALUES (?, ?, ?)
 ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = excluded.updated_at
@@ -302,6 +311,34 @@ func (s *DatabaseReleaseStore) LoadCurrentSiteURL(ctx context.Context) (string, 
 // SaveCurrentSiteURL 保存当前站点 URL。
 func (s *DatabaseReleaseStore) SaveCurrentSiteURL(ctx context.Context, value string) error {
 	return s.saveJSONSetting(ctx, systemSettingsKeyCurrentSiteURL, strings.TrimSpace(value))
+}
+
+func (s *DatabaseReleaseStore) LoadMetricsAuthEnabled(ctx context.Context) (*bool, error) {
+	var enabled *bool
+	_, err := s.loadJSONSetting(ctx, systemSettingsKeyMetricsAuth, &enabled)
+	return enabled, err
+}
+
+// SaveSystemManagementSettings commits the site URL and optional access policy
+// together. A missing policy field preserves existing settings for older clients.
+func (s *DatabaseReleaseStore) SaveSystemManagementSettings(ctx context.Context, currentSiteURL string, metricsAuthEnabled *bool) error {
+	if s == nil || s.db == nil {
+		return fmt.Errorf("release settings store db is nil")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := s.saveJSONSettingWithExecutor(ctx, tx, systemSettingsKeyCurrentSiteURL, strings.TrimSpace(currentSiteURL)); err != nil {
+		return err
+	}
+	if metricsAuthEnabled != nil {
+		if err := s.saveJSONSettingWithExecutor(ctx, tx, systemSettingsKeyMetricsAuth, *metricsAuthEnabled); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // normalizeDBGitOpsConfig 标准化输入值，保证后续逻辑使用统一格式。

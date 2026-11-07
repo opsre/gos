@@ -1,4 +1,11 @@
 {
+  "metrics": {
+    "enabled": false,
+    "bearer_token": "",
+    "refresh_interval_sec": 30,
+    "collection_timeout_sec": 5,
+    "business_sources": []
+  },
   "environment": "docker",
   "server": {
     "addr": ":8081",

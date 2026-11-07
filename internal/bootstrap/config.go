@@ -6,18 +6,21 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	metricsdomain "gos/internal/domain/observability"
 )
 
 type Config struct {
-	Environment string         `json:"environment"`
-	Server      ServerConfig   `json:"server"`
-	Database    DatabaseConfig `json:"database"`
-	Jenkins     JenkinsConfig  `json:"jenkins"`
-	ArgoCD      ArgoCDConfig   `json:"argocd"`
-	GitOps      GitOpsConfig   `json:"gitops"`
-	Release     ReleaseConfig  `json:"release"`
-	Auth        AuthConfig     `json:"auth"`
-	Security    SecurityConfig `json:"security"`
+	Environment string               `json:"environment"`
+	Server      ServerConfig         `json:"server"`
+	Database    DatabaseConfig       `json:"database"`
+	Jenkins     JenkinsConfig        `json:"jenkins"`
+	ArgoCD      ArgoCDConfig         `json:"argocd"`
+	GitOps      GitOpsConfig         `json:"gitops"`
+	Release     ReleaseConfig        `json:"release"`
+	Auth        AuthConfig           `json:"auth"`
+	Security    SecurityConfig       `json:"security"`
+	Metrics     metricsdomain.Config `json:"metrics"`
 }
 
 type ServerConfig struct {
@@ -259,6 +262,7 @@ func loadFromFile(path string, cfg *Config) error {
 
 // applyConfigDefaults 封装当前模块的业务处理逻辑。
 func applyConfigDefaults(cfg *Config) {
+	cfg.Metrics.Defaults()
 	cfg.Environment = strings.TrimSpace(cfg.Environment)
 	if cfg.Environment == "" {
 		cfg.Environment = "local"
@@ -418,6 +422,9 @@ func applyConfigDefaults(cfg *Config) {
 
 // validateConfig 封装当前模块的业务处理逻辑。
 func validateConfig(cfg Config) error {
+	if err := cfg.Metrics.Validate(); err != nil {
+		return err
+	}
 	switch cfg.Database.Driver {
 	case "sqlite":
 		if cfg.Database.SQLitePath == "" {

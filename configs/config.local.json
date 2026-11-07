@@ -1,4 +1,11 @@
 {
+  "metrics": {
+    "enabled": true,
+    "bearer_token": "",
+    "refresh_interval_sec": 30,
+    "collection_timeout_sec": 5,
+    "business_sources": []
+  },
   "auth": {
     "admin_display_name": "Administrator",
     "admin_password": "change-me-local-admin-password",

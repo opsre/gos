@@ -112,6 +112,58 @@ type releaseDBStoreStub struct {
 	concurrency usecase.ReleaseConcurrencySettingsOutput
 }
 
+func TestMetricsAuthSettingPersistsAndSystemSettingsSaveIsAtomic(t *testing.T) {
+	t.Parallel()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	ctx := context.Background()
+	store := NewDatabaseReleaseStore(db, "sqlite", nil)
+	if err := store.InitSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if stored, err := store.LoadMetricsAuthEnabled(ctx); err != nil || stored != nil {
+		t.Fatalf("unset policy = %v, %v", stored, err)
+	}
+	enabled := true
+	if err := store.SaveSystemManagementSettings(ctx, "https://original.example.com", &enabled); err != nil {
+		t.Fatal(err)
+	}
+	reloaded := NewDatabaseReleaseStore(db, "sqlite", nil)
+	if stored, err := reloaded.LoadMetricsAuthEnabled(ctx); err != nil || stored == nil || !*stored {
+		t.Fatalf("policy not persisted: %v, %v", stored, err)
+	}
+	if _, err := db.Exec(`CREATE TRIGGER reject_metrics_policy BEFORE INSERT ON system_settings
+	 WHEN NEW.setting_key = 'system_metrics_auth_enabled' BEGIN SELECT RAISE(ABORT, 'simulated settings failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	disabled := false
+	if err := store.SaveSystemManagementSettings(ctx, "https://must-not-persist.example.com", &disabled); err == nil {
+		t.Fatal("expected atomic save failure")
+	}
+	if site, err := store.LoadCurrentSiteURL(ctx); err != nil || site != "https://original.example.com" {
+		t.Fatalf("partial URL update committed: %q, %v", site, err)
+	}
+	if stored, err := store.LoadMetricsAuthEnabled(ctx); err != nil || stored == nil || !*stored {
+		t.Fatal("failed save changed policy")
+	}
+	if _, err := db.Exec(`DROP TRIGGER reject_metrics_policy`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveSystemManagementSettings(ctx, "https://original.example.com", &disabled); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveSystemManagementSettings(ctx, "https://updated.example.com", nil); err != nil {
+		t.Fatal(err)
+	}
+	if stored, err := reloaded.LoadMetricsAuthEnabled(ctx); err != nil || stored == nil || *stored {
+		t.Fatal("omitted auth field reset the saved policy")
+	}
+}
+
 // LoadEnvOptions 封装当前模块的业务处理逻辑。
 func (s releaseDBStoreStub) LoadEnvOptions(context.Context) ([]string, error) {
 	return append([]string(nil), s.envOptions...), nil

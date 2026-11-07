@@ -26,6 +26,7 @@ import (
 	"gos/internal/infrastructure/gitcli"
 	gitopsinfra "gos/internal/infrastructure/gitops"
 	"gos/internal/infrastructure/jenkins"
+	"gos/internal/infrastructure/observability"
 	"gos/internal/infrastructure/persistence/sqlrepo"
 	httpapi "gos/internal/interfaces/http"
 	"gos/internal/support/secure"
@@ -208,7 +209,13 @@ func main() {
 		authSessionManager,
 	)
 	releaseSettingsQuery := usecase.NewQueryReleaseSettings(releaseStore)
-	systemManagementSettingsQuery := usecase.NewQuerySystemManagementSettings(releaseStore)
+	systemManagementSettingsQuery := usecase.NewQuerySystemManagementSettings(releaseStore, usecase.SystemManagementMetricsOptions{
+		Enabled: cfg.Metrics.Enabled, TokenConfigured: cfg.Metrics.BearerToken != "",
+		AuthRequiredByDefault: cfg.Metrics.BearerToken != "" || !strings.EqualFold(cfg.Environment, "local"),
+	})
+	if err := systemManagementSettingsQuery.RefreshMetricsAuthPolicy(context.Background()); err != nil {
+		log.Fatalf("load metrics access policy: %v", err)
+	}
 	aiClientFactory := aiinfra.NewOpenAICompatibleClientFactory()
 	aiModelConfigManager := usecase.NewAIModelConfigManager(aiModelConfigRepo)
 	systemSettingsHandler := httpapi.NewSystemSettingsHandler(
@@ -478,6 +485,34 @@ func main() {
 	})
 	defer releaseAutomationTask.Stop()
 
+	var metricsEndpoint http.Handler = httpapi.NewMetricsHandler(false, "", nil)
+	if cfg.Metrics.Enabled {
+		exporter, err := observability.NewExporter(sqlrepo.NewMetricsRepository(db), cfg.Metrics)
+		if err != nil {
+			log.Fatalf("initialize metrics: %v", err)
+		}
+		metricsCtx, stopMetrics := context.WithCancel(context.Background())
+		if err := exporter.Refresh(metricsCtx); err != nil {
+			log.Printf("initial metrics collection: %v", err)
+		}
+		metricsDone := make(chan struct{})
+		go func() {
+			defer close(metricsDone)
+			policyDone := make(chan struct{})
+			go func() {
+				defer close(policyDone)
+				systemManagementSettingsQuery.RunMetricsAuthPolicy(metricsCtx)
+			}()
+			exporter.Run(metricsCtx)
+			<-policyDone
+		}()
+		defer func() {
+			stopMetrics()
+			<-metricsDone
+		}()
+		metricsEndpoint = httpapi.NewMetricsHandler(true, cfg.Metrics.BearerToken, exporter.Handler(), systemManagementSettingsQuery.MetricsAuthRequired)
+	}
+
 	router := httpapi.NewRouter(
 		authHandler,
 		agentHandler,
@@ -510,6 +545,10 @@ func main() {
 		Settings:      releaseSettingsQuery,
 	})
 	apiHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/metrics" {
+			metricsEndpoint.ServeHTTP(w, r)
+			return
+		}
 		if r.URL.Path == "/mcp" {
 			mcpHandler.ServeHTTP(w, r)
 			return

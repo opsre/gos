@@ -74,6 +74,11 @@ func (r *ReleaseRepository) InitSchema(ctx context.Context) error {
 			Description: "add the release order head commit snapshot columns",
 			Up:          r.migrateReleaseOrderHeadCommitColumns,
 		},
+		schemaMigration{
+			Version:     metricsMigrationVersion,
+			Description: "persist idempotent release metric events independently of release retention",
+			Up:          r.initMetricsSchema,
+		},
 	)
 }
 
@@ -1727,6 +1732,14 @@ INSERT INTO release_order_step (
 		}
 	}
 
+	if err := r.recordCreatedMetric(ctx, tx, order.ID); err != nil {
+		return err
+	}
+	for _, execution := range executions {
+		if err := r.recordExecutionMetric(ctx, tx, order.ID, execution.PipelineScope); err != nil {
+			return err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -3663,12 +3676,18 @@ func (r *ReleaseRepository) UpdateExecutionByScope(
 	scope domain.PipelineScope,
 	input domain.ExecutionUpdateInput,
 ) (domain.ReleaseOrderExecution, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.ReleaseOrderExecution{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
 	const q = `
 UPDATE release_order_execution
 SET status = ?, queue_url = ?, build_url = ?, external_run_id = ?, started_at = ?, finished_at = ?, updated_at = ?
 WHERE release_order_id = ? AND pipeline_scope = ?;`
 
-	res, err := r.db.ExecContext(
+	res, err := tx.ExecContext(
 		ctx,
 		q,
 		string(input.Status),
@@ -3689,7 +3708,23 @@ WHERE release_order_id = ? AND pipeline_scope = ?;`
 		return domain.ReleaseOrderExecution{}, err
 	}
 	if affected == 0 {
-		return domain.ReleaseOrderExecution{}, domain.ErrExecutionNotFound
+		// MySQL reports zero changed rows for an identical tracker retry. A row
+		// can still exist and its terminal observation must remain idempotent.
+		var existingID string
+		err := tx.QueryRowContext(ctx, `SELECT id FROM release_order_execution WHERE release_order_id = ? AND pipeline_scope = ?`,
+			strings.TrimSpace(releaseOrderID), strings.TrimSpace(string(scope))).Scan(&existingID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.ReleaseOrderExecution{}, domain.ErrExecutionNotFound
+		}
+		if err != nil {
+			return domain.ReleaseOrderExecution{}, err
+		}
+	}
+	if err := r.recordExecutionMetric(ctx, tx, strings.TrimSpace(releaseOrderID), scope); err != nil {
+		return domain.ReleaseOrderExecution{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.ReleaseOrderExecution{}, err
 	}
 	return r.GetExecutionByScope(ctx, releaseOrderID, scope)
 }

@@ -1,0 +1,38 @@
+groups:
+  - name: gos
+    rules:
+      - alert: GosMetricsUnavailable
+        expr: up{job="gos"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Gos 指标出口无法抓取"
+      - alert: GosMetricsCollectionStale
+        expr: gos_metrics_collection_success == 0 or time() - gos_metrics_last_success_timestamp_seconds > 120
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Gos 数据库指标采集异常或已过期"
+      - alert: GosDeploymentFailed
+        expr: sum by (project_id, application_id, env) (increase(gos_release_executions_total{scope="cd",result="failed"}[10m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "应用 {{ $labels.application_id }} 在 {{ $labels.env }} 环境出现部署失败"
+          description: "按应用、环境和告警时间范围进入 Gos 发布单列表排查。"
+      - alert: GosAgentOffline
+        expr: gos_agent_state{status="offline"} == 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Agent {{ $labels.agent_id }} 在 {{ $labels.env }} 环境离线"
+      - alert: GosBusinessSourceStale
+        expr: gos_business_source_up == 0 or time() - gos_business_source_last_success_timestamp_seconds > 120
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "应用 {{ $labels.application_id }} 的 {{ $labels.source_id }} 业务指标源异常"

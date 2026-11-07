@@ -40,13 +40,19 @@ export interface UpdateReleaseSettingsPayload {
 
 export interface SystemManagementSettings {
   current_site_url: string
+  metrics_auth_enabled: boolean
+  metrics_enabled: boolean
+  metrics_token_configured: boolean
 }
 
 export interface SystemManagementSettingsDataResponse {
   data: SystemManagementSettings
 }
 
-export type UpdateSystemManagementSettingsPayload = SystemManagementSettings
+export interface UpdateSystemManagementSettingsPayload {
+  current_site_url: string
+  metrics_auth_enabled?: boolean
+}
 
 export interface AIModelConfig {
   id: string
