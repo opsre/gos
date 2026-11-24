@@ -4,7 +4,7 @@
 
 **一张发布单，串起交付全链路。**
 
-源码最新版本：[v1.3.6](https://github.com/opsre/gos/releases/tag/v1.3.6) · [版本说明](docs/releases/v1.3.6.md)。
+源码最新版本：[v1.3.7](https://github.com/opsre/gos/releases/tag/v1.3.7) · [版本说明](docs/releases/v1.3.7.md)。
 
 GOS 不替代 Jenkins、ArgoCD 或 Agent，而是它们上层的发布治理层：把散落在各系统里的发布执行，收口成可审批、可追踪、可审计的发布单。
 
@@ -46,7 +46,7 @@ GOS 不替代 Jenkins、ArgoCD 或 Agent，而是它们上层的发布治理层�
 
 单容器同时提供前端页面和后端 API；MySQL、Jenkins、ArgoCD、GitOps 建议继续使用外部已有服务。
 
-以下镜像示例使用已发布的 `v1.3.5`。使用 `v1.3.6` 的指标功能时，请检出对应源码并运行 `docker build -t gos-release:v1.3.6 .`，启动命令中的镜像名称相应改为 `gos-release:v1.3.6`。
+以下镜像示例使用已发布的 `v1.3.5`。使用 `v1.3.7` 时，请检出对应源码并运行 `docker build -t gos-release:v1.3.7 .`，启动命令中的镜像名称相应改为 `gos-release:v1.3.7`。
 
 ### 1. 拉取镜像
 

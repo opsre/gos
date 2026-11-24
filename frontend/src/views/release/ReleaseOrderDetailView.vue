@@ -174,6 +174,7 @@ const artifactMetadata = ref<ReleaseOrderArtifactMetadata[]>([]);
 const artifactMetadataLoading = ref(false);
 const pipelineStages = ref<ReleaseOrderPipelineStage[]>([]);
 const precheck = ref<ReleaseOrderPrecheck | null>(null);
+const precheckErrorMessage = ref("");
 const precheckLoading = ref(false);
 const precheckQuerying = ref(false);
 let precheckRequest: Promise<void> | null = null;
@@ -2750,6 +2751,7 @@ function applyRealtimeSnapshot(snapshot: ReleaseOrderRealtimeSnapshot) {
       schedulePrecheckRefresh(0);
     } else {
       precheck.value = null;
+      precheckErrorMessage.value = "";
     }
   }
 }
@@ -2774,8 +2776,8 @@ async function loadDetail(options?: { silent?: boolean }) {
   if (!silent) {
     loading.value = true;
   }
+  const previousStatus = order.value?.status || "";
   try {
-    const previousStatus = order.value?.status || "";
     const orderResp = await getReleaseOrderByID(orderID.value);
     order.value = orderResp.data;
     if (!silent) {
@@ -2861,25 +2863,6 @@ async function loadDetail(options?: { silent?: boolean }) {
       concurrentBatchProgress.value = null;
     }
 
-    if (shouldLoadPrecheck.value) {
-      await loadPrecheck({ silent: true });
-    } else {
-      precheck.value = null;
-    }
-
-    const now = Date.now();
-    const shouldRefreshPipelineStages =
-      !stageLogDrawerVisible.value &&
-      (!silent ||
-        pipelineStages.value.length === 0 ||
-        previousStatus !== orderResp.data.status ||
-        now - lastPipelineStageRefreshAt.value >=
-          PIPELINE_STAGE_REFRESH_INTERVAL_MS);
-    if (shouldRefreshPipelineStages) {
-      await loadPipelineStageView({ silent });
-    }
-
-    syncVisibleLogStreams();
     if (!silent && detailErrors.length > 0) {
       message.warning(`部分详情刷新失败：${detailErrors.join("；")}`);
     }
@@ -2891,6 +2874,7 @@ async function loadDetail(options?: { silent?: boolean }) {
         query: buildReleaseListQuery(),
       });
     }
+    return;
   } finally {
     artifactMetadataLoading.value = false;
     querying.value = false;
@@ -2898,6 +2882,22 @@ async function loadDetail(options?: { silent?: boolean }) {
       loading.value = false;
     }
   }
+
+  // Jenkins 调用可能超时，基础详情先结束加载，各区块单独显示请求状态。
+  void loadPrecheck({ silent: true });
+
+  const shouldRefreshPipelineStages =
+    !stageLogDrawerVisible.value &&
+    (!silent ||
+      pipelineStages.value.length === 0 ||
+      previousStatus !== order.value?.status ||
+      Date.now() - lastPipelineStageRefreshAt.value >=
+        PIPELINE_STAGE_REFRESH_INTERVAL_MS);
+  if (shouldRefreshPipelineStages) {
+    await loadPipelineStageView({ silent });
+  }
+
+  syncVisibleLogStreams();
 }
 
 // 「最近提交」直接读发布单创建时已落库的字段（head_change_*），不再实时查询 Git。
@@ -3039,8 +3039,10 @@ async function loadPrecheck(options?: {
   silent?: boolean;
   action?: ReleaseOrderDispatchAction;
 }) {
-  if (!orderID.value || !shouldLoadPrecheck.value) {
+  const requestedOrderID = orderID.value;
+  if (!requestedOrderID || !shouldLoadPrecheck.value) {
     precheck.value = null;
+    precheckErrorMessage.value = "";
     return;
   }
   const requestedAction = options?.action || currentPrecheckAction.value;
@@ -3063,16 +3065,30 @@ async function loadPrecheck(options?: {
   precheckQuerying.value = true;
   precheckRequestAction = requestedAction;
   const requestSequence = ++precheckRequestSequence;
+  const requestedStatus = currentBusinessStatus.value;
+  const isCurrentRequest = () =>
+    orderID.value === requestedOrderID &&
+    currentBusinessStatus.value === requestedStatus;
   const request = (async () => {
     try {
       const response = await getReleaseOrderPrecheck(
-        orderID.value,
+        requestedOrderID,
         requestedAction,
       );
-      precheck.value = response.data;
+      if (isCurrentRequest()) {
+        precheck.value = response.data;
+        precheckErrorMessage.value = "";
+      }
     } catch (error) {
-      if (!silent) {
-        message.error(extractHTTPErrorMessage(error, "执行前预检加载失败"));
+      if (isCurrentRequest()) {
+        precheck.value = null;
+        precheckErrorMessage.value = extractHTTPErrorMessage(
+          error,
+          "执行前预检加载失败",
+        );
+        if (!silent) {
+          message.error(precheckErrorMessage.value);
+        }
       }
     } finally {
       if (!silent) {
@@ -3450,6 +3466,10 @@ async function executeCurrentOrder(
   try {
     if (!skipPrecheck) {
       await loadPrecheck({ silent: true, action });
+      if (precheckErrorMessage.value) {
+        message.warning(precheckErrorMessage.value);
+        return;
+      }
     }
     if (!skipPrecheck && precheckBlocked.value) {
       message.warning(
@@ -4894,7 +4914,10 @@ onBeforeUnmount(() => {
           v-if="showPrecheckCard"
           class="detail-card detail-side-card"
           :title="precheckCardTitle"
-          :loading="precheckLoading"
+          :loading="
+            precheckLoading ||
+            (precheckQuerying && !precheck && !precheckErrorMessage)
+          "
           :bordered="true"
         >
           <template #extra>
@@ -4949,7 +4972,7 @@ onBeforeUnmount(() => {
               </a-tag>
             </div>
           </div>
-          <a-empty v-else description="暂无预检结果" />
+          <a-empty v-else :description="precheckErrorMessage || '暂无预检结果'" />
         </a-card>
 
         <a-card

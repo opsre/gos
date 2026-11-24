@@ -154,6 +154,17 @@ test('release detail refreshes approval flow when realtime approval state change
   )
 })
 
+test('release detail renders before Jenkins precheck and stage refresh finish', () => {
+  const loader = detailSource.match(/async function loadDetail\([\s\S]*?\n}\n/)?.[0] || ''
+  const hideSkeleton = loader.indexOf('loading.value = false')
+  const refreshPrecheck = loader.indexOf('loadPrecheck(')
+  const refreshStages = loader.indexOf('loadPipelineStageView(')
+
+  assert.ok(hideSkeleton >= 0 && hideSkeleton < refreshPrecheck)
+  assert.ok(hideSkeleton < refreshStages)
+  assert.doesNotMatch(loader, /await\s+loadPrecheck\(/)
+})
+
 test('release precheck keeps its own serial lightweight polling cadence', () => {
   assert.match(detailSource, /PRECHECK_REFRESH_INTERVAL_MS\s*=\s*5_000/)
   const pollingSource = detailSource.match(
